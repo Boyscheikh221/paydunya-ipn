@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Produit — licenceoff</title>
-<link rel="stylesheet" href="/shop.css?v=10">
+<link rel="stylesheet" href="/shop.css?v=11">
 </head>
 <body>
 <main class="wrap">
   <div id="view"><div class="product"><div class="skeleton"></div><div class="skeleton"></div></div></div>
 </main>
-<script src="/shop.js?v=10"></script>
+<script src="/shop.js?v=11"></script>
 <script>
 LO.page("shop");
 const { el, $, fcfa } = LO;
@@ -25,7 +25,10 @@ function show(p) {
   LO.jsonLd({ "@context": "https://schema.org", "@type": "Product", name: p.name, description: p.seo_description || p.description || p.name, image: p.image_url || undefined, sku: p.sku || undefined,
     aggregateRating: rt ? { "@type": "AggregateRating", ratingValue: rt.avg, reviewCount: rt.count, bestRating: 5, worstRating: 1 } : undefined,
     review: rt ? (p.reviews || []).slice(0, 5).map((v) => ({ "@type": "Review", author: { "@type": "Person", name: v.name }, datePublished: String(v.date).slice(0, 10), reviewBody: v.comment || undefined, reviewRating: { "@type": "Rating", ratingValue: v.rating, bestRating: 5 } })) : undefined,
-    offers: { "@type": "Offer", price: p.price_fcfa, priceCurrency: "XOF", availability: "https://schema.org/" + (p.in_stock ? "InStock" : "OutOfStock"), url: LO.SITE + LO.url.product(p.slug) } });
+    url: LO.SITE + LO.url.product(p.slug), category: p.category_name || undefined,
+    // prix et disponibilité réels ; les avis ne viennent que d'acheteurs vérifiés, validés dans l'admin
+    offers: { "@type": "Offer", price: p.price_fcfa, priceCurrency: "XOF", availability: "https://schema.org/" + (p.in_stock ? "InStock" : "OutOfStock"),
+      itemCondition: "https://schema.org/NewCondition", url: LO.SITE + LO.url.product(p.slug), seller: { "@type": "Organization", name: "licenceoff", url: LO.SITE } } });
   const off = p.compare_price_fcfa && p.compare_price_fcfa > p.price_fcfa ? Math.round(100 - p.price_fcfa * 100 / p.compare_price_fcfa) : 0;
   const qtyIn = el("input", { type: "number", min: "1", max: String(p.max_qty || 20), value: "1", "aria-label": "Quantité" });
   const clampQ = () => { qtyIn.value = Math.max(1, Math.min(p.max_qty || 20, Math.floor(Number(qtyIn.value) || 1))); };

@@ -60,7 +60,13 @@ const LO = (() => {
     for (const s of [...used]) if (parentOf[s]) used.add(parentOf[s]);
     return (d.categories || []).filter((c) => !c.parent && used.has(c.slug));
   }
-  function jsonLd(obj) { const s = document.createElement("script"); s.type = "application/ld+json"; s.textContent = JSON.stringify(obj); document.head.append(s); }
+  // données structurées Google : un seul bloc par type (remplacé si la page se redessine)
+  function jsonLd(obj) {
+    const id = "ld-" + obj["@type"];
+    let s = document.getElementById(id);
+    if (!s) { s = document.createElement("script"); s.type = "application/ld+json"; s.id = id; document.head.append(s); }
+    s.textContent = JSON.stringify(obj);
+  }
   // fil d'Ariane : [["Accueil", "/"], ["Catégorie", "/categorie/x"], ["Page actuelle"]]
   function crumbs(list) {
     const nav = el("nav", { class: "crumbs", "aria-label": "Fil d'Ariane" });

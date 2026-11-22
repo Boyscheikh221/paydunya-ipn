@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Article — licenceoff</title>
-<link rel="stylesheet" href="/shop.css?v=10">
+<link rel="stylesheet" href="/shop.css?v=11">
 </head>
 <body>
 <main>
   <article class="post" id="view"><div class="skeleton"></div></article>
 </main>
-<script src="/shop.js?v=10"></script>
+<script src="/shop.js?v=11"></script>
 <script>
 LO.page("blog");
 const { el, $ } = LO;
@@ -19,7 +19,11 @@ LO.boutique({ action: "post", slug }).then((d) => {
   const p = d.post;
   if (!p) { $("#view").replaceChildren(LO.crumbs([["Accueil", LO.url.home], ["Blog", LO.url.blog], ["Article introuvable"]]), el("h1", { text: "Article introuvable" }), el("a", { class: "btn", href: LO.url.blog, text: "Retour au blog" })); return; }
   LO.seo({ title: p.title + " — licenceoff", description: p.excerpt || p.title, path: LO.url.post(p.slug), image: p.cover_url || null });
-  LO.jsonLd({ "@context": "https://schema.org", "@type": "BlogPosting", headline: p.title, datePublished: p.published_at, image: p.cover_url || undefined, publisher: { "@type": "Organization", name: "licenceoff" } });
+  LO.jsonLd({ "@context": "https://schema.org", "@type": "BlogPosting", headline: p.title, description: p.excerpt || undefined,
+    datePublished: p.published_at, dateModified: p.updated_at || p.published_at, image: [p.cover_url || LO.SITE + "/img/banniere.jpg"],
+    mainEntityOfPage: { "@type": "WebPage", "@id": LO.SITE + LO.url.post(p.slug) },
+    author: { "@type": "Organization", name: "licenceoff", url: LO.SITE },
+    publisher: { "@type": "Organization", name: "licenceoff", url: LO.SITE, logo: { "@type": "ImageObject", url: LO.SITE + "/img/logo.png" } } });
   const content = el("div", { class: "content" }); content.append(LO.richText(p.content));
   $("#view").replaceChildren(...[
     LO.crumbs([["Accueil", LO.url.home], ["Blog", LO.url.blog], [p.title]]),

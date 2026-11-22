@@ -450,7 +450,7 @@ Deno.serve(async (req) => {
       return json({ page: data });
     }
     case "post": {
-      const { data } = await db.from("posts").select("slug, title, excerpt, content, cover_url, published_at")
+      const { data } = await db.from("posts").select("slug, title, excerpt, content, cover_url, published_at, updated_at")
         .eq("slug", str(body.slug, 120)).eq("published", true).maybeSingle();
       if (!data) return json({ error: "not_found" }, 404);
       return json({ post: data });
