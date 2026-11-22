@@ -97,6 +97,7 @@
     <button data-tab="products">📦 Produits</button>
     <button data-tab="keys">🔑 Stock</button>
     <button data-tab="blog">📝 Blog</button>
+    <button data-tab="pages">📄 Pages</button>
     <button data-tab="emails">✉️ Emails</button>
     <button data-tab="send">📤 Envoi manuel</button>
     <button data-tab="parrains">🤝 Parrains <span id="badgePay" class="badge hidden"></span></button>
@@ -298,6 +299,33 @@
       <div class="box"><table class="small"><thead><tr><th>Article</th><th>Statut</th><th>Date</th><th></th></tr></thead><tbody id="bRows"></tbody></table></div>
     </section>
 
+    <section id="tab-pages" class="hidden">
+      <h1>Pages</h1>
+      <p class="small">Créez vos propres pages : À propos, Conditions de vente, une promo, un service… Adresse : www.licenceoff.com/page/<i>adresse</i>.
+        Pour une nouvelle catégorie de produits, allez dans 📦 Produits › Catégories : sa page se crée toute seule. Pour un article, utilisez 📝 Blog.</p>
+      <div class="box">
+        <h2 id="gTitleH">Nouvelle page</h2>
+        <input type="hidden" id="gId">
+        <div class="grid"><div><label>Titre</label><input id="gTitle" placeholder="ex : À propos de licenceoff"></div>
+          <div><label>Adresse (vide = d'après le titre)</label><input id="gSlug" placeholder="ex : a-propos"></div>
+          <div><label>Ordre dans le menu</label><input id="gSort" type="number" min="0" value="0"></div></div>
+        <label>Image (facultatif)</label>
+        <div class="bar" style="margin:0"><img id="gImgPrev" class="preview hidden" alt=""><input id="gImgFile" type="file" accept="image/*"><input type="hidden" id="gImg"><span id="gImgMsg" class="small"></span></div>
+        <label>Contenu</label>
+        <textarea id="gContent" style="min-height:260px" placeholder="Écrivez normalement. Astuces :&#10;## Un titre de partie&#10;- un point de liste&#10;**texte en gras**&#10;[texte du lien](https://www.licenceoff.com)"></textarea>
+        <div class="grid">
+          <div><label>Statut</label><select id="gPub"><option value="1">✅ Publiée</option><option value="0">📝 Brouillon (cachée)</option></select></div>
+          <label class="check"><input type="checkbox" id="gMenu"> Afficher dans le menu du haut</label>
+          <label class="check"><input type="checkbox" id="gFoot" checked> Afficher dans le pied de page</label>
+        </div>
+        <details class="box" style="margin:10px 0 0;padding:12px"><summary style="cursor:pointer;font-weight:700">🔎 Référencement Google (facultatif)</summary>
+          <label>Titre pour Google</label><input id="gSeoT" maxlength="120">
+          <label>Description pour Google</label><textarea id="gSeoD" rows="2" maxlength="320"></textarea></details>
+        <div class="bar" style="margin-top:12px"><button id="gSave" class="green">Enregistrer</button><button id="gReset" class="grey">Nouvelle page</button></div>
+      </div>
+      <div class="box"><table class="small"><thead><tr><th>Page</th><th>Statut</th><th>Où</th><th></th></tr></thead><tbody id="gRows"></tbody></table></div>
+    </section>
+
     <!-- ===== FAQ ===== -->
     <section id="tab-emails" class="hidden">
       <h1>Modèles d'email</h1>
@@ -479,6 +507,8 @@ const STOCK_TYPES = ["key", "key_file", "stock"];
 let stock = []; // stock de clés par produit (rempli par le tableau de bord)
 const METHOD = { wave: "Wave", orange_money: "Orange Money", free_money: "Free Money", especes: "Espèces", paydunya: "PayDunya", manuel: "Transfert manuel", autre: "Autre" };
 const ERR = {
+  titre_obligatoire: "Le titre est obligatoire.",
+  adresse_deja_utilisee: "Cette adresse de page est déjà utilisée. Choisissez-en une autre.",
   sku_deja_utilise: "Cette référence (SKU) est déjà utilisée par un autre produit.",
   lien_invalide: "Le lien de téléchargement doit commencer par https://",
   out_of_stock: "Stock insuffisant : la commande est payée et sera livrée dès que vous ajoutez du stock.",
@@ -545,7 +575,7 @@ async function uploadImage(input, hidden, preview, msg) {
 }
 
 // ---------- navigation ----------
-const loaders = { dash: loadDash, orders: loadOrders, products: loadProducts, keys: loadKeys, blog: loadBlog, emails: loadTemplates, send: loadSend, parrains: loadParrains, clients: loadClients, reviews: loadReviews, faq: loadFaq, links: loadLinks, settings: loadSettings };
+const loaders = { dash: loadDash, orders: loadOrders, products: loadProducts, keys: loadKeys, blog: loadBlog, pages: loadPages, emails: loadTemplates, send: loadSend, parrains: loadParrains, clients: loadClients, reviews: loadReviews, faq: loadFaq, links: loadLinks, settings: loadSettings };
 document.querySelectorAll("nav [data-tab]").forEach((b) => b.addEventListener("click", () => openTab(b.dataset.tab)));
 function openTab(t) {
   document.querySelectorAll("nav [data-tab]").forEach((b) => b.classList.toggle("on", b.dataset.tab === t));
@@ -864,7 +894,7 @@ async function loadBlog() {
   $("bRows").replaceChildren(...rows.map((p) => tr(td(el("strong", p.title), el("br"), el("span", p.slug, "small mono")), td(tag(p.published ? "pub" : "draft")),
     td(dt(p.published_at || p.created_at)),
     td(btn("Modifier", "grey", () => editPost(p)), " ",
-      p.published ? btn("Voir", "grey", () => window.open(SITE + "/article.html?a=" + encodeURIComponent(p.slug), "_blank", "noopener")) : null, " ",
+      p.published ? btn("Voir", "grey", () => window.open(SITE + "/blog/" + encodeURIComponent(p.slug), "_blank", "noopener")) : null, " ",
       btn("Supprimer", "red", async () => { if (confirm("Supprimer l'article « " + p.title + " » ?")) { await api({ action: "post_delete", id: p.id }); toast("Article supprimé"); await loadBlog(); } })))));
   if (!rows.length) $("bRows").append(tr(td("Aucun article pour le moment.")));
 }
@@ -880,6 +910,36 @@ $("bSave").addEventListener("click", async () => {
   try { await api({ action: "post_save", id: $("bId").value || undefined, title: $("bTitle").value, excerpt: $("bExcerpt").value, content: $("bContent").value, cover_url: $("bImg").value, published: $("bPub").checked });
     toast($("bPub").checked ? "Article publié ✔" : "Brouillon enregistré ✔"); resetPost(); await loadBlog(); }
   catch (e) { toast(errMsg(e)); }
+});
+
+// ---------- pages libres ----------
+async function loadPages() {
+  const { rows } = await api({ action: "pages_list" });
+  $("gRows").replaceChildren(...rows.map((p) => tr(td(el("strong", p.title), el("br"), el("span", "/page/" + p.slug, "small mono")), td(tag(p.published ? "pub" : "draft")),
+    td([p.in_menu ? "menu" : "", p.in_footer ? "pied de page" : ""].filter(Boolean).join(" + ") || "lien seulement"),
+    td(btn("Modifier", "grey", () => editPage(p)), " ",
+      p.published ? btn("Voir", "grey", () => window.open(SITE + "/page/" + encodeURIComponent(p.slug), "_blank", "noopener")) : null, " ",
+      btn("Supprimer", "red", async () => { if (confirm("Supprimer la page « " + p.title + " » ?")) { await api({ action: "page_delete", id: p.id }); toast("Page supprimée"); await loadPages(); } })))));
+  if (!rows.length) $("gRows").append(tr(td("Aucune page pour le moment.")));
+}
+function editPage(p) {
+  $("gTitleH").textContent = "Modifier : " + p.title; $("gId").value = p.id; $("gTitle").value = p.title; $("gSlug").value = p.slug; $("gSort").value = p.sort || 0;
+  $("gContent").value = p.content || ""; $("gImg").value = p.image_url || ""; $("gImgPrev").src = p.image_url || ""; $("gImgPrev").classList.toggle("hidden", !p.image_url);
+  $("gPub").value = p.published ? "1" : "0"; $("gMenu").checked = p.in_menu; $("gFoot").checked = p.in_footer; $("gSeoT").value = p.seo_title || ""; $("gSeoD").value = p.seo_description || "";
+  window.scrollTo(0, 0);
+}
+function resetPage() {
+  $("gTitleH").textContent = "Nouvelle page"; for (const id of ["gId", "gTitle", "gSlug", "gContent", "gImg", "gSeoT", "gSeoD"]) $(id).value = "";
+  $("gSort").value = 0; $("gImgPrev").classList.add("hidden"); $("gImgMsg").textContent = ""; $("gPub").value = "1"; $("gMenu").checked = false; $("gFoot").checked = true;
+}
+$("gReset").addEventListener("click", resetPage);
+$("gImgFile").addEventListener("change", () => uploadImage($("gImgFile"), $("gImg"), $("gImgPrev"), $("gImgMsg")));
+$("gSave").addEventListener("click", async () => {
+  try {
+    await api({ action: "page_save", id: $("gId").value || undefined, title: $("gTitle").value, slug: $("gSlug").value, sort: $("gSort").value, content: $("gContent").value,
+      image_url: $("gImg").value, published: $("gPub").value === "1", in_menu: $("gMenu").checked, in_footer: $("gFoot").checked, seo_title: $("gSeoT").value, seo_description: $("gSeoD").value });
+    toast($("gPub").value === "1" ? "Page publiée ✔ (visible dans le menu sous 5 minutes)" : "Brouillon enregistré ✔"); resetPage(); await loadPages();
+  } catch (e) { toast(errMsg(e)); }
 });
 
 // ---------- modèles d'email ----------

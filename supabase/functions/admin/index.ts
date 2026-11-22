@@ -841,6 +841,31 @@ Deno.serve(async (req) => {
         if (r.error) return json({ error: r.error.message.includes("duplicate") ? "code_deja_utilise" : r.error.message }, 400);
         return json({ row: r.data });
       }
+      // ================= Pages libres =================
+      case "pages_list": {
+        const { data, error } = await db.from("pages").select("*").order("sort").order("title");
+        if (error) return json({ error: error.message }, 500);
+        return json({ rows: data });
+      }
+      case "page_save": {
+        const row = {
+          title: str(body.title, 200), slug: slugify(str(body.slug, 120) || str(body.title, 120)),
+          content: str(body.content, 50000), image_url: str(body.image_url, 500) || null,
+          seo_title: str(body.seo_title, 120) || null, seo_description: str(body.seo_description, 320) || null,
+          published: body.published === true, in_menu: body.in_menu === true, in_footer: body.in_footer === true,
+          sort: clamp(Number(body.sort) || 0, 0, 10000), updated_at: new Date().toISOString(),
+        };
+        if (!row.title || !row.slug) return json({ error: "titre_obligatoire" }, 400);
+        const r = body.id ? await db.from("pages").update(row).eq("id", body.id).select().single()
+          : await db.from("pages").insert(row).select().single();
+        if (r.error) return json({ error: r.error.message.includes("duplicate") ? "adresse_deja_utilisee" : r.error.message }, 400);
+        return json({ row: r.data });
+      }
+      case "page_delete": {
+        const { error } = await db.from("pages").delete().eq("id", body.id);
+        if (error) return json({ error: error.message }, 500);
+        return json({ ok: true });
+      }
       case "post_delete": {
         const { error } = await db.from("posts").delete().eq("id", body.id);
         if (error) return json({ error: error.message }, 500);

@@ -340,10 +340,11 @@ async function setting(key: string, def: number) {
 // Plan du site pour Google (toujours à jour) : …/functions/v1/boutique?sitemap=1 (cité dans robots.txt)
 async function sitemap() {
   const site = (Deno.env.get("SITE_URL") ?? "https://www.licenceoff.com").trim().replace(/\/$/, "");
-  const [{ data: cats }, { data: prods }, { data: posts }] = await Promise.all([
+  const [{ data: cats }, { data: prods }, { data: posts }, { data: pages }] = await Promise.all([
     db.from("categories").select("id, slug, parent_id").eq("active", true),
     db.from("products").select("slug, category_id").eq("active", true),
     db.from("posts").select("slug, published_at").eq("published", true),
+    db.from("pages").select("slug, updated_at").eq("published", true),
   ]);
   const catById = Object.fromEntries((cats ?? []).map((c) => [c.id, c]));
   const used = new Set((prods ?? []).map((p) => p.category_id));
@@ -357,6 +358,7 @@ async function sitemap() {
     // deno-lint-ignore no-explicit-any
     ...(prods ?? []).map((p: any) => `<url><loc>${site}/produit/${x(encodeURIComponent(p.slug))}</loc></url>`),
     ...(posts ?? []).map((p) => `<url><loc>${site}/blog/${x(encodeURIComponent(p.slug))}</loc>${day(p.published_at)}</url>`),
+    ...(pages ?? []).map((p) => `<url><loc>${site}/page/${x(encodeURIComponent(p.slug))}</loc>${day(p.updated_at)}</url>`),
   ];
   return new Response(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join("\n")}\n</urlset>\n`,
     { headers: { ...cors, "Content-Type": "application/xml; charset=utf-8", "Cache-Control": "public, max-age=3600" } });
@@ -434,6 +436,18 @@ Deno.serve(async (req) => {
         .eq("published", true).order("published_at", { ascending: false }).limit(Math.min(Number(body.limit) || 50, 100));
       if (error) return json({ error: "error" }, 500);
       return json({ posts: data });
+    }
+    // ---------- Pages libres (créées dans l'admin) ----------
+    case "nav": { // liens du menu et du pied de page
+      const { data } = await db.from("pages").select("slug, title, in_menu, in_footer").eq("published", true).order("sort").order("title");
+      return json({ menu: (data ?? []).filter((p) => p.in_menu).map((p) => ({ slug: p.slug, title: p.title })),
+        footer: (data ?? []).filter((p) => p.in_footer).map((p) => ({ slug: p.slug, title: p.title })) });
+    }
+    case "page": {
+      const { data } = await db.from("pages").select("slug, title, content, image_url, seo_title, seo_description, updated_at")
+        .eq("slug", str(body.slug, 120)).eq("published", true).maybeSingle();
+      if (!data) return json({ error: "not_found" }, 404);
+      return json({ page: data });
     }
     case "post": {
       const { data } = await db.from("posts").select("slug, title, excerpt, content, cover_url, published_at")

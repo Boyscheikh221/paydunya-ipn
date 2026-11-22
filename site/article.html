@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Article — licenceoff</title>
-<link rel="stylesheet" href="/shop.css?v=9">
+<link rel="stylesheet" href="/shop.css?v=10">
 </head>
 <body>
 <main>
   <article class="post" id="view"><div class="skeleton"></div></article>
 </main>
-<script src="/shop.js?v=9"></script>
+<script src="/shop.js?v=10"></script>
 <script>
 LO.page("blog");
 const { el, $ } = LO;
@@ -21,14 +21,14 @@ LO.boutique({ action: "post", slug }).then((d) => {
   LO.seo({ title: p.title + " — licenceoff", description: p.excerpt || p.title, path: LO.url.post(p.slug), image: p.cover_url || null });
   LO.jsonLd({ "@context": "https://schema.org", "@type": "BlogPosting", headline: p.title, datePublished: p.published_at, image: p.cover_url || undefined, publisher: { "@type": "Organization", name: "licenceoff" } });
   const content = el("div", { class: "content" }); content.append(LO.richText(p.content));
-  $("#view").replaceChildren(
+  $("#view").replaceChildren(...[
     LO.crumbs([["Accueil", LO.url.home], ["Blog", LO.url.blog], [p.title]]),
     el("h1", { text: p.title }),
     el("div", { class: "note", text: new Date(p.published_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }) }),
     p.cover_url ? el("div", { class: "cv" }, el("img", { src: p.cover_url, alt: "" })) : null,
     content,
     el("div", { class: "panel", style: "margin-top:28px;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap" },
-      el("strong", { text: "Besoin d'une licence ?" }), el("a", { class: "btn orange", href: LO.url.shop, text: "Voir la boutique" })));
+      el("strong", { text: "Besoin d'une licence ?" }), el("a", { class: "btn orange", href: LO.url.shop, text: "Voir la boutique" }))].filter(Boolean));
 }).catch(() => $("#view").replaceChildren(el("p", { text: "Erreur de chargement." })));
 </script>
 </body>

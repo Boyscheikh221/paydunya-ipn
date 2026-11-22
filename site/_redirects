@@ -7,3 +7,4 @@
 /categorie/:slug                   /categorie 200
 /produit/:slug       /produit   200
 /blog/:slug          /article   200
+/page/:slug          /page      200

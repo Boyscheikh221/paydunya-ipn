@@ -30,6 +30,7 @@ const LO = (() => {
     category: (slug, parent) => "/categorie/" + (parent ? enc(parent) + "/" : "") + enc(slug),
     product: (slug) => "/produit/" + enc(slug),
     post: (slug) => "/blog/" + enc(slug),
+    page: (slug) => "/page/" + enc(slug),
     search: (q) => "/boutique?q=" + enc(q),
   };
   // le mot après /produit/, /categorie/ ou /blog/ (sinon l'ancien paramètre ?p= ?c= ?a=)
@@ -110,6 +111,7 @@ const LO = (() => {
       el("a", { href: url.shop, class: active === "shop" ? "on" : null, text: "Boutique" }),
       el("a", { href: url.blog, class: active === "blog" ? "on" : null, text: "Blog" }),
       el("a", { href: url.faq, class: active === "faq" ? "on" : null, text: "FAQ" }),
+      el("span", { id: "navPages", style: "display:contents" }),
       el("a", { href: "https://wa.me/" + WHATSAPP_NUMBER, target: "_blank", rel: "noopener", text: "Contact" }),
     );
     const burger = el("button", { class: "burger", "aria-label": "Menu", onclick: () => nav.classList.toggle("open") }, icon(ICONS.menu, 24));
@@ -137,6 +139,7 @@ const LO = (() => {
             el("p", { class: "tag-line", text: "Vos logiciels, notre engagement !" })),
           el("div", {}, el("b", { text: "Boutique" }), el("a", { href: url.shop, text: "Tous les produits" }), el("a", { href: url.cart, text: "Mon panier" }), el("a", { href: url.blog, text: "Blog" }), el("a", { href: url.faq, text: "Questions fréquentes" }), el("a", { href: url.privacy, text: "Confidentialité et cookies" }),
             el("a", { href: "#", text: "Gérer les cookies", onclick: (e) => { e.preventDefault(); cookieBar(true); } })),
+          el("div", { id: "footPages", class: "hidden" }, el("b", { text: "Infos" })),
           el("div", {}, el("b", { text: "Aide" }), el("a", { href: "https://wa.me/" + WHATSAPP_NUMBER, target: "_blank", rel: "noopener", text: "WhatsApp : +" + WHATSAPP_NUMBER }),
             el("span", { text: "Paiement sécurisé via PayDunya" }), el("a", { href: "/parrain", text: "Espace parrain" })),
         ),
@@ -145,6 +148,16 @@ const LO = (() => {
       el("a", { class: "wa-float", href: "https://wa.me/" + WHATSAPP_NUMBER, target: "_blank", rel: "noopener", "aria-label": "WhatsApp" }, (() => { const s = icon(ICONS.wa, 26); s.setAttribute("stroke", "#fff"); return s; })()),
       el("div", { id: "toast" }),
     );
+  }
+  // pages créées dans l'admin (menu / pied de page), gardées 5 minutes dans le navigateur
+  async function navPages(active) {
+    const KEY = "lo_nav";
+    let d = null;
+    try { const c = JSON.parse(sessionStorage.getItem(KEY) || "null"); if (c && Date.now() - c.at < 300000) d = c.d; } catch (_) {}
+    if (!d) { try { d = await boutique({ action: "nav" }); sessionStorage.setItem(KEY, JSON.stringify({ at: Date.now(), d })); } catch (_) { return; } }
+    const m = document.getElementById("navPages"), f = document.getElementById("footPages");
+    if (m) m.replaceChildren(...(d.menu || []).map((p) => el("a", { href: url.page(p.slug), class: active === "page:" + p.slug ? "on" : null, text: p.title })));
+    if (f && (d.footer || []).length) { f.append(...d.footer.map((p) => el("a", { href: url.page(p.slug), text: p.title }))); f.classList.remove("hidden"); }
   }
   function toast(t) { const e = document.getElementById("toast"); if (!e) return; e.textContent = t; e.style.display = "block"; clearTimeout(toast.t); toast.t = setTimeout(() => (e.style.display = "none"), 3500); }
 
@@ -240,7 +253,7 @@ const LO = (() => {
     }).catch(() => {});
   }
 
-  function page(active) { header(active); footer(); hit(); cookieBar(); captureRef(); }
+  function page(active) { header(active); footer(); navPages(active); hit(); cookieBar(); captureRef(); }
   const DELIVERY_TEXT = {
     key: "Clé de licence livrée immédiatement après paiement",
     key_file: "Clé de licence + lien de téléchargement livrés immédiatement",
