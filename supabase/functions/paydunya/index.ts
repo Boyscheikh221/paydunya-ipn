@@ -89,7 +89,7 @@ Deno.serve(async (req) => {
     let token = "";
     try {
       const f = await req.formData();
-      token = String(f.get("data[invoice][token]") ?? f.get("token") ?? "");
+      token = String(f.get("data[invoice][token]") ?? f.get("data[token]") ?? f.get("token") ?? "");
     } catch (_) { /* ignore */ }
     const result = await confirmAndDeliver(token);
     return json(result);
