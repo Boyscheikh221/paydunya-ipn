@@ -97,6 +97,7 @@
     <button data-tab="products">📦 Produits</button>
     <button data-tab="keys">🔑 Stock</button>
     <button data-tab="blog">📝 Blog</button>
+    <button data-tab="emails">✉️ Emails</button>
     <button data-tab="faq">❓ FAQ</button>
     <button data-tab="links">🔗 Liens</button>
     <button data-tab="settings">⚙️ Réglages</button>
@@ -208,6 +209,7 @@
           <label class="check"><input type="checkbox" id="pFeatured"> Mettre en avant (accueil)</label>
           <div><label>Alerte stock bas sous</label><input id="pLow" type="number" min="0" value="5"></div>
           <div><label>Ordre d'affichage</label><input id="pSort" type="number" min="0" value="0"></div>
+          <div><label>Email envoyé au client</label><select id="pTpl"></select></div>
         </div>
         <div class="bar" style="margin-top:12px"><button id="pSave" class="green">Enregistrer le produit</button><button id="pReset" class="grey">Nouveau</button></div>
       </div>
@@ -260,6 +262,40 @@
     </section>
 
     <!-- ===== FAQ ===== -->
+    <section id="tab-emails" class="hidden">
+      <h1>Modèles d'email</h1>
+      <p class="small">Chaque produit peut avoir son propre email de livraison (à choisir dans la fiche produit). Sans choix, c'est le modèle par défaut qui part. L'email part tout seul quand la commande est livrée.</p>
+      <div class="box">
+        <h2 id="tFormTitle">Nouveau modèle</h2>
+        <input type="hidden" id="tId">
+        <div class="grid">
+          <div><label>Nom du modèle (pour vous)</label><input id="tName" placeholder="ex : Windows 11"></div>
+          <div><label>Objet de l'email</label><input id="tSubject" placeholder="Votre commande {commande} est prête — licenceoff"></div>
+        </div>
+        <label>Texte de l'email</label>
+        <textarea id="tBody" style="min-height:260px" placeholder="Bonjour {prenom}, ..."></textarea>
+        <div class="small" style="margin:6px 0 10px;line-height:1.7">
+          À insérer dans le texte (cliquez pour ajouter) :
+          <span id="tVars"></span><br>
+          Mise en forme : <b>**gras**</b>, une ligne qui commence par « - » fait une liste, [texte](https://lien) fait un lien.
+          Si vous oubliez {cles} ou {bouton}, ils sont ajoutés automatiquement à la fin.
+        </div>
+        <div class="bar">
+          <label class="check" style="margin:0"><input type="checkbox" id="tDefault"> Modèle par défaut</label>
+          <button id="tSave" class="green">Enregistrer</button>
+          <button id="tPreview" class="grey">Aperçu</button>
+          <input id="tTo" type="email" placeholder="votre@email.com" style="width:200px">
+          <button id="tTest" class="org">Envoyer un test</button>
+          <button id="tReset" class="grey">Nouveau modèle</button>
+        </div>
+        <div id="tPrevBox" class="hidden" style="margin-top:12px">
+          <div class="small" id="tPrevSubject"></div>
+          <iframe id="tPrev" title="Aperçu" sandbox="" style="width:100%;height:620px;border:1px solid var(--ligne);border-radius:10px;background:#fff"></iframe>
+        </div>
+      </div>
+      <div class="box"><div class="tablewrap"><table><thead><tr><th>Modèle</th><th>Objet</th><th>Produits</th><th></th></tr></thead><tbody id="tRows"></tbody></table></div></div>
+    </section>
+
     <section id="tab-faq" class="hidden">
       <h1>FAQ (questions fréquentes)</h1>
       <div class="box">
@@ -304,7 +340,7 @@ const DL_PAGE    = SITE + "/dl.html";
 const $ = (id) => document.getElementById(id);
 let pw = "";
 try { pw = sessionStorage.getItem("lo_pw") || ""; } catch (_) {}
-let products = [], categories = [], showKeys = false, settings = {};
+let products = [], categories = [], templates = [], showKeys = false, settings = {};
 
 const ST = {
   pending: "En attente", paid: "Payée, sans stock", processing: "À traiter", delivered: "Livrée", cancelled: "Annulée",
@@ -319,6 +355,7 @@ const METHOD = { wave: "Wave", orange_money: "Orange Money", free_money: "Free M
 const ERR = {
   out_of_stock: "Stock insuffisant : la commande est payée et sera livrée dès que vous ajoutez du stock.",
   to_process: "Commande payée. Certains articles sont à traiter par vous (voir « À traiter »).",
+  modele_incomplet: "Remplissez le nom, l'objet et le texte du modèle.", modele_par_defaut: "Choisissez d'abord un autre modèle par défaut.", email_invalide: "Adresse email invalide.",
   resend_non_configure: "Email pas encore configuré (clé Resend manquante dans Supabase).", envoi_echoue: "L'email n'a pas pu partir. Vérifiez le domaine dans Resend.",
   commande_deja_payee: "Commande déjà payée, impossible de l'annuler.", cle_deja_envoyee: "Cette clé a déjà été envoyée.",
   not_delivered: "L'article n'est pas encore livré.", no_installer: "Ce produit n'a pas de fichier.", not_to_process: "Cet article n'est pas à traiter.",
@@ -380,7 +417,7 @@ async function uploadImage(input, hidden, preview, msg) {
 }
 
 // ---------- navigation ----------
-const loaders = { dash: loadDash, orders: loadOrders, products: loadProducts, keys: loadKeys, blog: loadBlog, faq: loadFaq, links: loadLinks, settings: loadSettings };
+const loaders = { dash: loadDash, orders: loadOrders, products: loadProducts, keys: loadKeys, blog: loadBlog, emails: loadTemplates, faq: loadFaq, links: loadLinks, settings: loadSettings };
 document.querySelectorAll("nav [data-tab]").forEach((b) => b.addEventListener("click", () => openTab(b.dataset.tab)));
 function openTab(t) {
   document.querySelectorAll("nav [data-tab]").forEach((b) => b.classList.toggle("on", b.dataset.tab === t));
@@ -389,11 +426,12 @@ function openTab(t) {
 }
 
 async function loadRefs() {
-  const [p, c] = await Promise.all([api({ action: "products_list" }), api({ action: "categories_list" })]);
-  products = p.rows; categories = c.rows;
+  const [p, c, t] = await Promise.all([api({ action: "products_list" }), api({ action: "categories_list" }), api({ action: "templates_list" }).catch(() => ({ rows: [] }))]);
+  products = p.rows; categories = c.rows; templates = t.rows || [];
   const stockProds = products.filter((x) => STOCK_TYPES.includes(x.delivery_type));
   const fill = (id, list, first) => { const s = $(id), keep = s.value; s.replaceChildren(); if (first) s.append(new Option(first, "")); for (const x of list) s.append(new Option(x.name, x.id)); if (keep) s.value = keep; };
   fill("kProd", stockProds); fill("kFilterProd", stockProds, "Tous les produits"); fill("pCat", categories, "— Sans catégorie —");
+  fill("pTpl", templates.filter((x) => !x.is_default), "Modèle par défaut");
 }
 
 // ---------- tableau de bord ----------
@@ -575,14 +613,14 @@ function editProduct(p) {
   $("pImgPrev").src = p.image_url || ""; $("pImgPrev").classList.toggle("hidden", !p.image_url); $("pImgMsg").textContent = "";
   $("pType").value = p.delivery_type; syncType(); loadFiles(p.installer_path || "").catch(() => {});
   $("pAuto").checked = p.auto_deliver !== false; $("pActive").checked = p.active; $("pFeatured").checked = p.featured;
-  $("pLow").value = p.low_stock_threshold; $("pSort").value = p.sort || 0;
+  $("pLow").value = p.low_stock_threshold; $("pSort").value = p.sort || 0; $("pTpl").value = p.email_template_id || "";
   $("pForm").scrollIntoView({ behavior: "smooth" });
 }
 function resetProduct() {
   $("pFormTitle").textContent = "Nouveau produit";
   for (const id of ["pId", "pName", "pPrice", "pCompare", "pDesc", "pImg", "pFile"]) $(id).value = "";
   $("pCat").value = ""; $("pType").value = "key"; syncType(); $("pImgPrev").classList.add("hidden"); $("pImgMsg").textContent = "";
-  $("pAuto").checked = true; $("pActive").checked = true; $("pFeatured").checked = false; $("pLow").value = 5; $("pSort").value = 0;
+  $("pAuto").checked = true; $("pActive").checked = true; $("pFeatured").checked = false; $("pLow").value = 5; $("pSort").value = 0; $("pTpl").value = "";
 }
 $("pReset").addEventListener("click", resetProduct);
 $("pSave").addEventListener("click", async () => {
@@ -590,7 +628,7 @@ $("pSave").addEventListener("click", async () => {
     await api({ action: "product_save", id: $("pId").value || undefined, name: $("pName").value, category_id: $("pCat").value,
       price_fcfa: $("pPrice").value, compare_price_fcfa: $("pCompare").value, description: $("pDesc").value, image_url: $("pImg").value,
       delivery_type: $("pType").value, installer_path: $("pFile").value, auto_deliver: $("pAuto").checked, active: $("pActive").checked,
-      featured: $("pFeatured").checked, low_stock_threshold: $("pLow").value, sort: $("pSort").value });
+      featured: $("pFeatured").checked, low_stock_threshold: $("pLow").value, sort: $("pSort").value, email_template_id: $("pTpl").value });
     toast("Produit enregistré ✔"); resetProduct(); await loadProducts();
   } catch (e) { toast(errMsg(e)); }
 });
@@ -659,6 +697,39 @@ $("bSave").addEventListener("click", async () => {
   try { await api({ action: "post_save", id: $("bId").value || undefined, title: $("bTitle").value, excerpt: $("bExcerpt").value, content: $("bContent").value, cover_url: $("bImg").value, published: $("bPub").checked });
     toast($("bPub").checked ? "Article publié ✔" : "Brouillon enregistré ✔"); resetPost(); await loadBlog(); }
   catch (e) { toast(errMsg(e)); }
+});
+
+// ---------- modèles d'email ----------
+const TPL_VARS = ["{prenom}", "{nom}", "{commande}", "{total}", "{produits}", "{cles}", "{bouton}", "{lien_commande}", "{whatsapp}"];
+$("tVars").replaceChildren(...TPL_VARS.map((v) => { const b = el("button", v, "grey"); b.type = "button"; b.style.cssText = "padding:2px 8px;margin:2px;font-size:12px";
+  b.addEventListener("click", () => { const t = $("tBody"), i = t.selectionStart ?? t.value.length; t.value = t.value.slice(0, i) + v + t.value.slice(t.selectionEnd ?? i); t.focus(); }); return b; }));
+async function loadTemplates() {
+  await loadRefs();
+  $("tRows").replaceChildren(...templates.map((t) => {
+    const used = products.filter((p) => p.email_template_id === t.id || (t.is_default && !p.email_template_id)).map((p) => p.name);
+    return tr(td(el("strong", t.name), t.is_default ? el("span", " (par défaut)", "small") : null), td(el("span", t.subject, "small")),
+      td(el("span", used.length ? used.join(", ") : "—", "small")),
+      td(btn("Modifier", "grey", () => editTemplate(t)), " ", t.is_default ? null : btn("Supprimer", "red", async () => {
+        if (confirm("Supprimer le modèle « " + t.name + " » ? Ses produits recevront le modèle par défaut.")) { await api({ action: "template_delete", id: t.id }); toast("Modèle supprimé"); await loadTemplates(); } })));
+  }));
+}
+function editTemplate(t) {
+  $("tFormTitle").textContent = "Modifier : " + t.name; $("tId").value = t.id; $("tName").value = t.name; $("tSubject").value = t.subject; $("tBody").value = t.body; $("tDefault").checked = t.is_default;
+  $("tPrevBox").classList.add("hidden"); window.scrollTo(0, 0);
+}
+const resetTpl = () => { $("tFormTitle").textContent = "Nouveau modèle"; for (const id of ["tId", "tName", "tSubject", "tBody"]) $(id).value = ""; $("tDefault").checked = false; $("tPrevBox").classList.add("hidden"); };
+$("tReset").addEventListener("click", resetTpl);
+$("tSave").addEventListener("click", async () => {
+  try { await api({ action: "template_save", id: $("tId").value || undefined, name: $("tName").value, subject: $("tSubject").value, body: $("tBody").value, is_default: $("tDefault").checked });
+    toast("Modèle enregistré ✔"); resetTpl(); await loadTemplates(); } catch (e) { toast(errMsg(e)); }
+});
+$("tPreview").addEventListener("click", async () => {
+  try { const m = await api({ action: "template_preview", subject: $("tSubject").value, body: $("tBody").value });
+    $("tPrevSubject").textContent = "Objet : " + m.subject; $("tPrev").srcdoc = m.html; $("tPrevBox").classList.remove("hidden"); } catch (e) { toast(errMsg(e)); }
+});
+$("tTest").addEventListener("click", async () => {
+  if (!$("tTo").value.trim()) return $("tTo").focus();
+  try { await api({ action: "template_test", to: $("tTo").value, subject: $("tSubject").value, body: $("tBody").value }); toast("Email de test envoyé à " + $("tTo").value + " ✔"); } catch (e) { toast(errMsg(e)); }
 });
 
 // ---------- FAQ ----------

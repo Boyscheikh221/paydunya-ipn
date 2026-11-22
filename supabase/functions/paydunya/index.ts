@@ -50,95 +50,153 @@ function newToken(n = 18): string {
 // Secrets : RESEND_API_KEY (obligatoire pour envoyer), RESEND_FROM (facultatif,
 // ex. « licenceoff <commandes@licenceoff.com> »), SITE_URL, WHATSAPP_NUMBER (facultatif).
 // Sans RESEND_API_KEY, rien n'est envoyé et la boutique marche normalement.
+// Modèles : table email_templates (un modèle par produit, sinon le modèle par défaut).
+// Variables utilisables dans un modèle :
+//   {prenom} {nom} {commande} {total} {produits} {cles} {bouton} {lien_commande} {whatsapp}
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
 const fcfaTxt = (n: number) => new Intl.NumberFormat("fr-FR").format(n).replace(/ | /g, " ") + " FCFA";
+const EM = { B: "#1E4FB8", N: "#0F2A6B", O: "#F5A21B", C: "#FBF7EE" };
+
+type Tpl = { id: string | null; subject: string; body: string };
+const BUILTIN_TPL: Tpl = {
+  id: null,
+  subject: "Votre commande {commande} est prête — licenceoff",
+  body: "Bonjour {prenom},\n\nMerci pour votre commande **{commande}** ({total}). Elle est prête !\n\n{produits}\n\n{cles}\n\n{bouton}\n\nGardez cet email : votre page de commande regroupe vos clés et vos téléchargements.\n\nBesoin d'aide pour installer ou activer ? [Écrivez-nous sur WhatsApp]({whatsapp}).",
+};
 
 // deno-lint-ignore no-explicit-any
-function emailHtml(o: any, items: any[], link: string, wa: string) {
-  const B = "#1E4FB8", N = "#0F2A6B", O = "#F5A21B", C = "#FBF7EE";
-  const rows = items.map((i) => {
-    const keys = (i.license_keys ?? []).map((k: { key_value: string }) =>
-      `<div style="font-family:Consolas,Menlo,monospace;font-weight:700;font-size:15px;background:#eff5ff;border:2px dashed ${B};border-radius:8px;padding:10px 12px;margin:6px 0;word-break:break-all;color:${N}">${esc(k.key_value)}</div>`).join("");
-    const label = i.delivery_type === "stock" ? "Vos identifiants :" : (i.license_keys ?? []).length > 1 ? "Vos clés d'activation :" : "Votre clé d'activation :";
-    const file = ["key_file", "file"].includes(i.delivery_type)
-      ? `<p style="margin:8px 0 0;font-size:14px;color:#475569">📥 Le logiciel se télécharge depuis votre page de commande (bouton ci-dessous). Le lien ne marche qu'une seule fois.</p>` : "";
-    const todo = i.status === "to_process" ? `<p style="margin:8px 0 0;font-size:14px;color:#475569">Notre équipe traite cet article et vous contacte sur WhatsApp.</p>` : "";
-    return `<tr><td style="padding:14px 0;border-bottom:1px solid #e6e1d6">
-      <div style="font-weight:800;font-size:16px;color:${N}">${i.quantity > 1 ? i.quantity + " × " : ""}${esc(i.product_name)}</div>
-      ${keys ? `<div style="font-size:13px;color:#5b6b86;margin-top:6px">${label}</div>${keys}` : ""}${file}${todo}</td></tr>`;
+type Item = any;
+// deno-lint-ignore no-explicit-any
+type Ctx = { o: any; items: Item[]; link: string; wa: string };
+
+function keysHtml(items: Item[]) {
+  return items.map((i) => {
+    const ks = (i.license_keys ?? []) as { key_value: string }[];
+    if (!ks.length) return "";
+    const label = i.delivery_type === "stock" ? "Vos identifiants" : ks.length > 1 ? "Vos clés d'activation" : "Votre clé d'activation";
+    return `<div style="margin:10px 0"><div style="font-size:13px;color:#5b6b86">${label} — ${esc(i.product_name)} :</div>` +
+      ks.map((k) => `<div style="font-family:Consolas,Menlo,monospace;font-weight:700;font-size:15px;background:#eff5ff;border:2px dashed ${EM.B};border-radius:8px;padding:10px 12px;margin:6px 0;word-break:break-all;color:${EM.N}">${esc(k.key_value)}</div>`).join("") + "</div>";
   }).join("");
+}
+function keysText(items: Item[]) {
+  return items.filter((i) => (i.license_keys ?? []).length).map((i) => i.product_name + " :\n" + i.license_keys.map((k: { key_value: string }) => "  " + k.key_value).join("\n")).join("\n");
+}
+const productsHtml = (items: Item[]) => "<ul style=\"margin:6px 0;padding-left:20px\">" + items.map((i) => `<li><b>${i.quantity > 1 ? i.quantity + " × " : ""}${esc(i.product_name)}</b>${["key_file", "file"].includes(i.delivery_type) ? " — logiciel à télécharger depuis votre page de commande (lien à usage unique)" : ""}${i.status === "to_process" ? " — notre équipe vous contacte sur WhatsApp" : ""}</li>`).join("") + "</ul>";
+const productsText = (items: Item[]) => items.map((i) => "- " + (i.quantity > 1 ? i.quantity + " x " : "") + i.product_name).join("\n");
+const buttonHtml = (link: string) => `<p style="text-align:center;margin:22px 0"><a href="${esc(link)}" style="display:inline-block;background:${EM.O};color:#fff;font-weight:800;text-decoration:none;padding:14px 22px;border-radius:10px">Voir ma commande et télécharger</a></p>`;
+
+function vars(c: Ctx) {
+  const parts = String(c.o.customer_name ?? "").trim().split(/\s+/);
+  return { prenom: parts[0] || "", nom: String(c.o.customer_name ?? ""), commande: String(c.o.ref), total: fcfaTxt(c.o.amount_fcfa), lien_commande: c.link, whatsapp: "https://wa.me/" + c.wa };
+}
+// Texte simple → HTML : paragraphes, **gras**, listes « - », [lien](url), et les blocs {produits} {cles} {bouton}
+function renderBody(body: string, c: Ctx) {
+  const v = vars(c) as Record<string, string>;
+  let b = String(body ?? "");
+  const hasKeys = c.items.some((i) => (i.license_keys ?? []).length);
+  if (hasKeys && !b.includes("{cles}")) b += "\n\n{cles}";
+  if (!b.includes("{bouton}") && !b.includes("{lien_commande}")) b += "\n\n{bouton}";
+  const sub = (s: string) => s.replace(/\{(prenom|nom|commande|total|lien_commande|whatsapp)\}/g, (_, k) => v[k]);
+  // HTML
+  const blocks = b.replace(/\r/g, "").split(/\n{2,}/).map((para) => {
+    const t = para.trim();
+    if (t === "{produits}") return productsHtml(c.items);
+    if (t === "{cles}") return keysHtml(c.items);
+    if (t === "{bouton}") return buttonHtml(c.link);
+    const inline = (s: string) => esc(sub(s))
+      .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
+      .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, `<a href="$2" style="color:${EM.B};font-weight:700">$1</a>`);
+    const lines = t.split("\n");
+    if (lines.every((l) => /^\s*-\s+/.test(l))) return "<ul style=\"margin:6px 0;padding-left:20px\">" + lines.map((l) => "<li>" + inline(l.replace(/^\s*-\s+/, "")) + "</li>").join("") + "</ul>";
+    return `<p style="margin:0 0 12px;line-height:1.6">${lines.map(inline).join("<br>")}</p>`;
+  }).join("");
+  const html = blocks.replace(/\{produits\}/g, productsHtml(c.items)).replace(/\{cles\}/g, keysHtml(c.items)).replace(/\{bouton\}/g, buttonHtml(c.link));
+  // Texte
+  const text = sub(b).replace(/\*\*(.+?)\*\*/g, "$1").replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, "$1 : $2")
+    .replace(/\{produits\}/g, productsText(c.items)).replace(/\{cles\}/g, keysText(c.items)).replace(/\{bouton\}/g, "Votre commande : " + c.link);
+  return { html, text };
+}
+function wrapHtml(inner: string) {
+  const { B, N, O, C } = EM;
   return `<!doctype html><html lang="fr"><body style="margin:0;background:${C};font-family:Nunito,Segoe UI,Arial,sans-serif;color:${N}">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${C};padding:24px 12px"><tr><td align="center">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#fff;border-radius:16px;overflow:hidden">
 <tr><td style="background:${B};padding:22px 24px">
   <div style="font-size:28px;font-weight:900;letter-spacing:-1px;color:#fff">licence<span style="color:${O}">off</span></div>
   <div style="color:#dbe6fb;font-size:14px">Licences &amp; solutions numériques</div></td></tr>
-<tr><td style="padding:24px">
-  <h1 style="margin:0 0 8px;font-size:22px">Merci ${esc(String(o.customer_name).split(" ")[0])}, votre commande est prête !</h1>
-  <p style="margin:0 0 4px;color:#5b6b86">Commande <b>${esc(o.ref)}</b> · ${fcfaTxt(o.amount_fcfa)}</p>
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rows}</table>
-  <p style="text-align:center;margin:24px 0 8px"><a href="${esc(link)}" style="display:inline-block;background:${O};color:#fff;font-weight:800;text-decoration:none;padding:14px 22px;border-radius:10px">Voir ma commande et télécharger</a></p>
-  <p style="font-size:13px;color:#5b6b86;text-align:center;margin:0">Gardez cet email : votre page de commande regroupe vos clés et téléchargements.</p>
-  <p style="font-size:14px;margin:22px 0 0">Besoin d'aide pour installer ou activer ? <a href="https://wa.me/${esc(wa)}" style="color:${B};font-weight:700">Écrivez-nous sur WhatsApp</a>.</p>
-</td></tr>
+<tr><td style="padding:24px;font-size:15px">${inner}</td></tr>
 <tr><td style="background:${N};color:#d6e0f5;padding:14px 24px;font-size:13px;text-align:center">
   Au Sénégal 🇸🇳 · Des licences authentiques · Votre satisfaction, notre priorité<br>
   <span style="color:${O};font-weight:800;font-style:italic">Vos logiciels, notre engagement !</span></td></tr>
 </table></td></tr></table></body></html>`;
 }
-
-// deno-lint-ignore no-explicit-any
-function emailText(o: any, items: any[], link: string, wa: string) {
-  const lines = [`Merci ${String(o.customer_name).split(" ")[0]}, votre commande ${o.ref} est prête !`, ""];
-  for (const i of items) {
-    lines.push((i.quantity > 1 ? i.quantity + " x " : "") + i.product_name);
-    for (const k of i.license_keys ?? []) lines.push("  " + k.key_value);
-    if (["key_file", "file"].includes(i.delivery_type)) lines.push("  Téléchargement : sur votre page de commande (lien à usage unique).");
-  }
-  lines.push("", "Votre page de commande : " + link, "Aide WhatsApp : https://wa.me/" + wa, "", "licenceoff — Vos logiciels, notre engagement !");
-  return lines.join("\n");
+function renderEmail(tpl: Tpl, c: Ctx) {
+  const { html, text } = renderBody(tpl.body, c);
+  const v = vars(c) as Record<string, string>;
+  const subject = String(tpl.subject || BUILTIN_TPL.subject).replace(/\{(prenom|nom|commande|total)\}/g, (_, k) => v[k]).slice(0, 200);
+  return { subject, html: wrapHtml(html), text: text + "\n\nlicenceoff — Vos logiciels, notre engagement !" };
 }
-
-// Envoie l'email de livraison UNE fois (force = renvoi manuel depuis l'admin)
-async function sendDeliveryEmail(orderId: string, force = false): Promise<{ sent: boolean; reason?: string }> {
+function siteCtx() {
+  return {
+    site: (Deno.env.get("SITE_URL") ?? "https://www.licenceoff.com").trim().replace(/\/$/, ""),
+    wa: (Deno.env.get("WHATSAPP_NUMBER") ?? "221777860777").replace(/\D/g, ""),
+  };
+}
+async function resendSend(to: string, mail: { subject: string; html: string; text: string }) {
   const key = (Deno.env.get("RESEND_API_KEY") ?? "").trim();
-  if (!key) return { sent: false, reason: "resend_non_configure" };
-  const { data: o } = await db.from("orders")
-    .select("id, ref, public_token, customer_name, email, amount_fcfa, status, emailed_at, order_items(id, product_name, delivery_type, quantity, status, created_at, license_keys(key_value))")
-    .eq("id", orderId).maybeSingle();
-  if (!o || !o.email) return { sent: false, reason: "commande_introuvable" };
-  if (!force && o.status !== "delivered") return { sent: false, reason: "pas_encore_livree" };
-  if (!force && o.emailed_at) return { sent: false, reason: "deja_envoye" };
-  // réserve l'envoi (évite les doublons si PayDunya prévient 2 fois)
-  if (!force) {
-    const { data: claim } = await db.from("orders").update({ emailed_at: new Date().toISOString() }).eq("id", o.id).is("emailed_at", null).select("id");
-    if (!claim?.length) return { sent: false, reason: "deja_envoye" };
-  }
-  const site = (Deno.env.get("SITE_URL") ?? "https://www.licenceoff.com").trim().replace(/\/$/, "");
-  const wa = (Deno.env.get("WHATSAPP_NUMBER") ?? "221777860777").replace(/\D/g, "");
-  const link = site + "/commande.html?o=" + encodeURIComponent(o.public_token);
-  // deno-lint-ignore no-explicit-any
-  const items = ((o.order_items ?? []) as any[]).filter((i) => i.status !== "cancelled").sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+  if (!key) return { ok: false, reason: "resend_non_configure" };
   const r = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" },
     body: JSON.stringify({
       from: (Deno.env.get("RESEND_FROM") ?? "licenceoff <commandes@licenceoff.com>").trim(),
-      to: [o.email],
-      reply_to: (Deno.env.get("RESEND_REPLY_TO") ?? "").trim() || undefined,
-      subject: "Votre commande " + o.ref + " est prête — licenceoff",
-      html: emailHtml(o, items, link, wa),
-      text: emailText(o, items, link, wa),
+      to: [to], reply_to: (Deno.env.get("RESEND_REPLY_TO") ?? "").trim() || undefined,
+      subject: mail.subject, html: mail.html, text: mail.text,
     }),
   }).catch(() => null);
-  if (!r || !r.ok) {
-    const err = r ? (await r.text().catch(() => "")).slice(0, 200) : "reseau";
-    console.error("Resend", err);
+  if (!r || !r.ok) { console.error("Resend", r ? (await r.text().catch(() => "")).slice(0, 300) : "reseau"); return { ok: false, reason: "envoi_echoue" }; }
+  return { ok: true };
+}
+
+// Envoie l'email de livraison UNE fois (force = renvoi manuel depuis l'admin).
+// Si la commande contient des produits avec des modèles différents : un email par modèle.
+async function sendDeliveryEmail(orderId: string, force = false): Promise<{ sent: boolean; count?: number; reason?: string }> {
+  if (!(Deno.env.get("RESEND_API_KEY") ?? "").trim()) return { sent: false, reason: "resend_non_configure" };
+  const { data: o } = await db.from("orders")
+    .select("id, ref, public_token, customer_name, email, amount_fcfa, status, emailed_at, order_items(id, product_name, delivery_type, quantity, status, created_at, license_keys(key_value), products(email_template_id))")
+    .eq("id", orderId).maybeSingle();
+  if (!o || !o.email) return { sent: false, reason: "commande_introuvable" };
+  if (!force && o.status !== "delivered") return { sent: false, reason: "pas_encore_livree" };
+  if (!force && o.emailed_at) return { sent: false, reason: "deja_envoye" };
+  if (!force) { // réserve l'envoi (évite les doublons si PayDunya prévient 2 fois)
+    const { data: claim } = await db.from("orders").update({ emailed_at: new Date().toISOString() }).eq("id", o.id).is("emailed_at", null).select("id");
+    if (!claim?.length) return { sent: false, reason: "deja_envoye" };
+  }
+  const items: Item[] = ((o.order_items ?? []) as Item[]).filter((i) => i.status !== "cancelled")
+    .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+  const { data: tpls } = await db.from("email_templates").select("id, subject, body, is_default");
+  const byId = Object.fromEntries((tpls ?? []).map((t) => [t.id, t]));
+  const def: Tpl = (tpls ?? []).find((t) => t.is_default) ?? BUILTIN_TPL;
+  const groups = new Map<string, { tpl: Tpl; items: Item[] }>();
+  for (const i of items) {
+    const t: Tpl = byId[i.products?.email_template_id] ?? def;
+    const k = t.id ?? "builtin";
+    if (!groups.has(k)) groups.set(k, { tpl: t, items: [] });
+    groups.get(k)!.items.push(i);
+  }
+  const { site, wa } = siteCtx();
+  const link = site + "/commande.html?o=" + encodeURIComponent(o.public_token);
+  let sent = 0;
+  for (const g of groups.values()) {
+    const r = await resendSend(o.email, renderEmail(g.tpl, { o, items: g.items, link, wa }));
+    if (r.ok) sent++;
+  }
+  if (!sent) {
     if (!force) await db.from("orders").update({ emailed_at: null }).eq("id", o.id);
     return { sent: false, reason: "envoi_echoue" };
   }
   if (force) await db.from("orders").update({ emailed_at: new Date().toISOString() }).eq("id", o.id);
-  return { sent: true };
+  return { sent: true, count: sent };
 }
 
 // Demande à PayDunya l'état réel de la facture et livre si elle est payée
