@@ -99,6 +99,8 @@
     <button data-tab="blog">📝 Blog</button>
     <button data-tab="emails">✉️ Emails</button>
     <button data-tab="send">📤 Envoi manuel</button>
+    <button data-tab="parrains">🤝 Parrains <span id="badgePay" class="badge hidden"></span></button>
+    <button data-tab="clients">👥 Clients</button>
     <button data-tab="faq">❓ FAQ</button>
     <button data-tab="links">🔗 Liens</button>
     <button data-tab="settings">⚙️ Réglages</button>
@@ -109,6 +111,7 @@
     <!-- ===== Tableau de bord ===== -->
     <section id="tab-dash">
       <h1>Tableau de bord</h1>
+      <div id="payWarn" class="box hidden" style="border-color:#86efac;background:#f0fdf4"></div>
       <div id="autoWarn" class="box hidden" style="border-color:#fcd34d;background:#fffbeb">⚠️ La livraison automatique est <b>désactivée</b> : les commandes payées attendent votre validation dans « Commandes ». <a href="#" id="autoWarnLink">Changer</a></div>
       <div id="kpis" class="kpis"></div>
       <div class="box"><h2>Visites du site (30 derniers jours)</h2>
@@ -175,6 +178,7 @@
           <div><label>Catégorie</label><select id="pCat"></select></div>
           <div><label>Prix (FCFA)</label><input id="pPrice" type="number" min="0"></div>
           <div><label>Ancien prix barré (promo, facultatif)</label><input id="pCompare" type="number" min="0"></div>
+          <div><label>Prix de gros revendeurs (vide = pas de parrainage)</label><input id="pWholesale" type="number" min="0"></div>
         </div>
         <label>Description (affichée sur la fiche produit)</label>
         <textarea id="pDesc" placeholder="Ce que le client reçoit, compatibilité, durée…"></textarea>
@@ -340,6 +344,32 @@
       </div>
     </section>
 
+    <section id="tab-parrains" class="hidden">
+      <h1>Parrains et revendeurs</h1>
+      <p class="small">Chaque parrain a son espace sur <b>www.licenceoff.com/parrain</b> (connexion par lien reçu par email). Il crée ses liens et choisit la remise de ses clients, jamais sous le prix de gros. Son gain = prix payé − prix de gros. Mettez un « prix de gros » dans chaque produit concerné (onglet Produits).</p>
+      <div id="payList"></div>
+      <div class="box">
+        <h2 id="rFormTitle">Nouveau parrain</h2>
+        <input type="hidden" id="rId">
+        <div class="grid">
+          <div><label>Nom</label><input id="rName" placeholder="ex : Amadou Ba"></div>
+          <div><label>Email (pour se connecter)</label><input id="rEmail" type="email"></div>
+          <div><label>Téléphone</label><input id="rPhone"></div>
+          <div><label>Versements sur</label><input id="rPay" placeholder="ex : Wave 77 123 45 67"></div>
+          <div><label>Statut</label><select id="rStatus"><option value="active">Actif</option><option value="suspended">Suspendu</option></select></div>
+          <div><label>Note (pour vous)</label><input id="rNote"></div>
+        </div>
+        <div class="bar" style="margin-top:10px"><button id="rSave" class="green">Enregistrer</button><button id="rReset" class="grey">Nouveau</button><span class="small">À la création, un premier lien est créé avec la remise par défaut (Réglages).</span></div>
+      </div>
+      <div class="box"><div class="tablewrap"><table><thead><tr><th>Parrain</th><th>Liens / codes</th><th>Ventes</th><th>Gains</th><th>Solde</th><th></th></tr></thead><tbody id="rRows"></tbody></table></div></div>
+    </section>
+
+    <section id="tab-clients" class="hidden">
+      <h1>Clients</h1>
+      <div class="bar"><input id="clSearch" class="grow" placeholder="Rechercher : nom, email, téléphone, code parrain"><button id="clCsv" class="grey">Exporter (CSV)</button></div>
+      <div class="box"><div class="tablewrap"><table><thead><tr><th>Client</th><th>Commandes</th><th>Dépensé</th><th>Première / dernière</th><th>Parrain</th><th>IP</th></tr></thead><tbody id="clRows"></tbody></table></div></div>
+    </section>
+
     <section id="tab-faq" class="hidden">
       <h1>FAQ (questions fréquentes)</h1>
       <div class="box">
@@ -367,6 +397,15 @@
         <div><h2 style="margin:0 0 4px">Livraison automatique</h2>
           <div class="small">Activée : dès que le paiement est confirmé, le client reçoit ses clés et liens tout seul.<br>Désactivée : les commandes payées attendent que vous cliquiez « Livrer maintenant ». Chaque produit a aussi son propre interrupteur.</div></div>
         <div style="text-align:right"><span id="autoTag" class="tag"></span><br><button id="autoToggle" style="margin-top:8px"></button></div>
+      </div>
+      <div class="box">
+        <h2 style="margin:0 0 4px">Parrainage</h2>
+        <div class="grid">
+          <div><label>Seuil de versement (FCFA)</label><input id="sThreshold" type="number" min="0"></div>
+          <div><label>Remise client par défaut (%)</label><input id="sDiscount" type="number" min="0" max="90" step="0.5"></div>
+          <div><label>Votre email pour les alertes de versement</label><input id="sAdminEmail" type="email" placeholder="vous@gmail.com"></div>
+        </div>
+        <div class="bar" style="margin-top:10px"><button id="sSavePar" class="green">Enregistrer</button></div>
       </div>
     </section>
   </main>
@@ -404,7 +443,7 @@ const ERR = {
   commande_deja_payee: "Commande déjà payée, impossible de l'annuler.", cle_deja_envoyee: "Cette clé a déjà été envoyée.",
   not_delivered: "L'article n'est pas encore livré.", no_installer: "Ce produit n'a pas de fichier.", not_to_process: "Cet article n'est pas à traiter.",
   produit_sans_stock: "Ce produit n'utilise pas de stock (type logiciel ou service).", fichier_obligatoire: "Choisissez ou envoyez le fichier du logiciel.",
-  code_deja_utilise: "Ce nom est déjà utilisé, choisissez-en un autre.", nom_obligatoire: "Le nom est obligatoire.", panier_vide: "Ajoutez au moins un produit.", parent_invalide: "Une sous-catégorie doit être rangée dans une catégorie principale (un seul niveau).", pas_en_installation: "Cet article n'attend plus l'installation.", rien_a_envoyer: "Rien à envoyer pour cette commande.", nom_invalide: "Nom du client trop court.", produit_introuvable: "Produit introuvable.",
+  code_deja_utilise: "Ce nom est déjà utilisé, choisissez-en un autre.", nom_obligatoire: "Le nom est obligatoire.", panier_vide: "Ajoutez au moins un produit.", parent_invalide: "Une sous-catégorie doit être rangée dans une catégorie principale (un seul niveau).", email_deja_utilise: "Cet email est déjà celui d'un autre parrain.", deja_traite: "Ce versement a déjà été traité.", pas_en_installation: "Cet article n'attend plus l'installation.", rien_a_envoyer: "Rien à envoyer pour cette commande.", nom_invalide: "Nom du client trop court.", produit_introuvable: "Produit introuvable.",
 };
 
 // ---------- outils ----------
@@ -461,7 +500,7 @@ async function uploadImage(input, hidden, preview, msg) {
 }
 
 // ---------- navigation ----------
-const loaders = { dash: loadDash, orders: loadOrders, products: loadProducts, keys: loadKeys, blog: loadBlog, emails: loadTemplates, send: loadSend, faq: loadFaq, links: loadLinks, settings: loadSettings };
+const loaders = { dash: loadDash, orders: loadOrders, products: loadProducts, keys: loadKeys, blog: loadBlog, emails: loadTemplates, send: loadSend, parrains: loadParrains, clients: loadClients, faq: loadFaq, links: loadLinks, settings: loadSettings };
 document.querySelectorAll("nav [data-tab]").forEach((b) => b.addEventListener("click", () => openTab(b.dataset.tab)));
 function openTab(t) {
   document.querySelectorAll("nav [data-tab]").forEach((b) => b.classList.toggle("on", b.dataset.tab === t));
@@ -485,6 +524,10 @@ async function loadDash() {
   const [d, s] = await Promise.all([api({ action: "dashboard" }), api({ action: "settings_get" })]);
   settings = s.settings;
   $("autoWarn").classList.toggle("hidden", settings.auto_delivery !== false);
+  const pays = d.payouts || [];
+  $("payWarn").classList.toggle("hidden", !pays.length);
+  $("badgePay").classList.toggle("hidden", !pays.length); $("badgePay").textContent = pays.length;
+  if (pays.length) $("payWarn").replaceChildren("💸 Versement à faire : ", ...pays.map((p, i) => el("b", (i ? ", " : "") + (p.parrains?.name || "parrain") + " " + fcfa(p.amount_fcfa))), " — ", (() => { const a = el("a", "voir Parrains"); a.href = "#"; a.addEventListener("click", (e) => { e.preventDefault(); openTab("parrains"); }); return a; })());
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const paidSt = ["paid", "processing", "installing", "delivered"];
   const paid = d.orders.filter((o) => paidSt.includes(o.status) && o.paid_at);
@@ -583,7 +626,9 @@ async function loadOrders() {
     acts.append(btn("Page client", "grey", () => copy(ORDER_PAGE + "?o=" + o.public_token, "Lien de la page client copié ✔")));
     tb.append(tr(
       td(el("strong", o.ref), el("br"), el("span", dt(o.created_at), "small"), el("br"), el("span", o.source === "admin" ? "vente manuelle" : "site", "small")),
-      td(el("strong", o.customer_name), el("br"), el("span", o.email, "small"), el("br"), el("span", o.phone || "", "small")),
+      td(el("strong", o.customer_name), el("br"), el("span", o.email, "small"), el("br"), el("span", o.phone || "", "small"),
+        o.referral_code ? el("div", "🤝 " + o.referral_code + " · remise " + fcfa(o.discount_fcfa) + " · gain parrain " + fcfa(o.commission_fcfa), "small") : null,
+        o.ip ? el("div", "IP " + o.ip, "small mono") : null),
       cItems,
       td(el("strong", fcfa(o.amount_fcfa)), el("br"), el("span", METHOD[o.payment_method] || o.payment_method || "—", "small"), el("br"), el("span", o.payment_ref || "", "small mono")),
       td(tag(o.status), o.emailed_at ? el("div", "✉ email envoyé " + dt(o.emailed_at), "small") : null, o.note ? el("div", o.note, "small") : null),
@@ -659,7 +704,7 @@ async function loadProducts() {
 function editProduct(p) {
   $("pFormTitle").textContent = "Modifier : " + p.name;
   $("pId").value = p.id; $("pName").value = p.name; $("pCat").value = p.category_id || ""; $("pPrice").value = p.price_fcfa;
-  $("pCompare").value = p.compare_price_fcfa || ""; $("pDesc").value = p.description || ""; $("pImg").value = p.image_url || "";
+  $("pCompare").value = p.compare_price_fcfa || ""; $("pWholesale").value = p.wholesale_price_fcfa ?? ""; $("pDesc").value = p.description || ""; $("pImg").value = p.image_url || "";
   $("pImgPrev").src = p.image_url || ""; $("pImgPrev").classList.toggle("hidden", !p.image_url); $("pImgMsg").textContent = "";
   $("pType").value = p.delivery_type; syncType(); loadFiles(p.installer_path || "").catch(() => {});
   $("pAuto").checked = p.auto_deliver !== false; $("pActive").checked = p.active; $("pFeatured").checked = p.featured;
@@ -668,7 +713,7 @@ function editProduct(p) {
 }
 function resetProduct() {
   $("pFormTitle").textContent = "Nouveau produit";
-  for (const id of ["pId", "pName", "pPrice", "pCompare", "pDesc", "pImg", "pFile"]) $(id).value = "";
+  for (const id of ["pId", "pName", "pPrice", "pCompare", "pWholesale", "pDesc", "pImg", "pFile"]) $(id).value = "";
   $("pCat").value = ""; $("pType").value = "key"; syncType(); $("pImgPrev").classList.add("hidden"); $("pImgMsg").textContent = "";
   $("pAuto").checked = true; $("pActive").checked = true; $("pFeatured").checked = false; $("pLow").value = 5; $("pSort").value = 0; $("pTpl").value = ""; $("pTwo").checked = false; $("pInstTpl").value = ""; twoVis();
 }
@@ -676,7 +721,7 @@ $("pReset").addEventListener("click", resetProduct);
 $("pSave").addEventListener("click", async () => {
   try {
     await api({ action: "product_save", id: $("pId").value || undefined, name: $("pName").value, category_id: $("pCat").value,
-      price_fcfa: $("pPrice").value, compare_price_fcfa: $("pCompare").value, description: $("pDesc").value, image_url: $("pImg").value,
+      price_fcfa: $("pPrice").value, compare_price_fcfa: $("pCompare").value, wholesale_price_fcfa: $("pWholesale").value, description: $("pDesc").value, image_url: $("pImg").value,
       delivery_type: $("pType").value, installer_path: $("pFile").value, auto_deliver: $("pAuto").checked, active: $("pActive").checked,
       featured: $("pFeatured").checked, low_stock_threshold: $("pLow").value, sort: $("pSort").value, email_template_id: $("pTpl").value, two_step: $("pTwo").checked, install_template_id: $("pInstTpl").value });
     toast("Produit enregistré ✔"); resetProduct(); await loadProducts();
@@ -864,12 +909,73 @@ async function loadSettings() {
   const on = settings.auto_delivery !== false;
   const t = $("autoTag"); t.textContent = on ? "Activée" : "Désactivée"; t.className = "tag s-" + (on ? "on" : "off");
   const b = $("autoToggle"); b.textContent = on ? "Désactiver" : "Activer"; b.className = on ? "red" : "green";
+  $("sThreshold").value = settings.payout_threshold ?? 10000; $("sDiscount").value = settings.default_discount_pct ?? 10; $("sAdminEmail").value = settings.admin_email || "";
 }
+$("sSavePar").addEventListener("click", async () => {
+  try {
+    await api({ action: "settings_set", key: "payout_threshold", value: $("sThreshold").value });
+    await api({ action: "settings_set", key: "default_discount_pct", value: $("sDiscount").value });
+    await api({ action: "settings_set", key: "admin_email", value: $("sAdminEmail").value });
+    toast("Réglages enregistrés ✔"); await loadSettings();
+  } catch (e) { toast(errMsg(e)); }
+});
 $("autoToggle").addEventListener("click", async () => {
   const on = settings.auto_delivery !== false;
   if (on && !confirm("Désactiver la livraison automatique ? Les commandes payées attendront votre validation.")) return;
   try { await api({ action: "settings_set", key: "auto_delivery", value: !on }); toast(on ? "Livraison automatique désactivée" : "Livraison automatique activée ✔"); await loadSettings(); }
   catch (e) { toast(errMsg(e)); }
+});
+
+// ---------- parrains ----------
+let parrains = [];
+async function loadParrains() {
+  const d = await api({ action: "parrains_list" });
+  parrains = d.rows;
+  const open = d.payouts.filter((p) => p.status === "to_pay");
+  $("badgePay").classList.toggle("hidden", !open.length); $("badgePay").textContent = open.length;
+  $("payList").replaceChildren(...open.map((p) => { const b = el("div", null, "box"); b.style.cssText = "border-color:#86efac;background:#f0fdf4";
+    b.append(el("strong", "💸 À verser : " + fcfa(p.amount_fcfa) + " à " + (p.parrains?.name || "?")), el("br"), el("span", "Sur : " + (p.parrains?.payout_info || "non indiqué") + (p.parrains?.phone ? " · " + p.parrains.phone : "") + " · demandé le " + dt(p.created_at), "small"), el("br"),
+      btn("✔ Marquer payé", "green", async () => { const note = prompt("Référence du transfert (facultatif) :", "") ; if (note === null) return; await api({ action: "payout_set", id: p.id, status: "paid", note }); toast("Versement noté ✔"); loadParrains(); }), " ",
+      btn("Annuler", "grey", async () => { if (confirm("Annuler cette demande ? Le montant revient dans le solde du parrain.")) { await api({ action: "payout_set", id: p.id, status: "cancelled" }); loadParrains(); } }));
+    return b; }));
+  $("rRows").replaceChildren(...parrains.map((r) => tr(
+    td(el("strong", r.name), r.status === "suspended" ? el("span", " (suspendu)", "small") : null, el("br"), el("span", r.email, "small"), el("br"), el("span", r.payout_info || "", "small")),
+    td(...r.codes.map((c) => { const box = el("div", null, "small"); box.append(el("span", c.code, "mono"), " −" + Number(c.discount_pct) + " % · " + c.clicks + " visite(s)" + (c.active ? "" : " · désactivé") + " ");
+      box.append(btn("Modifier", "grey", async () => { const v = prompt("Remise client en % pour " + c.code + " (0 à 90) :", String(Number(c.discount_pct))); if (v === null) return; await api({ action: "referral_code_admin", id: c.id, discount_pct: v, active: c.active }); loadParrains(); }));
+      box.append(" ", btn(c.active ? "Désactiver" : "Activer", "grey", async () => { await api({ action: "referral_code_admin", id: c.id, discount_pct: c.discount_pct, active: !c.active }); loadParrains(); }));
+      return box; })),
+    td(String(r.sales), el("br"), el("span", fcfa(r.revenue), "small")),
+    td(el("strong", fcfa(r.earned)), el("br"), el("span", "versé " + fcfa(r.paid), "small")),
+    td(fcfa(Math.max(0, r.balance)), r.to_pay ? el("div", "à verser " + fcfa(r.to_pay), "small") : null),
+    td(btn("Modifier", "grey", () => { $("rFormTitle").textContent = "Modifier : " + r.name; $("rId").value = r.id; $("rName").value = r.name; $("rEmail").value = r.email; $("rPhone").value = r.phone || ""; $("rPay").value = r.payout_info || ""; $("rStatus").value = r.status; $("rNote").value = r.note || ""; window.scrollTo(0, 0); })))));
+  if (!parrains.length) $("rRows").append(tr(td("Aucun parrain pour l'instant.")));
+}
+const resetPar = () => { $("rFormTitle").textContent = "Nouveau parrain"; for (const id of ["rId", "rName", "rEmail", "rPhone", "rPay", "rNote"]) $(id).value = ""; $("rStatus").value = "active"; };
+$("rReset").addEventListener("click", resetPar);
+$("rSave").addEventListener("click", async () => {
+  try { await api({ action: "parrain_save", id: $("rId").value || undefined, name: $("rName").value, email: $("rEmail").value, phone: $("rPhone").value, payout_info: $("rPay").value, status: $("rStatus").value, note: $("rNote").value });
+    toast("Parrain enregistré ✔"); resetPar(); loadParrains(); } catch (e) { toast(errMsg(e)); }
+});
+
+// ---------- clients (CRM) ----------
+let clients = [];
+async function loadClients() { clients = (await api({ action: "clients_list" })).rows; renderClients(); }
+function renderClients() {
+  const q = $("clSearch").value.trim().toLowerCase();
+  const list = clients.filter((c) => !q || [c.name, c.email, c.phone, ...(c.codes || [])].join(" ").toLowerCase().includes(q));
+  $("clRows").replaceChildren(...list.slice(0, 500).map((c) => {
+    const det = el("details"); det.append(el("summary", c.orders.length + " commande(s)"), ...c.orders.map((o) => el("div", dt(o.date) + " · " + o.ref + " · " + (ST[o.status] || o.status) + " · " + fcfa(o.amount) + " · " + o.items + (o.code ? " · 🤝 " + o.code : "") + (o.ip ? " · IP " + o.ip : ""), "small")));
+    return tr(td(el("strong", c.name), el("br"), el("span", c.email, "small"), el("br"), el("span", c.phone || "", "small")), td(det), td(el("strong", fcfa(c.spent)), el("br"), el("span", c.paid_orders + " payée(s)", "small")),
+      td(el("span", dt(c.first) + " / " + dt(c.last), "small")), td((c.codes || []).join(", ") || "—"), td(el("span", c.ip || "—", "small mono")));
+  }));
+  if (!list.length) $("clRows").append(tr(td("Aucun client.")));
+}
+$("clSearch").addEventListener("input", renderClients);
+$("clCsv").addEventListener("click", () => {
+  const esc = (v) => '"' + String(v ?? "").replace(/"/g, '""') + '"';
+  const rows = [["Nom", "Email", "Téléphone", "Commandes", "Payées", "Dépensé (FCFA)", "Première", "Dernière", "Codes parrain", "IP"].map(esc).join(";"),
+    ...clients.map((c) => [c.name, c.email, c.phone, c.orders.length, c.paid_orders, c.spent, c.first, c.last, (c.codes || []).join(" "), c.ip].map(esc).join(";"))];
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["\ufeff" + rows.join("\n")], { type: "text/csv" })); a.download = "clients-licenceoff.csv"; a.click();
 });
 
 // ---------- connexion ----------

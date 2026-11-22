@@ -254,10 +254,33 @@ async function sendInstallEmail(orderId: string, force = false): Promise<{ sent:
   return { sent: true, count: sent };
 }
 
-// Après chaque livraison : email d'installation (étape 1) et/ou email de la clé (commande livrée)
+// Parrainage : un parrain a atteint le seuil → email à l'admin (réglage « admin_email »), une fois par demande
+async function notifyPayouts() {
+  const { data: ps } = await db.from("payouts").select("id, amount_fcfa, parrains(name, phone, payout_info)").eq("status", "to_pay").is("notified_at", null).limit(20);
+  if (!ps?.length) return;
+  const { data: st } = await db.from("settings").select("value").eq("key", "admin_email").maybeSingle();
+  const to = String(st?.value ?? "").replace(/"/g, "").trim();
+  if (!to.includes("@")) return; // pas d'adresse : l'alerte reste visible dans l'admin
+  const { site } = siteCtx();
+  for (const p of ps) {
+    // deno-lint-ignore no-explicit-any
+    const pr = (p as any).parrains ?? {};
+    const { data: claim } = await db.from("payouts").update({ notified_at: new Date().toISOString() }).eq("id", p.id).is("notified_at", null).select("id");
+    if (!claim?.length) continue;
+    const r = await resendSend(to, {
+      subject: `Parrainage : ${fcfaTxt(p.amount_fcfa)} à verser à ${pr.name ?? "un parrain"}`,
+      html: wrapHtml(`<p style="margin:0 0 12px">Le parrain <b>${esc(pr.name)}</b> a atteint le seuil de versement.</p><p style="margin:0 0 12px">Montant à lui verser : <b>${esc(fcfaTxt(p.amount_fcfa))}</b><br>Versement sur : ${esc(pr.payout_info || "non indiqué")}${pr.phone ? "<br>Téléphone : " + esc(pr.phone) : ""}</p><p style="margin:0 0 12px">Une fois payé, cliquez « Marquer payé » dans l'admin, onglet Parrains : ${esc(site)}/admin</p>`),
+      text: `Le parrain ${pr.name} a atteint le seuil. À verser : ${fcfaTxt(p.amount_fcfa)} sur ${pr.payout_info || "?"}. Admin : ${site}/admin`,
+    });
+    if (!r.ok) await db.from("payouts").update({ notified_at: null }).eq("id", p.id);
+  }
+}
+
+// Après chaque livraison : email d'installation (étape 1) et/ou email de la clé (commande livrée), alerte parrainage
 async function sendOrderEmails(orderId: string, reason?: string) {
   await sendInstallEmail(orderId).catch((e) => console.error("email installation", e));
   if (reason === "delivered") await sendDeliveryEmail(orderId).catch((e) => console.error("email", e));
+  await notifyPayouts().catch((e) => console.error("alerte parrainage", e));
 }
 
 // Demande à PayDunya l'état réel de la facture et livre si elle est payée

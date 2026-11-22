@@ -138,7 +138,7 @@ const LO = (() => {
           el("div", {}, el("b", { text: "Boutique" }), el("a", { href: url.shop, text: "Tous les produits" }), el("a", { href: url.cart, text: "Mon panier" }), el("a", { href: url.blog, text: "Blog" }), el("a", { href: url.faq, text: "Questions fréquentes" }), el("a", { href: url.privacy, text: "Confidentialité et cookies" }),
             el("a", { href: "#", text: "Gérer les cookies", onclick: (e) => { e.preventDefault(); cookieBar(true); } })),
           el("div", {}, el("b", { text: "Aide" }), el("a", { href: "https://wa.me/" + WHATSAPP_NUMBER, target: "_blank", rel: "noopener", text: "WhatsApp : +" + WHATSAPP_NUMBER }),
-            el("span", { text: "Paiement sécurisé via PayDunya" })),
+            el("span", { text: "Paiement sécurisé via PayDunya" }), el("a", { href: "/parrain", text: "Espace parrain" })),
         ),
         el("div", { class: "copy", text: "© " + year + " licenceoff.com — Tous droits réservés" }),
       )),
@@ -223,7 +223,24 @@ const LO = (() => {
       body: JSON.stringify({ action: "hit", page: location.pathname.replace(/\.html$/, "").replace(/\/index$/, "/") || "/", v, ref: document.referrer }) }); } catch (_) {}
   }
 
-  function page(active) { header(active); footer(); hit(); cookieBar(); }
+  // ---------- parrainage : lien ?ref=CODE (gardé 30 jours dans ce navigateur) ----------
+  const REF_KEY = "lo_ref";
+  function refCode() { try { const r = JSON.parse(localStorage.getItem(REF_KEY) || "null"); return r && Date.now() - r.at < 30 * 86400000 ? r.code : ""; } catch (_) { return ""; } }
+  function setRef(code) { try { code ? localStorage.setItem(REF_KEY, JSON.stringify({ code, at: Date.now() })) : localStorage.removeItem(REF_KEY); } catch (_) {} }
+  function captureRef() {
+    const u = new URL(location.href);
+    const code = (u.searchParams.get("ref") || "").trim().toUpperCase().replace(/[^A-Z0-9-]/g, "");
+    if (!code) return;
+    u.searchParams.delete("ref");
+    try { history.replaceState(null, "", u.pathname + (u.search || "") + u.hash); } catch (_) {}
+    boutique({ action: "ref_info", code, click: true }).then((d) => {
+      if (!d.code) return;
+      setRef(d.code);
+      toast((d.parrain ? "Invité par " + d.parrain + " : " : "") + "-" + d.discount_pct + " % sur votre panier ✔");
+    }).catch(() => {});
+  }
+
+  function page(active) { header(active); footer(); hit(); cookieBar(); captureRef(); }
   const DELIVERY_TEXT = {
     key: "Clé de licence livrée immédiatement après paiement",
     key_file: "Clé de licence + lien de téléchargement livrés immédiatement",
@@ -232,5 +249,5 @@ const LO = (() => {
     manual: "Service traité par notre équipe après paiement",
   };
 
-  return { cookieBar, url, slugFromPath, seo, jsonLd, crumbs, mainCats, SITE, $, el, fcfa, api, boutique, cart, saveCart, addToCart, cartCount, page, toast, productCard, initials, richText, DELIVERY_TEXT };
+  return { refCode, setRef, cookieBar, url, slugFromPath, seo, jsonLd, crumbs, mainCats, SITE, $, el, fcfa, api, boutique, cart, saveCart, addToCart, cartCount, page, toast, productCard, initials, richText, DELIVERY_TEXT };
 })();

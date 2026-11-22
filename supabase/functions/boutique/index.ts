@@ -244,12 +244,34 @@ async function sendInstallEmail(orderId: string, force = false): Promise<{ sent:
   return { sent: true, count: sent };
 }
 
-// Après chaque livraison : email d'installation (étape 1) et/ou email de la clé (commande livrée)
+// Parrainage : un parrain a atteint le seuil → email à l'admin (réglage « admin_email »), une fois par demande
+async function notifyPayouts() {
+  const { data: ps } = await db.from("payouts").select("id, amount_fcfa, parrains(name, phone, payout_info)").eq("status", "to_pay").is("notified_at", null).limit(20);
+  if (!ps?.length) return;
+  const { data: st } = await db.from("settings").select("value").eq("key", "admin_email").maybeSingle();
+  const to = String(st?.value ?? "").replace(/"/g, "").trim();
+  if (!to.includes("@")) return; // pas d'adresse : l'alerte reste visible dans l'admin
+  const { site } = siteCtx();
+  for (const p of ps) {
+    // deno-lint-ignore no-explicit-any
+    const pr = (p as any).parrains ?? {};
+    const { data: claim } = await db.from("payouts").update({ notified_at: new Date().toISOString() }).eq("id", p.id).is("notified_at", null).select("id");
+    if (!claim?.length) continue;
+    const r = await resendSend(to, {
+      subject: `Parrainage : ${fcfaTxt(p.amount_fcfa)} à verser à ${pr.name ?? "un parrain"}`,
+      html: wrapHtml(`<p style="margin:0 0 12px">Le parrain <b>${esc(pr.name)}</b> a atteint le seuil de versement.</p><p style="margin:0 0 12px">Montant à lui verser : <b>${esc(fcfaTxt(p.amount_fcfa))}</b><br>Versement sur : ${esc(pr.payout_info || "non indiqué")}${pr.phone ? "<br>Téléphone : " + esc(pr.phone) : ""}</p><p style="margin:0 0 12px">Une fois payé, cliquez « Marquer payé » dans l'admin, onglet Parrains : ${esc(site)}/admin</p>`),
+      text: `Le parrain ${pr.name} a atteint le seuil. À verser : ${fcfaTxt(p.amount_fcfa)} sur ${pr.payout_info || "?"}. Admin : ${site}/admin`,
+    });
+    if (!r.ok) await db.from("payouts").update({ notified_at: null }).eq("id", p.id);
+  }
+}
+
+// Après chaque livraison : email d'installation (étape 1) et/ou email de la clé (commande livrée), alerte parrainage
 async function sendOrderEmails(orderId: string, reason?: string) {
   await sendInstallEmail(orderId).catch((e) => console.error("email installation", e));
   if (reason === "delivered") await sendDeliveryEmail(orderId).catch((e) => console.error("email", e));
+  await notifyPayouts().catch((e) => console.error("alerte parrainage", e));
 }
-
 
 // Nombre d'unités disponibles par produit (seulement pour les produits à stock)
 async function stockCounts(ids: string[]) {
@@ -271,6 +293,45 @@ function publicProduct(p: any, counts: Record<string, number>, cats: Record<stri
     in_stock: needsStock ? left > 0 : true,
     max_qty: needsStock ? Math.min(left, 20) : 20,
   };
+}
+
+// ================= Parrainage =================
+// Prix client avec le code d'un parrain : remise en %, jamais sous le prix de gros.
+// Sans prix de gros, le produit n'a ni remise ni gain parrain.
+// deno-lint-ignore no-explicit-any
+function referralPrice(p: any, pct: number) {
+  const list = p.price_fcfa;
+  const w = p.wholesale_price_fcfa;
+  if (w == null || w >= list || pct <= 0) return { unit: list, wholesale: w ?? null, gain: 0 };
+  const unit = Math.max(w, Math.round(list * (1 - pct / 100)));
+  return { unit, wholesale: w, gain: unit - w };
+}
+const normCode = (c: unknown) => str(c, 30).toUpperCase().replace(/[^A-Z0-9-]/g, "");
+async function findCode(code: string) {
+  if (!code) return null;
+  const { data } = await db.from("referral_codes").select("id, code, discount_pct, active, parrain_id, parrains(name, status)").eq("code", code).maybeSingle();
+  // deno-lint-ignore no-explicit-any
+  const d = data as any;
+  if (!d || !d.active || d.parrains?.status !== "active") return null;
+  return d;
+}
+async function sha256(t: string) {
+  const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(t));
+  return [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join("");
+}
+async function parrainFromSession(token: unknown) {
+  const t = str(token, 100);
+  if (!t) return null;
+  const { data } = await db.from("parrain_sessions").select("parrain_id, expires_at, parrains(*)").eq("token_hash", await sha256(t)).eq("kind", "session").maybeSingle();
+  // deno-lint-ignore no-explicit-any
+  const d = data as any;
+  if (!d || new Date(d.expires_at) < new Date() || d.parrains?.status !== "active") return null;
+  return d.parrains;
+}
+async function setting(key: string, def: number) {
+  const { data } = await db.from("settings").select("value").eq("key", key).maybeSingle();
+  const n = Number(data?.value);
+  return Number.isFinite(n) ? n : def;
 }
 
 // Plan du site pour Google (toujours à jour) : …/functions/v1/boutique?sitemap=1 (cité dans robots.txt)
@@ -372,6 +433,105 @@ Deno.serve(async (req) => {
       return json({ post: data });
     }
 
+    // ---------- Parrainage : code d'un lien (?ref=) et prix du panier ----------
+    case "ref_info": {
+      const rc = await findCode(normCode(body.code));
+      if (!rc) return json({ error: "code_invalide" }, 404);
+      if (body.click === true) await db.rpc("referral_click", { p_id: rc.id }).then(() => {}, () => {});
+      return json({ code: rc.code, discount_pct: Number(rc.discount_pct), parrain: String(rc.parrains?.name ?? "").split(/\s+/)[0] });
+    }
+    case "quote": { // prix du panier avec le code parrain (le serveur recalcule tout à la commande)
+      const rc = await findCode(normCode(body.code));
+      const slugs = (Array.isArray(body.slugs) ? body.slugs : []).slice(0, 30).map((x: unknown) => str(x, 80));
+      const { data: prods } = await db.from("products").select("slug, price_fcfa, wholesale_price_fcfa").in("slug", slugs).eq("active", true);
+      return json({ code: rc?.code ?? null, discount_pct: rc ? Number(rc.discount_pct) : 0,
+        prices: Object.fromEntries((prods ?? []).map((p) => [p.slug, referralPrice(p, rc ? Number(rc.discount_pct) : 0).unit])) });
+    }
+
+    // ---------- Espace parrain (connexion par lien envoyé par email) ----------
+    case "parrain_login": {
+      const email = str(body.email, 200).toLowerCase();
+      const { data: pr } = await db.from("parrains").select("id, name, email, status").eq("email", email).maybeSingle();
+      if (pr && pr.status === "active") {
+        const t = newToken(32);
+        await db.from("parrain_sessions").insert({ token_hash: await sha256(t), parrain_id: pr.id, kind: "login", expires_at: new Date(Date.now() + 30 * 60_000).toISOString() });
+        const { site } = siteCtx();
+        const link = site + "/parrain?t=" + t;
+        await resendSend(pr.email, {
+          subject: "Votre lien de connexion — espace parrain licenceoff",
+          html: wrapHtml(`<p style="margin:0 0 12px">Bonjour ${esc(String(pr.name).split(/\s+/)[0])},</p><p style="margin:0 0 12px">Cliquez sur ce bouton pour ouvrir votre espace parrain. Le lien marche une seule fois, pendant 30 minutes.</p><p style="text-align:center;margin:22px 0"><a href="${esc(link)}" style="display:inline-block;background:${EM.O};color:#fff;font-weight:800;text-decoration:none;padding:14px 22px;border-radius:10px">Ouvrir mon espace parrain</a></p><p style="font-size:13px;color:#5b6b86">Vous n'avez rien demandé ? Ignorez cet email.</p>`),
+          text: "Votre lien de connexion (30 minutes, une seule fois) : " + link,
+        });
+      }
+      return json({ ok: true }); // même réponse dans tous les cas
+    }
+    case "parrain_session": {
+      const h = await sha256(str(body.t, 100));
+      const { data: used } = await db.from("parrain_sessions").update({ used_at: new Date().toISOString() })
+        .eq("token_hash", h).eq("kind", "login").is("used_at", null).gt("expires_at", new Date().toISOString()).select("parrain_id");
+      if (!used?.length) return json({ error: "lien_expire" }, 401);
+      const s = newToken(32);
+      await db.from("parrain_sessions").insert({ token_hash: await sha256(s), parrain_id: used[0].parrain_id, kind: "session", expires_at: new Date(Date.now() + 30 * 86400_000).toISOString() });
+      return json({ s });
+    }
+    case "parrain_logout": {
+      await db.from("parrain_sessions").delete().eq("token_hash", await sha256(str(body.s, 100))).eq("kind", "session");
+      return json({ ok: true });
+    }
+    case "parrain_me": {
+      const pr = await parrainFromSession(body.s);
+      if (!pr) return json({ error: "non_connecte" }, 401);
+      const [{ data: codes }, { data: prods }, { data: orders }, { data: payouts }, threshold, bal] = await Promise.all([
+        db.from("referral_codes").select("id, code, label, discount_pct, active, clicks, created_at").eq("parrain_id", pr.id).order("created_at"),
+        db.from("products").select("slug, name, price_fcfa, wholesale_price_fcfa").eq("active", true).order("sort").order("name"),
+        db.from("orders").select("ref, created_at, paid_at, status, amount_fcfa, commission_fcfa, referral_code, customer_name, email, order_items(product_name, quantity)")
+          .eq("parrain_id", pr.id).order("created_at", { ascending: false }).limit(300),
+        db.from("payouts").select("amount_fcfa, status, created_at, paid_at").eq("parrain_id", pr.id).order("created_at", { ascending: false }),
+        setting("payout_threshold", 10000),
+        db.rpc("parrain_balance", { p_parrain: pr.id }),
+      ]);
+      const paid = (orders ?? []).filter((o) => o.paid_at && o.status !== "cancelled");
+      const maskMail = (e: string) => { const [u, d] = String(e).split("@"); return (u ?? "").slice(0, 2) + "***@" + (d ?? ""); };
+      return json({
+        me: { name: pr.name, email: pr.email, phone: pr.phone, payout_info: pr.payout_info },
+        codes, threshold,
+        balance: Number(bal.data ?? 0),
+        earned: paid.reduce((s, o) => s + o.commission_fcfa, 0),
+        to_pay: (payouts ?? []).filter((p) => p.status === "to_pay").reduce((s, p) => s + p.amount_fcfa, 0),
+        paid_out: (payouts ?? []).filter((p) => p.status === "paid").reduce((s, p) => s + p.amount_fcfa, 0),
+        payouts,
+        products: (prods ?? []).filter((p) => p.wholesale_price_fcfa != null && p.wholesale_price_fcfa < p.price_fcfa)
+          .map((p) => ({ slug: p.slug, name: p.name, price: p.price_fcfa, wholesale: p.wholesale_price_fcfa })),
+        sales: (orders ?? []).map((o) => ({ ref: o.ref, date: o.created_at, paid: !!o.paid_at && o.status !== "cancelled", status: o.status,
+          amount: o.amount_fcfa, gain: o.commission_fcfa, code: o.referral_code, client: String(o.customer_name).split(/\s+/)[0] + " · " + maskMail(o.email),
+          items: (o.order_items ?? []).map((i: { product_name: string; quantity: number }) => (i.quantity > 1 ? i.quantity + " × " : "") + i.product_name).join(", ") })),
+      });
+    }
+    case "parrain_code_save": {
+      const pr = await parrainFromSession(body.s);
+      if (!pr) return json({ error: "non_connecte" }, 401);
+      const pct = Math.round(Math.min(90, Math.max(0, Number(body.discount_pct) || 0)) * 100) / 100;
+      const row = { label: str(body.label, 60) || null, discount_pct: pct, active: body.active !== false };
+      if (body.id) {
+        const { error } = await db.from("referral_codes").update(row).eq("id", str(body.id, 40)).eq("parrain_id", pr.id);
+        if (error) return json({ error: "error" }, 500);
+        return json({ ok: true });
+      }
+      const code = normCode(body.code);
+      if (code.length < 3 || code.length > 20) return json({ error: "code_invalide" }, 400);
+      const { count } = await db.from("referral_codes").select("id", { count: "exact", head: true }).eq("parrain_id", pr.id);
+      if ((count ?? 0) >= 50) return json({ error: "trop_de_codes" }, 400);
+      const { error } = await db.from("referral_codes").insert({ ...row, code, parrain_id: pr.id });
+      if (error) return json({ error: String(error.message).includes("duplicate") ? "code_pris" : "error" }, 400);
+      return json({ ok: true });
+    }
+    case "parrain_profile_save": {
+      const pr = await parrainFromSession(body.s);
+      if (!pr) return json({ error: "non_connecte" }, 401);
+      await db.from("parrains").update({ payout_info: str(body.payout_info, 120) || null, phone: str(body.phone, 30) || null }).eq("id", pr.id);
+      return json({ ok: true });
+    }
+
     // ---------- Nouvelle commande (panier) ----------
     case "create_order": {
       if (str(body.website, 50)) return json({ error: "spam" }, 400); // champ piège invisible
@@ -391,7 +551,7 @@ Deno.serve(async (req) => {
       }
       if (!want.size) return json({ error: "panier_vide" }, 400);
 
-      const { data: prods } = await db.from("products").select("id, slug, name, price_fcfa, delivery_type")
+      const { data: prods } = await db.from("products").select("id, slug, name, price_fcfa, wholesale_price_fcfa, delivery_type")
         .in("slug", [...want.keys()]).eq("active", true);
       if (!prods || prods.length !== want.size) return json({ error: "produit_introuvable" }, 400);
       const counts = await stockCounts(prods.filter((p) => STOCK_TYPES.includes(p.delivery_type)).map((p) => p.id));
@@ -407,7 +567,12 @@ Deno.serve(async (req) => {
         .eq("status", "pending").gte("created_at", since).or(`email.eq.${email},phone.eq.${phone}`);
       if ((count ?? 0) >= 3) return json({ error: "trop_de_commandes" }, 429);
 
-      const total = prods.reduce((s, p) => s + p.price_fcfa * want.get(p.slug)!, 0);
+      // code parrain (lien ?ref= ou saisi dans le panier)
+      const rc = await findCode(normCode(body.ref));
+      const priced = prods.map((p) => ({ p, q: want.get(p.slug)!, ...referralPrice(p, rc ? Number(rc.discount_pct) : 0) }));
+      const total = priced.reduce((s, x) => s + x.unit * x.q, 0);
+      const listTotal = priced.reduce((s, x) => s + x.p.price_fcfa * x.q, 0);
+      const commission = rc ? priced.reduce((s, x) => s + x.gain * x.q, 0) : 0;
       if (total <= 0) return json({ error: "montant_invalide" }, 400);
 
       for (let i = 0; i < 4; i++) {
@@ -417,15 +582,17 @@ Deno.serve(async (req) => {
           // CRM / anti-fraude (voir la page Confidentialité)
           ip: (req.headers.get("cf-connecting-ip") ?? req.headers.get("x-forwarded-for")?.split(",")[0] ?? "").trim().slice(0, 64) || null,
           user_agent: (req.headers.get("user-agent") ?? "").slice(0, 200) || null,
+          parrain_id: rc?.parrain_id ?? null, referral_code_id: rc?.id ?? null, referral_code: rc?.code ?? null,
+          discount_fcfa: listTotal - total, commission_fcfa: commission,
         };
         const { data: o, error } = await db.from("orders").insert(row).select("id").single();
         if (error) {
           if (String(error.message).includes("duplicate")) continue;
           return json({ error: "error" }, 500);
         }
-        const { error: e2 } = await db.from("order_items").insert(prods.map((p) => ({
-          order_id: o.id, product_id: p.id, product_name: p.name, delivery_type: p.delivery_type,
-          unit_price: p.price_fcfa, quantity: want.get(p.slug)!,
+        const { error: e2 } = await db.from("order_items").insert(priced.map((x) => ({
+          order_id: o.id, product_id: x.p.id, product_name: x.p.name, delivery_type: x.p.delivery_type,
+          unit_price: x.unit, quantity: x.q, list_price: x.p.price_fcfa, wholesale_price: x.wholesale,
         })));
         if (e2) { await db.from("orders").delete().eq("id", o.id); return json({ error: "error" }, 500); }
         return json({ ref: row.ref, token: row.public_token });

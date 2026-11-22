@@ -259,10 +259,33 @@ async function sendInstallEmail(orderId: string, force = false): Promise<{ sent:
   return { sent: true, count: sent };
 }
 
-// Après chaque livraison : email d'installation (étape 1) et/ou email de la clé (commande livrée)
+// Parrainage : un parrain a atteint le seuil → email à l'admin (réglage « admin_email »), une fois par demande
+async function notifyPayouts() {
+  const { data: ps } = await db.from("payouts").select("id, amount_fcfa, parrains(name, phone, payout_info)").eq("status", "to_pay").is("notified_at", null).limit(20);
+  if (!ps?.length) return;
+  const { data: st } = await db.from("settings").select("value").eq("key", "admin_email").maybeSingle();
+  const to = String(st?.value ?? "").replace(/"/g, "").trim();
+  if (!to.includes("@")) return; // pas d'adresse : l'alerte reste visible dans l'admin
+  const { site } = siteCtx();
+  for (const p of ps) {
+    // deno-lint-ignore no-explicit-any
+    const pr = (p as any).parrains ?? {};
+    const { data: claim } = await db.from("payouts").update({ notified_at: new Date().toISOString() }).eq("id", p.id).is("notified_at", null).select("id");
+    if (!claim?.length) continue;
+    const r = await resendSend(to, {
+      subject: `Parrainage : ${fcfaTxt(p.amount_fcfa)} à verser à ${pr.name ?? "un parrain"}`,
+      html: wrapHtml(`<p style="margin:0 0 12px">Le parrain <b>${esc(pr.name)}</b> a atteint le seuil de versement.</p><p style="margin:0 0 12px">Montant à lui verser : <b>${esc(fcfaTxt(p.amount_fcfa))}</b><br>Versement sur : ${esc(pr.payout_info || "non indiqué")}${pr.phone ? "<br>Téléphone : " + esc(pr.phone) : ""}</p><p style="margin:0 0 12px">Une fois payé, cliquez « Marquer payé » dans l'admin, onglet Parrains : ${esc(site)}/admin</p>`),
+      text: `Le parrain ${pr.name} a atteint le seuil. À verser : ${fcfaTxt(p.amount_fcfa)} sur ${pr.payout_info || "?"}. Admin : ${site}/admin`,
+    });
+    if (!r.ok) await db.from("payouts").update({ notified_at: null }).eq("id", p.id);
+  }
+}
+
+// Après chaque livraison : email d'installation (étape 1) et/ou email de la clé (commande livrée), alerte parrainage
 async function sendOrderEmails(orderId: string, reason?: string) {
   await sendInstallEmail(orderId).catch((e) => console.error("email installation", e));
   if (reason === "delivered") await sendDeliveryEmail(orderId).catch((e) => console.error("email", e));
+  await notifyPayouts().catch((e) => console.error("alerte parrainage", e));
 }
 
 // Vente faite par WhatsApp / en direct : crée la commande (plusieurs articles possibles)
@@ -359,7 +382,8 @@ Deno.serve(async (req) => {
         const { data: top } = await db.from("order_items").select("product_name, quantity, unit_price, status, orders!inner(paid_at)")
           .gte("orders.paid_at", since).limit(5000);
         const { data: visits } = await db.rpc("visit_stats");
-        return json({ stock, orders: recent ?? [], items: top ?? [], visits: visits ?? null });
+        const { data: openPay } = await db.from("payouts").select("amount_fcfa, parrains(name)").eq("status", "to_pay");
+        return json({ stock, orders: recent ?? [], items: top ?? [], visits: visits ?? null, payouts: openPay ?? [] });
       }
 
       // ================= Commandes =================
@@ -586,6 +610,7 @@ Deno.serve(async (req) => {
           low_stock_threshold: clamp(Number(body.low_stock_threshold) || 0, 0, 10000),
           email_template_id: str(body.email_template_id, 40) || null,
           install_template_id: str(body.install_template_id, 40) || null,
+          wholesale_price_fcfa: body.wholesale_price_fcfa === "" || body.wholesale_price_fcfa == null ? null : clamp(Math.round(Number(body.wholesale_price_fcfa) || 0), 0, 100_000_000),
           two_step: body.two_step === true,
         };
         if (!row.slug || !row.name) return json({ error: "nom_obligatoire" }, 400);
@@ -602,12 +627,96 @@ Deno.serve(async (req) => {
         return json({ settings: Object.fromEntries((data ?? []).map((r) => [r.key, r.value])) });
       }
       case "settings_set": {
-        const allowed = ["auto_delivery"];
+        const allowed = ["auto_delivery", "payout_threshold", "default_discount_pct", "admin_email"];
         const key = str(body.key, 40);
         if (!allowed.includes(key)) return json({ error: "reglage_inconnu" }, 400);
-        const { error } = await db.from("settings").upsert({ key, value: body.value === true, updated_at: new Date().toISOString() });
+        let value: unknown = body.value === true;
+        if (key === "payout_threshold") value = clamp(Math.round(Number(body.value) || 0), 0, 10_000_000);
+        if (key === "default_discount_pct") value = clamp(Number(body.value) || 0, 0, 90);
+        if (key === "admin_email") { value = str(body.value, 200).toLowerCase(); if (value && !/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/.test(value as string)) return json({ error: "email_invalide" }, 400); }
+        const { error } = await db.from("settings").upsert({ key, value, updated_at: new Date().toISOString() });
         if (error) return json({ error: error.message }, 500);
         return json({ ok: true });
+      }
+
+      // ================= Parrains / revendeurs =================
+      case "parrains_list": {
+        const [{ data: prs }, { data: codes }, { data: orders }, { data: payouts }] = await Promise.all([
+          db.from("parrains").select("*").order("created_at", { ascending: false }),
+          db.from("referral_codes").select("*").order("created_at"),
+          db.from("orders").select("parrain_id, paid_at, status, amount_fcfa, commission_fcfa").not("parrain_id", "is", null).limit(20000),
+          db.from("payouts").select("*, parrains(name, payout_info, phone)").order("created_at", { ascending: false }).limit(500),
+        ]);
+        const rows = (prs ?? []).map((p) => {
+          const os = (orders ?? []).filter((o) => o.parrain_id === p.id && o.paid_at && o.status !== "cancelled");
+          const ps = (payouts ?? []).filter((x) => x.parrain_id === p.id);
+          const earned = os.reduce((s, o) => s + o.commission_fcfa, 0);
+          const out = ps.filter((x) => x.status !== "cancelled").reduce((s, x) => s + x.amount_fcfa, 0);
+          return { ...p, codes: (codes ?? []).filter((c) => c.parrain_id === p.id), sales: os.length, revenue: os.reduce((s, o) => s + o.amount_fcfa, 0),
+            earned, paid: ps.filter((x) => x.status === "paid").reduce((s, x) => s + x.amount_fcfa, 0),
+            to_pay: ps.filter((x) => x.status === "to_pay").reduce((s, x) => s + x.amount_fcfa, 0), balance: earned - out };
+        });
+        return json({ rows, payouts });
+      }
+      case "parrain_save": {
+        const row = { name: str(body.name, 100), email: str(body.email, 200).toLowerCase(), phone: str(body.phone, 30) || null,
+          payout_info: str(body.payout_info, 120) || null, note: str(body.note, 300) || null, status: body.status === "suspended" ? "suspended" : "active" };
+        if (row.name.length < 2) return json({ error: "nom_invalide" }, 400);
+        if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/.test(row.email)) return json({ error: "email_invalide" }, 400);
+        if (body.id) {
+          const { error } = await db.from("parrains").update(row).eq("id", body.id);
+          if (error) return json({ error: String(error.message).includes("duplicate") ? "email_deja_utilise" : error.message }, 400);
+          return json({ ok: true });
+        }
+        const { data: pr, error } = await db.from("parrains").insert(row).select().single();
+        if (error) return json({ error: String(error.message).includes("duplicate") ? "email_deja_utilise" : error.message }, 400);
+        // premier code : prénom en majuscules (+ chiffres si déjà pris), remise par défaut
+        const { data: st } = await db.from("settings").select("value").eq("key", "default_discount_pct").maybeSingle();
+        const pct = Number(st?.value ?? 10) || 10;
+        const base = (row.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").split(/\s+/)[0] || "PARRAIN").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12) || "PARRAIN";
+        for (let i = 0; i < 6; i++) {
+          const code = i === 0 ? base : base + Math.floor(10 + Math.random() * 990);
+          const { error: e2 } = await db.from("referral_codes").insert({ parrain_id: pr.id, code, discount_pct: pct, label: "Lien principal" });
+          if (!e2) break;
+        }
+        return json({ ok: true, row: pr });
+      }
+      case "referral_code_admin": { // l'admin peut corriger la remise ou désactiver un code
+        const pct = Math.min(90, Math.max(0, Number(body.discount_pct) || 0));
+        const { error } = await db.from("referral_codes").update({ discount_pct: pct, active: body.active !== false }).eq("id", body.id);
+        if (error) return json({ error: error.message }, 500);
+        return json({ ok: true });
+      }
+      case "payout_set": { // « Marquer payé » ou annuler une demande de versement
+        const status = body.status === "paid" ? "paid" : "cancelled";
+        const { data, error } = await db.from("payouts").update({ status, paid_at: status === "paid" ? new Date().toISOString() : null, note: str(body.note, 200) || null })
+          .eq("id", body.id).eq("status", "to_pay").select("parrain_id");
+        if (error) return json({ error: error.message }, 500);
+        if (!data?.length) return json({ error: "deja_traite" }, 400);
+        return json({ ok: true });
+      }
+
+      // ================= CRM : clients =================
+      case "clients_list": {
+        const { data: orders, error } = await db.from("orders")
+          .select("ref, customer_name, email, phone, status, amount_fcfa, created_at, paid_at, ip, referral_code, source, order_items(product_name, quantity)")
+          .order("created_at", { ascending: false }).limit(10000);
+        if (error) return json({ error: error.message }, 500);
+        // deno-lint-ignore no-explicit-any
+        const by = new Map<string, any>();
+        for (const o of orders ?? []) {
+          const k = String(o.email).toLowerCase();
+          if (!by.has(k)) by.set(k, { email: k, name: o.customer_name, phone: o.phone, ip: o.ip, orders: [], spent: 0, paid_orders: 0, codes: new Set(), first: o.created_at, last: o.created_at });
+          const c = by.get(k);
+          c.orders.push({ ref: o.ref, date: o.created_at, status: o.status, amount: o.amount_fcfa, code: o.referral_code, source: o.source, ip: o.ip,
+            items: (o.order_items ?? []).map((i: { product_name: string; quantity: number }) => (i.quantity > 1 ? i.quantity + " × " : "") + i.product_name).join(", ") });
+          if (o.paid_at && o.status !== "cancelled") { c.spent += o.amount_fcfa; c.paid_orders++; }
+          if (o.referral_code) c.codes.add(o.referral_code);
+          if (!c.phone && o.phone) c.phone = o.phone;
+          if (!c.ip && o.ip) c.ip = o.ip;
+          c.first = o.created_at;
+        }
+        return json({ rows: [...by.values()].map((c) => ({ ...c, codes: [...c.codes] })) });
       }
 
       // ================= Modèles d'email =================
