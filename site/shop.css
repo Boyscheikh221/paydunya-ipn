@@ -177,3 +177,23 @@ footer.site .copy { border-top: 1px solid rgba(255,255,255,.12); margin-top: 22p
 .cookie-bar a { color:var(--bleu); font-weight:700; }
 .cookie-bar .cb-btns { display:flex; gap:8px; }
 .cookie-bar .btn { padding:10px 16px; }
+
+/* ---------- avis clients ---------- */
+.review-box { margin-top: 12px; padding: 10px 12px; border-radius: 12px; background: #FFF8E8; }
+.review-box summary { cursor: pointer; font-weight: 700; }
+.stars-in { display: flex; gap: 4px; margin: 10px 0 6px; }
+.stars-in button { background: none; border: 0; font-size: 30px; line-height: 1; color: #CBD5E1; cursor: pointer; padding: 2px; }
+.stars-in button.on { color: #F5A21B; }
+.stars { color: #F5A21B; letter-spacing: 1px; }
+.stars .off { color: #CBD5E1; }
+.reviews { margin-top: 30px; }
+.review { border-top: 1px solid #E5E7EB; padding: 12px 0; }
+.review .reply { margin: 8px 0 0 14px; padding: 8px 10px; border-left: 3px solid #1E4FB8; background: #F4F8FF; border-radius: 6px; font-size: 14px; }
+.rating-line { display: flex; align-items: center; gap: 8px; margin: 4px 0 8px; font-size: 14px; }
+
+/* ---------- livraison (panier) ---------- */
+.ship-opt { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; margin: 6px 0; border: 1px solid #E5E7EB; border-radius: 12px; cursor: pointer; font-weight: 400; }
+.ship-opt:has(input:checked) { border-color: var(--bleu, #1E4FB8); background: #F4F8FF; }
+.ship-opt input { margin-top: 4px; }
+.ship-opt span { display: flex; flex-direction: column; }
+.hidden { display: none !important; }

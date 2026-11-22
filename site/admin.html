@@ -101,6 +101,7 @@
     <button data-tab="send">📤 Envoi manuel</button>
     <button data-tab="parrains">🤝 Parrains <span id="badgePay" class="badge hidden"></span></button>
     <button data-tab="clients">👥 Clients</button>
+    <button data-tab="reviews">⭐ Avis <span id="badgeRev" class="badge hidden"></span></button>
     <button data-tab="faq">❓ FAQ</button>
     <button data-tab="links">🔗 Liens</button>
     <button data-tab="settings">⚙️ Réglages</button>
@@ -179,6 +180,7 @@
           <div><label>Prix (FCFA)</label><input id="pPrice" type="number" min="0"></div>
           <div><label>Ancien prix barré (promo, facultatif)</label><input id="pCompare" type="number" min="0"></div>
           <div><label>Prix de gros revendeurs (vide = pas de parrainage)</label><input id="pWholesale" type="number" min="0"></div>
+          <div><label>Référence interne (SKU, facultatif)</label><input id="pSku" placeholder="ex : OFF24-PRO" maxlength="60"></div>
         </div>
         <label>Description (affichée sur la fiche produit)</label>
         <textarea id="pDesc" placeholder="Ce que le client reçoit, compatibilité, durée…"></textarea>
@@ -190,7 +192,7 @@
             <input type="hidden" id="pImg"><div id="pImgMsg" class="small"></div>
           </div>
           <div>
-            <div id="pQtyBox" class="hidden"><label>Quantité disponible (vide = illimitée)</label><input id="pQty" type="number" min="0" placeholder="ex : 10"></div>
+            <div id="pQtyBox" class="hidden grid"><div><label>Quantité disponible (vide = illimitée)</label><input id="pQty" type="number" min="0" placeholder="ex : 10"></div><div><label>Poids (grammes)</label><input id="pWeight" type="number" min="0" placeholder="ex : 250"></div></div>
             <div id="pTypeBox">
             <label>Ce que reçoit le client</label>
             <select id="pType">
@@ -222,7 +224,7 @@
         </div>
         <div class="grid">
           <label class="check" id="pAutoLbl"><input type="checkbox" id="pAuto" checked> Livraison automatique après paiement</label>
-          <label class="check"><input type="checkbox" id="pActive" checked> En vente sur le site</label>
+          <div><label>Statut</label><select id="pActive"><option value="1">✅ Publié (visible sur le site)</option><option value="0">📝 Brouillon (caché)</option></select></div>
           <label class="check"><input type="checkbox" id="pFeatured"> Mettre en avant (accueil)</label>
           <div><label>Alerte stock bas sous</label><input id="pLow" type="number" min="0" value="5"></div>
           <div><label>Ordre d'affichage</label><input id="pSort" type="number" min="0" value="0"></div>
@@ -232,6 +234,17 @@
           <label class="check" style="margin:0"><input type="checkbox" id="pTwo"> Livraison en 2 temps : le client reçoit d'abord le logiciel, puis clique « J'ai fini l'installation » pour recevoir sa clé</label>
           <div id="pTwoBox" class="grid" style="margin-top:8px"><div><label>Email d'installation (étape 1)</label><select id="pInstTpl"></select></div></div>
         </div>
+        <details id="pSeoBox" class="box" style="margin:10px 0 0;padding:12px">
+          <summary style="cursor:pointer;font-weight:700">🔎 Référencement Google (facultatif)</summary>
+          <label>Titre pour Google <span id="pSeoTN" class="small"></span></label><input id="pSeoT" maxlength="120" placeholder="ex : Office 2024 Pro Plus — licence à vie, livraison immédiate">
+          <label>Description pour Google <span id="pSeoDN" class="small"></span></label><textarea id="pSeoD" rows="2" maxlength="320" placeholder="1 ou 2 phrases qui donnent envie de cliquer (environ 150 caractères)"></textarea>
+          <div class="small" style="margin-top:6px">Aperçu dans Google :</div>
+          <div style="border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px;background:#fff;max-width:600px">
+            <div class="small" style="color:#4d5156">www.licenceoff.com › produit</div>
+            <div id="pSeoPT" style="color:#1a0dab;font-size:18px;line-height:1.3"></div>
+            <div id="pSeoPD" class="small" style="color:#4d5156"></div>
+          </div>
+        </details>
         <div class="bar" style="margin-top:12px"><button id="pSave" class="green">Enregistrer le produit</button><button id="pReset" class="grey">Nouveau</button></div>
       </div>
       <div class="box"><div class="tablewrap"><table><thead><tr><th></th><th>Produit</th><th>Catégorie</th><th>Prix</th><th>Livraison</th><th>Statut</th><th></th></tr></thead><tbody id="pRows"></tbody></table></div></div>
@@ -381,6 +394,15 @@
       <div class="box"><div class="tablewrap"><table><thead><tr><th>Client</th><th>Commandes</th><th>Dépensé</th><th>Première / dernière</th><th>Parrain</th><th>IP</th></tr></thead><tbody id="clRows"></tbody></table></div></div>
     </section>
 
+    <section id="tab-reviews" class="hidden">
+      <h1>Avis clients</h1>
+      <div class="box">
+        <p class="small" style="margin-top:0">Seuls les acheteurs peuvent laisser un avis, depuis leur page de commande, une fois l'article livré. Un avis n'apparaît sur le site qu'après votre validation.</p>
+        <div class="bar"><select id="rvFilter"><option value="pending">À valider</option><option value="approved">Publiés</option><option value="hidden">Masqués</option><option value="">Tous</option></select></div>
+        <div id="rvList"></div>
+      </div>
+    </section>
+
     <section id="tab-faq" class="hidden">
       <h1>FAQ (questions fréquentes)</h1>
       <div class="box">
@@ -418,6 +440,15 @@
         </div>
         <div class="bar" style="margin-top:10px"><button id="sSavePar" class="green">Enregistrer</button></div>
       </div>
+      <div class="box">
+        <h2 style="margin:0 0 4px">Livraison des produits physiques (Dakar)</h2>
+        <div class="small">Hors de Dakar, le client ne paie pas en ligne : il est invité à vous écrire sur WhatsApp.</div>
+        <div class="grid">
+          <div><label>Livraison à domicile (FCFA, « à partir de »)</label><input id="sShipHome" type="number" min="0"></div>
+          <div><label>Envoi par bus (FCFA)</label><input id="sShipBus" type="number" min="0"></div>
+        </div>
+        <div class="bar" style="margin-top:10px"><button id="sSaveShip" class="green">Enregistrer</button></div>
+      </div>
     </section>
   </main>
 </div>
@@ -448,6 +479,8 @@ const STOCK_TYPES = ["key", "key_file", "stock"];
 let stock = []; // stock de clés par produit (rempli par le tableau de bord)
 const METHOD = { wave: "Wave", orange_money: "Orange Money", free_money: "Free Money", especes: "Espèces", paydunya: "PayDunya", manuel: "Transfert manuel", autre: "Autre" };
 const ERR = {
+  sku_deja_utilise: "Cette référence (SKU) est déjà utilisée par un autre produit.",
+  lien_invalide: "Le lien de téléchargement doit commencer par https://",
   out_of_stock: "Stock insuffisant : la commande est payée et sera livrée dès que vous ajoutez du stock.",
   to_process: "Commande payée. Certains articles sont à traiter par vous (voir « À traiter »).",
   modele_incomplet: "Remplissez le nom, l'objet et le texte du modèle.", modele_par_defaut: "Choisissez d'abord un autre modèle par défaut.", email_invalide: "Adresse email invalide.",
@@ -512,7 +545,7 @@ async function uploadImage(input, hidden, preview, msg) {
 }
 
 // ---------- navigation ----------
-const loaders = { dash: loadDash, orders: loadOrders, products: loadProducts, keys: loadKeys, blog: loadBlog, emails: loadTemplates, send: loadSend, parrains: loadParrains, clients: loadClients, faq: loadFaq, links: loadLinks, settings: loadSettings };
+const loaders = { dash: loadDash, orders: loadOrders, products: loadProducts, keys: loadKeys, blog: loadBlog, emails: loadTemplates, send: loadSend, parrains: loadParrains, clients: loadClients, reviews: loadReviews, faq: loadFaq, links: loadLinks, settings: loadSettings };
 document.querySelectorAll("nav [data-tab]").forEach((b) => b.addEventListener("click", () => openTab(b.dataset.tab)));
 function openTab(t) {
   document.querySelectorAll("nav [data-tab]").forEach((b) => b.classList.toggle("on", b.dataset.tab === t));
@@ -535,6 +568,7 @@ async function loadRefs() {
 async function loadDash() {
   const [d, s] = await Promise.all([api({ action: "dashboard" }), api({ action: "settings_get" })]);
   stock = d.stock || [];
+  $("badgeRev").classList.toggle("hidden", !d.reviews_pending); $("badgeRev").textContent = d.reviews_pending || "";
   settings = s.settings;
   $("autoWarn").classList.toggle("hidden", settings.auto_delivery !== false);
   const pays = d.payouts || [];
@@ -641,7 +675,8 @@ async function loadOrders() {
       td(el("strong", o.ref), el("br"), el("span", dt(o.created_at), "small"), el("br"), el("span", o.source === "admin" ? "vente manuelle" : "site", "small")),
       td(el("strong", o.customer_name), el("br"), el("span", o.email, "small"), el("br"), el("span", o.phone || "", "small"),
         o.referral_code ? el("div", "🤝 " + o.referral_code + " · remise " + fcfa(o.discount_fcfa) + " · gain parrain " + fcfa(o.commission_fcfa), "small") : null,
-        o.ip ? el("div", "IP " + o.ip, "small mono") : null),
+        o.ip ? el("div", "IP " + o.ip, "small mono") : null,
+        o.shipping_method ? shipInfo(o) : null),
       cItems,
       td(el("strong", fcfa(o.amount_fcfa)), el("br"), el("span", METHOD[o.payment_method] || o.payment_method || "—", "small"), el("br"), el("span", o.payment_ref || "", "small mono")),
       td(tag(o.status), o.emailed_at ? el("div", "✉ email envoyé " + dt(o.emailed_at), "small") : null, o.note ? el("div", o.note, "small") : null),
@@ -694,6 +729,16 @@ function syncType() {
   $("pAutoLbl").classList.toggle("hidden", phys);
 }
 $("pPhysical").addEventListener("change", syncType);
+// aperçu Google : titre ~60 caractères, description ~155
+function seoPrev() {
+  const t = $("pSeoT").value.trim() || ($("pName").value.trim() ? $("pName").value.trim() + " — licenceoff" : "Titre du produit");
+  const d = ($("pSeoD").value.trim() || $("pDesc").value.trim() || "Description du produit").replace(/\s+/g, " ");
+  $("pSeoPT").textContent = t.length > 60 ? t.slice(0, 59) + "…" : t;
+  $("pSeoPD").textContent = d.length > 158 ? d.slice(0, 157) + "…" : d;
+  $("pSeoTN").textContent = "(" + $("pSeoT").value.length + "/60 conseillé)";
+  $("pSeoDN").textContent = "(" + $("pSeoD").value.length + "/155 conseillé)";
+}
+for (const id of ["pSeoT", "pSeoD", "pName", "pDesc"]) $(id).addEventListener("input", seoPrev);
 function keysInfo(p) {
   const s = p ? stock.find((x) => x.id === p.id) : null;
   $("pKeysInfo").textContent = s ? (s.available ?? 0) + " en stock" + (s.reusable ? " (dont un sérialiseur réutilisable)" : "") : "";
@@ -723,7 +768,7 @@ async function loadProducts() {
     td(catName[p.category_id] || "—"),
     td(fcfa(p.price_fcfa)),
     td(TYPES[p.delivery_type] || p.delivery_type, el("br"), el("span", p.delivery_type === "physical" ? (p.stock_qty == null ? "quantité illimitée" : p.stock_qty + " en stock") : p.auto_deliver ? "automatique" : "manuelle", "small")),
-    td(tag(p.active ? "sale" : "hidden")),
+    td(tag(p.active ? "pub" : "draft"), p.sku ? el("div", p.sku, "small mono") : null),
     td(btn("Modifier", "grey", () => editProduct(p))))));
   renderCategories();
 }
@@ -733,18 +778,19 @@ function editProduct(p) {
   $("pCompare").value = p.compare_price_fcfa || ""; $("pWholesale").value = p.wholesale_price_fcfa ?? ""; $("pDesc").value = p.description || ""; $("pImg").value = p.image_url || "";
   $("pImgPrev").src = p.image_url || ""; $("pImgPrev").classList.toggle("hidden", !p.image_url); $("pImgMsg").textContent = "";
   const ext = /^https:\/\//i.test(p.installer_path || "");
-  $("pPhysical").checked = p.delivery_type === "physical"; $("pQty").value = p.stock_qty ?? "";
+  $("pPhysical").checked = p.delivery_type === "physical"; $("pQty").value = p.stock_qty ?? ""; $("pWeight").value = p.weight_g ?? ""; $("pSku").value = p.sku || "";
+  $("pSeoT").value = p.seo_title || ""; $("pSeoD").value = p.seo_description || ""; seoPrev();
   $("pType").value = p.delivery_type === "physical" ? "key" : p.delivery_type; $("pLink").value = ext ? p.installer_path : ""; $("pKeys").value = ""; $("pKeysReuse").checked = false; keysInfo(p);
   syncType(); loadFiles(ext ? "" : p.installer_path || "").catch(() => {});
-  $("pAuto").checked = p.auto_deliver !== false; $("pActive").checked = p.active; $("pFeatured").checked = p.featured;
+  $("pAuto").checked = p.auto_deliver !== false; $("pActive").value = p.active ? "1" : "0"; $("pFeatured").checked = p.featured;
   $("pLow").value = p.low_stock_threshold; $("pSort").value = p.sort || 0; $("pTpl").value = p.email_template_id || ""; $("pTwo").checked = !!p.two_step; $("pInstTpl").value = p.install_template_id || ""; twoVis();
   $("pForm").scrollIntoView({ behavior: "smooth" });
 }
 function resetProduct() {
   $("pFormTitle").textContent = "Nouveau produit";
   for (const id of ["pId", "pName", "pPrice", "pCompare", "pWholesale", "pDesc", "pImg", "pFile"]) $(id).value = "";
-  $("pCat").value = ""; $("pType").value = "key"; $("pPhysical").checked = false; $("pQty").value = ""; $("pLink").value = ""; $("pKeys").value = ""; $("pKeysReuse").checked = false; keysInfo(null); syncType(); $("pImgPrev").classList.add("hidden"); $("pImgMsg").textContent = "";
-  $("pAuto").checked = true; $("pActive").checked = true; $("pFeatured").checked = false; $("pLow").value = 5; $("pSort").value = 0; $("pTpl").value = ""; $("pTwo").checked = false; $("pInstTpl").value = ""; twoVis();
+  $("pCat").value = ""; $("pType").value = "key"; $("pPhysical").checked = false; $("pQty").value = ""; $("pWeight").value = ""; $("pSku").value = ""; $("pSeoT").value = ""; $("pSeoD").value = ""; seoPrev(); $("pLink").value = ""; $("pKeys").value = ""; $("pKeysReuse").checked = false; keysInfo(null); syncType(); $("pImgPrev").classList.add("hidden"); $("pImgMsg").textContent = "";
+  $("pAuto").checked = true; $("pActive").value = "1"; $("pFeatured").checked = false; $("pLow").value = 5; $("pSort").value = 0; $("pTpl").value = ""; $("pTwo").checked = false; $("pInstTpl").value = ""; twoVis();
 }
 $("pReset").addEventListener("click", resetProduct);
 $("pSave").addEventListener("click", async () => {
@@ -753,7 +799,7 @@ $("pSave").addEventListener("click", async () => {
     if (link && !/^https:\/\/\S+$/i.test(link)) return toast("Le lien doit commencer par https://");
     const saved = await api({ action: "product_save", id: $("pId").value || undefined, name: $("pName").value, category_id: $("pCat").value, stock_qty: $("pQty").value,
       price_fcfa: $("pPrice").value, compare_price_fcfa: $("pCompare").value, wholesale_price_fcfa: $("pWholesale").value, description: $("pDesc").value, image_url: $("pImg").value,
-      delivery_type: phys ? "physical" : $("pType").value, installer_path: link || $("pFile").value, auto_deliver: $("pAuto").checked, active: $("pActive").checked,
+      delivery_type: phys ? "physical" : $("pType").value, installer_path: link || $("pFile").value, auto_deliver: $("pAuto").checked, active: $("pActive").value === "1", sku: $("pSku").value, weight_g: $("pWeight").value, seo_title: $("pSeoT").value, seo_description: $("pSeoD").value,
       featured: $("pFeatured").checked, low_stock_threshold: $("pLow").value, sort: $("pSort").value, email_template_id: $("pTpl").value, two_step: $("pTwo").checked, install_template_id: $("pInstTpl").value });
     let msg = "Produit enregistré ✔";
     if (!phys && STOCK_TYPES.includes($("pType").value) && $("pKeys").value.trim()) {
@@ -946,7 +992,15 @@ async function loadSettings() {
   const t = $("autoTag"); t.textContent = on ? "Activée" : "Désactivée"; t.className = "tag s-" + (on ? "on" : "off");
   const b = $("autoToggle"); b.textContent = on ? "Désactiver" : "Activer"; b.className = on ? "red" : "green";
   $("sThreshold").value = settings.payout_threshold ?? 10000; $("sDiscount").value = settings.default_discount_pct ?? 10; $("sAdminEmail").value = settings.admin_email || "";
+  $("sShipHome").value = settings.shipping_home_fcfa ?? 1500; $("sShipBus").value = settings.shipping_bus_fcfa ?? 1000;
 }
+$("sSaveShip").addEventListener("click", async () => {
+  try {
+    await api({ action: "settings_set", key: "shipping_home_fcfa", value: $("sShipHome").value });
+    await api({ action: "settings_set", key: "shipping_bus_fcfa", value: $("sShipBus").value });
+    toast("Tarifs de livraison enregistrés ✔"); await loadSettings();
+  } catch (e) { toast(errMsg(e)); }
+});
 $("sSavePar").addEventListener("click", async () => {
   try {
     await api({ action: "settings_set", key: "payout_threshold", value: $("sThreshold").value });
@@ -992,6 +1046,45 @@ $("rSave").addEventListener("click", async () => {
   try { await api({ action: "parrain_save", id: $("rId").value || undefined, name: $("rName").value, email: $("rEmail").value, phone: $("rPhone").value, payout_info: $("rPay").value, status: $("rStatus").value, note: $("rNote").value });
     toast("Parrain enregistré ✔"); resetPar(); loadParrains(); } catch (e) { toast(errMsg(e)); }
 });
+
+// livraison d'une commande physique : mode, frais, adresse, position GPS (lien Google Maps)
+function shipInfo(o) {
+  const b = el("div", null, "small"); b.style.cssText = "margin-top:6px;padding:8px;border-radius:8px;background:#fff7e6";
+  b.append(el("strong", "🚚 " + (o.shipping_method === "bus" ? "Envoi par bus" : "Livraison à domicile") + " · " + fcfa(o.shipping_fee_fcfa)), el("br"),
+    (o.shipping_address || "") + (o.shipping_zone ? " — " + o.shipping_zone : ""));
+  if (o.shipping_lat != null && o.shipping_lng != null) {
+    const a = el("a", "📍 Voir la position sur Google Maps"); a.href = "https://www.google.com/maps?q=" + o.shipping_lat + "," + o.shipping_lng; a.target = "_blank"; a.rel = "noopener";
+    b.append(el("br"), a);
+  }
+  return b;
+}
+
+// ---------- avis clients ----------
+let reviews = [];
+async function loadReviews() { reviews = (await api({ action: "reviews_list" })).rows; renderReviews(); }
+function renderReviews() {
+  const f = $("rvFilter").value, list = reviews.filter((r) => !f || r.status === f);
+  const pend = reviews.filter((r) => r.status === "pending").length;
+  $("badgeRev").classList.toggle("hidden", !pend); $("badgeRev").textContent = pend;
+  const ST_RV = { pending: "⏳ À valider", approved: "✅ Publié", hidden: "🙈 Masqué" };
+  $("rvList").replaceChildren(...list.map((r) => {
+    const b = el("div", null, "box"); b.style.cssText = "margin:10px 0";
+    const o = r.order_items?.orders;
+    b.append(el("strong", "★".repeat(r.rating) + "☆".repeat(5 - r.rating) + "  " + (r.products?.name || "?")), " ", el("span", ST_RV[r.status] || r.status, "small"), el("br"),
+      el("span", r.name + " · " + dt(r.created_at) + (o ? " · " + o.ref + " · " + o.email : ""), "small"));
+    if (r.comment) b.append(el("p", r.comment));
+    const rep = el("textarea"); rep.rows = 2; rep.placeholder = "Votre réponse publique (facultatif)"; rep.value = r.reply || "";
+    b.append(rep, el("br"));
+    const set = (status) => async () => { await api({ action: "review_set", id: r.id, status, reply: rep.value }); toast("Avis mis à jour ✔"); loadReviews(); };
+    if (r.status !== "approved") b.append(btn("✅ Publier", "green", set("approved")), " ");
+    if (r.status !== "hidden") b.append(btn("🙈 Masquer", "grey", set("hidden")), " ");
+    b.append(btn("💬 Enregistrer la réponse", "grey", set(r.status)), " ",
+      btn("Supprimer", "red", async () => { if (confirm("Supprimer définitivement cet avis ?")) { await api({ action: "review_delete", id: r.id }); loadReviews(); } }));
+    return b;
+  }));
+  if (!list.length) $("rvList").append(el("p", "Aucun avis ici.", "small"));
+}
+$("rvFilter").addEventListener("change", renderReviews);
 
 // ---------- clients (CRM) ----------
 let clients = [];

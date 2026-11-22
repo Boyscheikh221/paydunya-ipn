@@ -6,13 +6,13 @@
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
 <title>Ma commande — licenceoff</title>
-<link rel="stylesheet" href="/shop.css?v=8">
+<link rel="stylesheet" href="/shop.css?v=9">
 </head>
 <body>
 <main class="wrap" style="max-width:820px">
   <div id="view" style="padding:24px 0"><div class="skeleton"></div></div>
 </main>
-<script src="/shop.js?v=8"></script>
+<script src="/shop.js?v=9"></script>
 <script>
 LO.page("shop");
 const { el, $, fcfa } = LO;
@@ -99,7 +99,29 @@ function itemBlock(i) {
     body.append(el("p", { class: "note", text: i.status === "awaiting_install" || i.status === "to_process" || i.status === "waiting_stock"
       ? "Demande de clé reçue ✔ Elle arrive très vite par email et sur cette page." : "" }));
   } else if (i.status === "to_process") body.append(el("p", { class: "note", text: "Notre équipe traite cet article et vous contacte rapidement sur WhatsApp." }));
+  if (i.reviewed) body.append(el("p", { class: "note", text: "⭐ Merci pour votre avis !" }));
+  else if (i.can_review) body.append(reviewForm(i));
   return box;
+}
+
+// avis client : 1 par article livré, publié après validation
+function reviewForm(i) {
+  let note = 0;
+  const stars = el("div", { class: "stars-in", role: "radiogroup", "aria-label": "Note" });
+  const paint = () => [...stars.children].forEach((b, k) => b.classList.toggle("on", k < note));
+  for (let k = 1; k <= 5; k++) stars.append(el("button", { type: "button", text: "★", "aria-label": k + " sur 5", onclick: () => { note = k; paint(); } }));
+  const txt = el("textarea", { class: "field", rows: "3", maxlength: "1000", placeholder: "Votre avis sur ce produit (facultatif)" });
+  const msg = el("p", { class: "msg" });
+  const send = el("button", { class: "btn", style: "margin-top:8px", text: "Publier mon avis" });
+  send.addEventListener("click", async () => {
+    if (!note) { msg.textContent = "Choisissez une note de 1 à 5 étoiles."; return; }
+    send.disabled = true;
+    const d = await LO.boutique({ action: "review", o: token, i: i.id, rating: note, comment: txt.value }).catch(() => ({ error: "net" }));
+    if (d.ok || d.error === "deja_note") { det.replaceChildren(el("p", { class: "note", style: "margin:0", text: "⭐ Merci ! Votre avis sera visible après vérification." })); return; }
+    send.disabled = false; msg.textContent = "Erreur, réessayez.";
+  });
+  const det = el("details", { class: "review-box" }, el("summary", { text: "⭐ Donner mon avis sur ce produit" }), stars, txt, send, msg);
+  return det;
 }
 
 async function load() {
@@ -147,6 +169,10 @@ async function load() {
     if (autoPay && !o.has_paydunya) { autoPay = false; setTimeout(() => startPay(pay, msg), 300); }
   }
   parts.push(el("div", { class: "panel" }, el("h2", { style: "margin:0 0 4px;font-size:18px", text: "Articles" }), ...o.items.map(itemBlock)));
+  if (o.shipping) parts.push(el("div", { class: "panel" }, el("h2", { style: "margin:0 0 4px;font-size:18px", text: "Livraison" }),
+    el("p", { style: "margin:4px 0", text: (o.shipping.method === "bus" ? "Envoi par bus" : "À domicile") + " · " + fcfa(o.shipping.fee) }),
+    el("p", { class: "note", style: "margin:0", text: [o.shipping.address, o.shipping.zone].filter(Boolean).join(" — ") }),
+    el("p", { class: "note", text: "Nous vous contactons sur WhatsApp pour convenir de la livraison." })));
   parts.push(el("div", { style: "margin-top:16px;display:flex;gap:10px;flex-wrap:wrap" },
     wa("Bonjour, j'ai une question sur ma commande " + o.ref + ".", "Une question ? WhatsApp"),
     el("a", { class: "btn light", href: LO.url.shop, text: "Continuer mes achats" })));

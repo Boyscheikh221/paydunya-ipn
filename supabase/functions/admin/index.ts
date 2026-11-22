@@ -383,7 +383,8 @@ Deno.serve(async (req) => {
           .gte("orders.paid_at", since).limit(5000);
         const { data: visits } = await db.rpc("visit_stats");
         const { data: openPay } = await db.from("payouts").select("amount_fcfa, parrains(name)").eq("status", "to_pay");
-        return json({ stock, orders: recent ?? [], items: top ?? [], visits: visits ?? null, payouts: openPay ?? [] });
+        const { count: reviewsPending } = await db.from("product_reviews").select("id", { count: "exact", head: true }).eq("status", "pending");
+        return json({ stock, orders: recent ?? [], items: top ?? [], visits: visits ?? null, payouts: openPay ?? [], reviews_pending: reviewsPending ?? 0 });
       }
 
       // ================= Commandes =================
@@ -614,14 +615,40 @@ Deno.serve(async (req) => {
           install_template_id: str(body.install_template_id, 40) || null,
           wholesale_price_fcfa: body.wholesale_price_fcfa === "" || body.wholesale_price_fcfa == null ? null : clamp(Math.round(Number(body.wholesale_price_fcfa) || 0), 0, 100_000_000),
           two_step: body.two_step === true,
+          sku: str(body.sku, 60) || null,
+          weight_g: Number(body.weight_g) > 0 ? clamp(Math.round(Number(body.weight_g)), 0, 10_000_000) : null,
+          seo_title: str(body.seo_title, 120) || null,
+          seo_description: str(body.seo_description, 320) || null,
         };
         if (!row.slug || !row.name) return json({ error: "nom_obligatoire" }, 400);
         if (["key_file", "file"].includes(dtype) && !row.installer_path) return json({ error: "fichier_obligatoire" }, 400);
         if (row.installer_path && /^[a-z]+:/i.test(row.installer_path) && !/^https:\/\/[^\s]+$/i.test(row.installer_path)) return json({ error: "lien_invalide" }, 400);
         const r = body.id ? await db.from("products").update(row).eq("id", body.id).select().single()
           : await db.from("products").insert(row).select().single();
-        if (r.error) return json({ error: r.error.message.includes("duplicate") ? "code_deja_utilise" : r.error.message }, 400);
+        if (r.error) return json({ error: r.error.message.includes("sku") ? "sku_deja_utilise" : r.error.message.includes("duplicate") ? "code_deja_utilise" : r.error.message }, 400);
         return json({ row: r.data });
+      }
+
+      // ================= Avis clients =================
+      case "reviews_list": {
+        const { data, error } = await db.from("product_reviews")
+          .select("id, name, rating, comment, reply, status, created_at, products(name, slug), order_items(orders(ref, email))")
+          .order("created_at", { ascending: false }).limit(500);
+        if (error) return json({ error: error.message }, 500);
+        return json({ rows: data });
+      }
+      case "review_set": {
+        const patch: Record<string, unknown> = {};
+        if (["pending", "approved", "hidden"].includes(body.status)) patch.status = body.status;
+        if (body.reply !== undefined) patch.reply = str(body.reply, 1000) || null;
+        const { error } = await db.from("product_reviews").update(patch).eq("id", body.id);
+        if (error) return json({ error: error.message }, 500);
+        return json({ ok: true });
+      }
+      case "review_delete": {
+        const { error } = await db.from("product_reviews").delete().eq("id", body.id);
+        if (error) return json({ error: error.message }, 500);
+        return json({ ok: true });
       }
 
       // ================= Réglages =================
@@ -630,12 +657,13 @@ Deno.serve(async (req) => {
         return json({ settings: Object.fromEntries((data ?? []).map((r) => [r.key, r.value])) });
       }
       case "settings_set": {
-        const allowed = ["auto_delivery", "payout_threshold", "default_discount_pct", "admin_email"];
+        const allowed = ["auto_delivery", "payout_threshold", "default_discount_pct", "admin_email", "shipping_home_fcfa", "shipping_bus_fcfa"];
         const key = str(body.key, 40);
         if (!allowed.includes(key)) return json({ error: "reglage_inconnu" }, 400);
         let value: unknown = body.value === true;
         if (key === "payout_threshold") value = clamp(Math.round(Number(body.value) || 0), 0, 10_000_000);
         if (key === "default_discount_pct") value = clamp(Number(body.value) || 0, 0, 90);
+        if (key === "shipping_home_fcfa" || key === "shipping_bus_fcfa") value = clamp(Math.round(Number(body.value) || 0), 0, 1_000_000);
         if (key === "admin_email") { value = str(body.value, 200).toLowerCase(); if (value && !/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/.test(value as string)) return json({ error: "email_invalide" }, 400); }
         const { error } = await db.from("settings").upsert({ key, value, updated_at: new Date().toISOString() });
         if (error) return json({ error: error.message }, 500);

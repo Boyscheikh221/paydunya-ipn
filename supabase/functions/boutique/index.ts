@@ -34,7 +34,7 @@ function newRef(): string {
 }
 const str = (v: unknown, max: number) => String(v ?? "").trim().slice(0, max);
 const STOCK_TYPES = ["key", "key_file", "stock"];
-const PRODUCT_FIELDS = "id, slug, name, description, image_url, price_fcfa, compare_price_fcfa, delivery_type, featured, sort, category_id, stock_qty";
+const PRODUCT_FIELDS = "id, slug, name, description, image_url, price_fcfa, compare_price_fcfa, delivery_type, featured, sort, category_id, stock_qty, sku, seo_title, seo_description";
 
 // ================= Email automatique de livraison (Resend) =================
 // Secrets : RESEND_API_KEY (obligatoire pour envoyer), RESEND_FROM (facultatif,
@@ -290,6 +290,7 @@ function publicProduct(p: any, counts: Record<string, number>, cats: Record<stri
   return {
     slug: p.slug, name: p.name, description: p.description ?? "", image_url: p.image_url ?? "",
     price_fcfa: p.price_fcfa, compare_price_fcfa: p.compare_price_fcfa ?? null,
+    sku: p.sku ?? null, seo_title: p.seo_title ?? null, seo_description: p.seo_description ?? null,
     delivery_type: p.delivery_type, featured: p.featured,
     category: cats[p.category_id]?.slug ?? null,
     in_stock: needsStock ? left > 0 : true,
@@ -410,8 +411,14 @@ Deno.serve(async (req) => {
       const byId = Object.fromEntries((cats ?? []).map((c) => [c.id, c]));
       const counts = await stockCounts(STOCK_TYPES.includes(p.delivery_type) ? [p.id] : []);
       const cat = byId[p.category_id], parent = cat?.parent_id ? byId[cat.parent_id] : null;
+      // avis validés par l'admin
+      const { data: revs } = await db.from("product_reviews").select("name, rating, comment, reply, created_at")
+        .eq("product_id", p.id).eq("status", "approved").order("created_at", { ascending: false }).limit(200);
+      const all = revs ?? [];
+      const rating = all.length ? { avg: Math.round(all.reduce((s, r) => s + r.rating, 0) / all.length * 10) / 10, count: all.length } : null;
       return json({ product: { ...publicProduct(p, counts, byId), category_name: cat?.name ?? null,
-        category_parent: parent ? { slug: parent.slug, name: parent.name } : null } });
+        category_parent: parent ? { slug: parent.slug, name: parent.name } : null, rating,
+        reviews: all.slice(0, 30).map((r) => ({ name: r.name, rating: r.rating, comment: r.comment ?? "", reply: r.reply ?? "", date: r.created_at })) } });
     }
 
     // ---------- FAQ ----------
@@ -442,6 +449,16 @@ Deno.serve(async (req) => {
       if (body.click === true) await db.rpc("referral_click", { p_id: rc.id }).then(() => {}, () => {});
       return json({ code: rc.code, discount_pct: Number(rc.discount_pct), parrain: String(rc.parrains?.name ?? "").split(/\s+/)[0] });
     }
+    // ---------- Panier : produits physiques et tarifs de livraison ----------
+    case "cart_info": {
+      const slugs = (Array.isArray(body.slugs) ? body.slugs : []).slice(0, 50).map((x: unknown) => str(x, 80));
+      const { data: prods } = slugs.length ? await db.from("products").select("slug, delivery_type").in("slug", slugs).eq("active", true) : { data: [] };
+      return json({
+        physical: (prods ?? []).filter((p) => p.delivery_type === "physical").map((p) => p.slug),
+        shipping: { home: await setting("shipping_home_fcfa", 1500), bus: await setting("shipping_bus_fcfa", 1000) },
+      });
+    }
+
     case "quote": { // prix du panier avec le code parrain (le serveur recalcule tout à la commande)
       const rc = await findCode(normCode(body.code));
       const slugs = (Array.isArray(body.slugs) ? body.slugs : []).slice(0, 30).map((x: unknown) => str(x, 80));
@@ -580,10 +597,26 @@ Deno.serve(async (req) => {
       const commission = rc ? priced.reduce((s, x) => s + x.gain * x.q, 0) : 0;
       if (total <= 0) return json({ error: "montant_invalide" }, 400);
 
+      // livraison des produits physiques (Dakar seulement ; hors Dakar, le client passe par WhatsApp)
+      const hasPhysical = prods.some((p) => p.delivery_type === "physical");
+      let ship: Record<string, unknown> = { shipping_fee_fcfa: 0 };
+      if (hasPhysical) {
+        const sh = body.shipping ?? {};
+        const method = ["home", "bus"].includes(sh.method) ? sh.method : null;
+        const address = str(sh.address, 300), zone = str(sh.zone, 80);
+        if (!method) return json({ error: "livraison_manquante" }, 400);
+        if (address.length < 4) return json({ error: "adresse_manquante" }, 400);
+        const lat = Number(sh.lat), lng = Number(sh.lng);
+        const okPos = sh.lat != null && sh.lng != null && Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+        const fee = Math.max(0, Math.round(await setting(method === "home" ? "shipping_home_fcfa" : "shipping_bus_fcfa", method === "home" ? 1500 : 1000)));
+        ship = { shipping_method: method, shipping_fee_fcfa: fee, shipping_address: address, shipping_zone: zone || null,
+          shipping_lat: okPos ? Math.round(lat * 1e6) / 1e6 : null, shipping_lng: okPos ? Math.round(lng * 1e6) / 1e6 : null };
+      }
+
       for (let i = 0; i < 4; i++) {
         const row = {
           ref: newRef(), public_token: newToken(), customer_name: name, email, phone,
-          amount_fcfa: total, payment_method: "paydunya", source: "site",
+          amount_fcfa: total + Number(ship.shipping_fee_fcfa), payment_method: "paydunya", source: "site", ...ship,
           // CRM / anti-fraude (voir la page Confidentialité)
           ip: (req.headers.get("cf-connecting-ip") ?? req.headers.get("x-forwarded-for")?.split(",")[0] ?? "").trim().slice(0, 64) || null,
           user_agent: (req.headers.get("user-agent") ?? "").slice(0, 200) || null,
@@ -633,12 +666,28 @@ Deno.serve(async (req) => {
       return json({ ok: true, reason: data?.reason });
     }
 
+    // ---------- Avis client (seulement un acheteur, 1 avis par article, validé par l'admin) ----------
+    case "review": {
+      const token = str(body.o, 64), itemId = str(body.i, 40);
+      const rating = Math.round(Number(body.rating));
+      if (!token || !itemId) return json({ error: "not_found" }, 404);
+      if (!(rating >= 1 && rating <= 5)) return json({ error: "note_invalide" }, 400);
+      const { data: o } = await db.from("orders").select("id, customer_name").eq("public_token", token).maybeSingle();
+      if (!o) return json({ error: "not_found" }, 404);
+      const { data: it } = await db.from("order_items").select("id, product_id, status").eq("id", itemId).eq("order_id", o.id).maybeSingle();
+      if (!it || it.status !== "delivered" || !it.product_id) return json({ error: "pas_encore_livre" }, 400);
+      const name = str(body.name, 40) || String(o.customer_name ?? "Client").split(/\s+/)[0];
+      const { error } = await db.from("product_reviews").insert({ product_id: it.product_id, order_item_id: it.id, name, rating, comment: str(body.comment, 1000) || null });
+      if (error) return json({ error: error.message.includes("duplicate") ? "deja_note" : "error" }, 400);
+      return json({ ok: true });
+    }
+
     // ---------- Page de suivi du client ----------
     case "status": {
       const token = str(body.o, 64);
       if (!token) return json({ error: "not_found" }, 404);
       const { data: o } = await db.from("orders")
-        .select("id, ref, status, amount_fcfa, payment_method, payment_ref, paydunya_token, created_at, delivered_at, order_items(id, product_name, delivery_type, unit_price, quantity, status, created_at, claim_requested_at, products(slug, image_url, installer_path))")
+        .select("id, ref, status, amount_fcfa, payment_method, payment_ref, paydunya_token, created_at, delivered_at, shipping_method, shipping_fee_fcfa, shipping_address, shipping_zone, order_items(id, product_name, delivery_type, unit_price, quantity, status, created_at, claim_requested_at, products(slug, image_url, installer_path), product_reviews(id))")
         .eq("public_token", token).maybeSingle();
       if (!o) return json({ error: "not_found" }, 404);
       const paid = ["paid", "processing", "installing", "delivered"].includes(o.status);
@@ -661,6 +710,7 @@ Deno.serve(async (req) => {
       return json({
         ref: o.ref, status: o.status, amount_fcfa: o.amount_fcfa, created_at: o.created_at,
         payment_method: o.payment_method, has_payment_ref: !!o.payment_ref, has_paydunya: !!o.paydunya_token,
+        shipping: o.shipping_method ? { method: o.shipping_method, fee: o.shipping_fee_fcfa, address: o.shipping_address, zone: o.shipping_zone } : null,
         items: items.map((i) => {
           const link = linkByItem[i.id];
           let download = null;
@@ -675,6 +725,9 @@ Deno.serve(async (req) => {
             keys: i.status === "delivered" ? (keysByItem[i.id] ?? []) : [], download,
             id: i.id, can_claim: i.status === "awaiting_install" && !i.claim_requested_at,
             claimed: !!i.claim_requested_at && i.status !== "delivered",
+            // relation 1-1 (order_item_id unique) : PostgREST renvoie un objet, ou un tableau selon la version
+            reviewed: Array.isArray(i.product_reviews) ? i.product_reviews.length > 0 : !!i.product_reviews,
+            can_review: i.status === "delivered" && !!i.products?.slug && !(Array.isArray(i.product_reviews) ? i.product_reviews.length : i.product_reviews),
           };
         }),
       });

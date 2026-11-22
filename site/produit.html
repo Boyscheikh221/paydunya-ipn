@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Produit — licenceoff</title>
-<link rel="stylesheet" href="/shop.css?v=8">
+<link rel="stylesheet" href="/shop.css?v=9">
 </head>
 <body>
 <main class="wrap">
   <div id="view"><div class="product"><div class="skeleton"></div><div class="skeleton"></div></div></div>
 </main>
-<script src="/shop.js?v=8"></script>
+<script src="/shop.js?v=9"></script>
 <script>
 LO.page("shop");
 const { el, $, fcfa } = LO;
@@ -19,8 +19,12 @@ const slug = LO.slugFromPath("produit", "p");
 function show(p) {
   const par = p.category_parent;
   const catPath = p.category ? LO.url.category(p.category, par ? par.slug : null) : null;
-  LO.seo({ title: p.name + " — licenceoff", description: (p.description || p.name).replace(/\s+/g, " ").slice(0, 160), path: LO.url.product(p.slug), image: p.image_url || null });
-  LO.jsonLd({ "@context": "https://schema.org", "@type": "Product", name: p.name, description: p.description || p.name, image: p.image_url || undefined,
+  // titre et description Google : ceux de l'admin s'ils existent, sinon le nom et le début de la description
+  LO.seo({ title: p.seo_title || p.name + " — licenceoff", description: (p.seo_description || p.description || p.name).replace(/\s+/g, " ").slice(0, 160), path: LO.url.product(p.slug), image: p.image_url || null });
+  const rt = p.rating;
+  LO.jsonLd({ "@context": "https://schema.org", "@type": "Product", name: p.name, description: p.seo_description || p.description || p.name, image: p.image_url || undefined, sku: p.sku || undefined,
+    aggregateRating: rt ? { "@type": "AggregateRating", ratingValue: rt.avg, reviewCount: rt.count, bestRating: 5, worstRating: 1 } : undefined,
+    review: rt ? (p.reviews || []).slice(0, 5).map((v) => ({ "@type": "Review", author: { "@type": "Person", name: v.name }, datePublished: String(v.date).slice(0, 10), reviewBody: v.comment || undefined, reviewRating: { "@type": "Rating", ratingValue: v.rating, bestRating: 5 } })) : undefined,
     offers: { "@type": "Offer", price: p.price_fcfa, priceCurrency: "XOF", availability: "https://schema.org/" + (p.in_stock ? "InStock" : "OutOfStock"), url: LO.SITE + LO.url.product(p.slug) } });
   const off = p.compare_price_fcfa && p.compare_price_fcfa > p.price_fcfa ? Math.round(100 - p.price_fcfa * 100 / p.compare_price_fcfa) : 0;
   const qtyIn = el("input", { type: "number", min: "1", max: String(p.max_qty || 20), value: "1", "aria-label": "Quantité" });
@@ -39,6 +43,7 @@ function show(p) {
     el("div", { class: "img" }, p.image_url ? el("img", { src: p.image_url, alt: p.name }) : el("span", { class: "ph", style: "font-size:64px;font-weight:800;color:#94a3b8", text: LO.initials(p.name) })),
     el("div", {},
       el("h1", { text: p.name }),
+      rt ? el("a", { class: "rating-line", href: "#avis" }, starsEl(rt.avg), el("span", { text: String(rt.avg).replace(".", ",") + "/5 · " + rt.count + " avis" })) : null,
       el("div", { class: "price" }, fcfa(p.price_fcfa), off ? el("s", { text: fcfa(p.compare_price_fcfa) }) : null,
         off ? el("span", { class: "tag t-wait", style: "margin-left:8px;vertical-align:middle", text: "-" + off + " %" }) : null),
       el("p", { class: p.in_stock ? "" : "msg", text: p.in_stock ? "✔ En stock" : "Rupture de stock pour le moment. Écrivez-nous sur WhatsApp pour être prévenu." }),
@@ -48,7 +53,23 @@ function show(p) {
         el("li", { text: "Paiement sécurisé : Wave, Orange Money, carte" }),
         el("li", { text: "Assistance à l'installation sur WhatsApp" })),
       p.description ? el("div", {}, el("h2", { style: "font-size:18px;margin:26px 0 8px", text: "Description" }), el("div", { class: "desc", text: p.description })) : null,
-    )));
+    )), reviewsEl(p));
+}
+
+function starsEl(n) {
+  const r = Math.round(n);
+  return el("span", { class: "stars", "aria-label": String(n).replace(".", ",") + " sur 5" }, "★".repeat(r), el("span", { class: "off", text: "★".repeat(5 - r) }));
+}
+function reviewsEl(p) {
+  const list = p.reviews || [];
+  return el("section", { class: "reviews", id: "avis" },
+    el("h2", { style: "font-size:20px;margin:0 0 6px", text: "Avis clients" }),
+    p.rating ? el("div", { class: "rating-line" }, starsEl(p.rating.avg), el("b", { text: String(p.rating.avg).replace(".", ",") + "/5" }), el("span", { class: "note", text: "· " + p.rating.count + " avis d'acheteurs vérifiés" }))
+      : el("p", { class: "note", text: "Pas encore d'avis. Après votre achat, vous pourrez noter ce produit depuis votre page de commande." }),
+    ...list.map((v) => el("div", { class: "review" },
+      el("div", { class: "rating-line", style: "margin:0" }, starsEl(v.rating), el("b", { text: v.name }), el("span", { class: "note", text: new Date(v.date).toLocaleDateString("fr-FR") })),
+      v.comment ? el("p", { style: "margin:6px 0 0", text: v.comment }) : null,
+      v.reply ? el("div", { class: "reply" }, el("b", { text: "Réponse de licenceoff : " }), v.reply) : null)));
 }
 
 if (!slug) location.replace(LO.url.shop);
