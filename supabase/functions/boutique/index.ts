@@ -273,8 +273,31 @@ function publicProduct(p: any, counts: Record<string, number>, cats: Record<stri
   };
 }
 
+// Plan du site pour Google (toujours à jour) : …/functions/v1/boutique?sitemap=1 (cité dans robots.txt)
+async function sitemap() {
+  const site = (Deno.env.get("SITE_URL") ?? "https://www.licenceoff.com").trim().replace(/\/$/, "");
+  const [{ data: cats }, { data: prods }, { data: posts }] = await Promise.all([
+    db.from("categories").select("id, slug").eq("active", true),
+    db.from("products").select("slug, category_id").eq("active", true),
+    db.from("posts").select("slug, published_at").eq("published", true),
+  ]);
+  const used = new Set((prods ?? []).map((p) => p.category_id));
+  const x = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  const day = (d?: string | null) => d ? `<lastmod>${String(d).slice(0, 10)}</lastmod>` : "";
+  const urls = [
+    `<url><loc>${site}/</loc></url>`, `<url><loc>${site}/boutique</loc></url>`, `<url><loc>${site}/blog</loc></url>`, `<url><loc>${site}/faq</loc></url>`,
+    ...(cats ?? []).filter((c) => used.has(c.id)).map((c) => `<url><loc>${site}/categorie/${x(encodeURIComponent(c.slug))}</loc></url>`),
+    // deno-lint-ignore no-explicit-any
+    ...(prods ?? []).map((p: any) => `<url><loc>${site}/produit/${x(encodeURIComponent(p.slug))}</loc></url>`),
+    ...(posts ?? []).map((p) => `<url><loc>${site}/blog/${x(encodeURIComponent(p.slug))}</loc>${day(p.published_at)}</url>`),
+  ];
+  return new Response(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join("\n")}\n</urlset>\n`,
+    { headers: { ...cors, "Content-Type": "application/xml; charset=utf-8", "Cache-Control": "public, max-age=3600" } });
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+  if (req.method === "GET" && new URL(req.url).searchParams.has("sitemap")) return sitemap();
   if (req.method !== "POST") return json({ error: "method" }, 405);
 
   // deno-lint-ignore no-explicit-any

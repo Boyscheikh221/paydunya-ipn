@@ -159,3 +159,11 @@ footer.site .copy { border-top: 1px solid rgba(255,255,255,.12); margin-top: 22p
 @keyframes sk { to { background-position: -200% 0; } }
 /* mobile : la bannière montre déjà les 3 engagements */
 @media (max-width: 640px) { .trust { display: none; } .intro { padding: 18px 0 20px; } .intro p { font-size: 15px; } }
+
+/* fil d'Ariane */
+.crumbs { display:flex; flex-wrap:wrap; align-items:center; gap:6px; font-size:14px; color:#5b6b86; margin:18px 0 6px; }
+.crumbs a { color:var(--bleu, #1E4FB8); text-decoration:none; font-weight:700; }
+.crumbs a:hover { text-decoration:underline; }
+.crumbs .sep { color:#a3b0c6; }
+.crumbs [aria-current] { color:var(--nuit, #0F2A6B); font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:60vw; }
+.chips a.chip { text-decoration:none; display:inline-block; }

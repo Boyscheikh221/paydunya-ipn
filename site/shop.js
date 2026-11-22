@@ -22,6 +22,49 @@ const LO = (() => {
     for (const c of kids.flat()) if (c != null && c !== false) e.append(typeof c === "string" || typeof c === "number" ? String(c) : c);
     return e;
   };
+  // ---------- adresses des pages (courtes et lisibles) ----------
+  const SITE = "https://www.licenceoff.com";
+  const enc = encodeURIComponent;
+  const url = {
+    home: "/", shop: "/boutique", cart: "/panier", blog: "/blog", faq: "/faq",
+    category: (slug) => "/categorie/" + enc(slug),
+    product: (slug) => "/produit/" + enc(slug),
+    post: (slug) => "/blog/" + enc(slug),
+    search: (q) => "/boutique?q=" + enc(q),
+  };
+  // le mot après /produit/, /categorie/ ou /blog/ (sinon l'ancien paramètre ?p= ?c= ?a=)
+  function slugFromPath(prefix, param) {
+    const m = location.pathname.match(new RegExp("^/" + prefix + "/([^/]+)"));
+    if (m) return decodeURIComponent(m[1]);
+    return new URLSearchParams(location.search).get(param) || "";
+  }
+  // titre, description, adresse officielle (canonical) ; remplace l'ancienne adresse dans la barre
+  function seo({ title, description, path, image }) {
+    if (title) document.title = title;
+    const meta = (attr, key, val) => { if (!val) return; let m = document.head.querySelector(`meta[${attr}="${key}"]`); if (!m) { m = document.createElement("meta"); m.setAttribute(attr, key); document.head.append(m); } m.setAttribute("content", val); };
+    meta("name", "description", description); meta("property", "og:title", title); meta("property", "og:description", description);
+    meta("property", "og:image", image); meta("property", "og:type", "website");
+    if (path) {
+      let l = document.head.querySelector('link[rel="canonical"]'); if (!l) { l = document.createElement("link"); l.rel = "canonical"; document.head.append(l); }
+      l.href = SITE + path; meta("property", "og:url", SITE + path);
+      const keep = new URLSearchParams(location.search); for (const k of ["p", "c", "a"]) keep.delete(k);
+      const qs = keep.toString();
+      if (location.pathname !== path) try { history.replaceState(null, "", path + (qs ? "?" + qs : "") + location.hash); } catch (_) {}
+    }
+  }
+  function jsonLd(obj) { const s = document.createElement("script"); s.type = "application/ld+json"; s.textContent = JSON.stringify(obj); document.head.append(s); }
+  // fil d'Ariane : [["Accueil", "/"], ["Catégorie", "/categorie/x"], ["Page actuelle"]]
+  function crumbs(list) {
+    const nav = el("nav", { class: "crumbs", "aria-label": "Fil d'Ariane" });
+    list.forEach(([label, href], i) => {
+      if (i) nav.append(el("span", { class: "sep", "aria-hidden": "true", text: "›" }));
+      nav.append(href && i < list.length - 1 ? el("a", { href, text: label }) : el("span", { "aria-current": "page", text: label }));
+    });
+    jsonLd({ "@context": "https://schema.org", "@type": "BreadcrumbList",
+      itemListElement: list.map(([name, href], i) => ({ "@type": "ListItem", position: i + 1, name, item: href ? SITE + href : undefined })) });
+    return nav;
+  }
+
   const fcfa = (n) => Number(n || 0).toLocaleString("fr-FR") + " FCFA";
 
   async function api(fn, payload) {
@@ -56,22 +99,22 @@ const LO = (() => {
   function header(active) {
     const top = el("div", { class: "top", text: "Licences & solutions numériques • Livraison immédiate • Wave, Orange Money, carte" });
     const nav = el("nav", { class: "main" },
-      el("a", { href: "index.html", class: active === "home" ? "on" : null, text: "Accueil" }),
-      el("a", { href: "index.html#catalogue", class: active === "shop" ? "on" : null, text: "Boutique" }),
-      el("a", { href: "blog.html", class: active === "blog" ? "on" : null, text: "Blog" }),
-      el("a", { href: "faq.html", class: active === "faq" ? "on" : null, text: "FAQ" }),
+      el("a", { href: url.home, class: active === "home" ? "on" : null, text: "Accueil" }),
+      el("a", { href: url.shop, class: active === "shop" ? "on" : null, text: "Boutique" }),
+      el("a", { href: url.blog, class: active === "blog" ? "on" : null, text: "Blog" }),
+      el("a", { href: url.faq, class: active === "faq" ? "on" : null, text: "FAQ" }),
       el("a", { href: "https://wa.me/" + WHATSAPP_NUMBER, target: "_blank", rel: "noopener", text: "Contact" }),
     );
     const burger = el("button", { class: "burger", "aria-label": "Menu", onclick: () => nav.classList.toggle("open") }, icon(ICONS.menu, 24));
     const q = el("input", { type: "search", placeholder: "Rechercher un produit…", "aria-label": "Rechercher" });
     q.value = new URLSearchParams(location.search).get("q") || "";
-    q.addEventListener("keydown", (e) => { if (e.key === "Enter") location.href = "index.html?q=" + encodeURIComponent(q.value.trim()) + "#catalogue"; });
+    q.addEventListener("keydown", (e) => { if (e.key === "Enter") location.href = url.search(q.value.trim()); });
     const h = el("header", { class: "site" }, el("div", { class: "wrap" },
       burger,
-      el("a", { href: "index.html", class: "logo" }, el("span", { class: "a", text: "licence" }), el("span", { class: "b", text: "off" })),
+      el("a", { href: url.home, class: "logo" }, el("span", { class: "a", text: "licence" }), el("span", { class: "b", text: "off" })),
       nav,
       el("div", { class: "search" }, icon(ICONS.search), q),
-      el("a", { href: "panier.html", class: "cart-btn" }, icon(ICONS.cart), el("span", { class: "t", text: "Panier" }), el("span", { class: "n", text: String(cartCount()) })),
+      el("a", { href: url.cart, class: "cart-btn" }, icon(ICONS.cart), el("span", { class: "t", text: "Panier" }), el("span", { class: "n", text: String(cartCount()) })),
     ));
     document.body.prepend(top, h);
   }
@@ -85,7 +128,7 @@ const LO = (() => {
           el("div", {}, el("div", { class: "logo" }, el("span", { class: "a", text: "licence" }), el("span", { class: "b", text: "off" })),
             el("p", { text: "Licences & solutions numériques. Licences et logiciels authentiques, livrés en quelques minutes. Basé à Dakar." }),
             el("p", { class: "tag-line", text: "Vos logiciels, notre engagement !" })),
-          el("div", {}, el("b", { text: "Boutique" }), el("a", { href: "index.html#catalogue", text: "Tous les produits" }), el("a", { href: "panier.html", text: "Mon panier" }), el("a", { href: "blog.html", text: "Blog" }), el("a", { href: "faq.html", text: "Questions fréquentes" })),
+          el("div", {}, el("b", { text: "Boutique" }), el("a", { href: url.shop, text: "Tous les produits" }), el("a", { href: url.cart, text: "Mon panier" }), el("a", { href: url.blog, text: "Blog" }), el("a", { href: url.faq, text: "Questions fréquentes" })),
           el("div", {}, el("b", { text: "Aide" }), el("a", { href: "https://wa.me/" + WHATSAPP_NUMBER, target: "_blank", rel: "noopener", text: "WhatsApp : +" + WHATSAPP_NUMBER }),
             el("span", { text: "Paiement sécurisé via PayDunya" })),
         ),
@@ -101,7 +144,7 @@ const LO = (() => {
   function initials(name) { return String(name || "?").split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase(); }
   function productCard(p, catName) {
     const off = p.compare_price_fcfa && p.compare_price_fcfa > p.price_fcfa ? Math.round(100 - p.price_fcfa * 100 / p.compare_price_fcfa) : 0;
-    const link = "produit.html?p=" + encodeURIComponent(p.slug);
+    const link = url.product(p.slug);
     const btn = el("button", { class: "btn" + (p.in_stock ? "" : " light"), disabled: !p.in_stock, text: p.in_stock ? "Ajouter au panier" : "Rupture de stock" });
     btn.addEventListener("click", (e) => { e.preventDefault(); addToCart(p, 1); toast("Ajouté au panier ✔"); });
     return el("a", { class: "card", href: link },
@@ -120,7 +163,7 @@ const LO = (() => {
     const frag = document.createDocumentFragment();
     const inline = (txt) => {
       const span = document.createDocumentFragment();
-      const re = /\*\*(.+?)\*\*|\[([^\]]+)\]\((https?:\/\/[^\s)]+|[a-z0-9-]+\.html[^\s)]*)\)/g;
+      const re = /\*\*(.+?)\*\*|\[([^\]]+)\]\((https?:\/\/[^\s)]+|\/[^\s)]*|[a-z0-9-]+\.html[^\s)]*)\)/g;
       let last = 0, m;
       while ((m = re.exec(txt))) {
         if (m.index > last) span.append(txt.slice(last, m.index));
@@ -161,5 +204,5 @@ const LO = (() => {
     manual: "Service traité par notre équipe après paiement",
   };
 
-  return { $, el, fcfa, api, boutique, cart, saveCart, addToCart, cartCount, page, toast, productCard, initials, richText, DELIVERY_TEXT };
+  return { url, slugFromPath, seo, jsonLd, crumbs, SITE, $, el, fcfa, api, boutique, cart, saveCart, addToCart, cartCount, page, toast, productCard, initials, richText, DELIVERY_TEXT };
 })();

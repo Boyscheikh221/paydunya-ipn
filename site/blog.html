@@ -5,23 +5,26 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Blog — licenceoff</title>
 <meta name="description" content="Conseils, guides d'installation et actualités sur Windows, Office et les logiciels.">
-<link rel="stylesheet" href="shop.css">
+<link rel="stylesheet" href="/shop.css">
 </head>
 <body>
 <main class="wrap">
-  <section class="block">
+  <div id="crumbs"></div>
+  <section class="block" style="padding-top:8px">
     <h1 style="margin:0 0 6px">Blog</h1>
     <p class="note" style="margin:0 0 18px">Guides d'installation, astuces et actualités.</p>
     <div id="posts" class="posts"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
   </section>
 </main>
-<script src="shop.js"></script>
+<script src="/shop.js"></script>
 <script>
 LO.page("blog");
 const { el, $ } = LO;
+LO.seo({ path: LO.url.blog });
+$("#crumbs").replaceChildren(LO.crumbs([["Accueil", LO.url.home], ["Blog"]]));
 LO.boutique({ action: "posts" }).then((d) => {
   const list = d.posts || [];
-  $("#posts").replaceChildren(...list.map((p) => el("a", { class: "post-card", href: "article.html?a=" + encodeURIComponent(p.slug) },
+  $("#posts").replaceChildren(...list.map((p) => el("a", { class: "post-card", href: LO.url.post(p.slug) },
     el("div", { class: "cv" }, p.cover_url ? el("img", { src: p.cover_url, alt: "", loading: "lazy" }) : null),
     el("div", { class: "body" },
       el("div", { class: "note", text: new Date(p.published_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }) }),

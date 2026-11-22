@@ -6,13 +6,13 @@
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
 <title>Ma commande — licenceoff</title>
-<link rel="stylesheet" href="shop.css">
+<link rel="stylesheet" href="/shop.css">
 </head>
 <body>
 <main class="wrap" style="max-width:820px">
   <div id="view" style="padding:24px 0"><div class="skeleton"></div></div>
 </main>
-<script src="shop.js"></script>
+<script src="/shop.js"></script>
 <script>
 LO.page("shop");
 const { el, $, fcfa } = LO;
@@ -149,7 +149,7 @@ async function load() {
   parts.push(el("div", { class: "panel" }, el("h2", { style: "margin:0 0 4px;font-size:18px", text: "Articles" }), ...o.items.map(itemBlock)));
   parts.push(el("div", { style: "margin-top:16px;display:flex;gap:10px;flex-wrap:wrap" },
     wa("Bonjour, j'ai une question sur ma commande " + o.ref + ".", "Une question ? WhatsApp"),
-    el("a", { class: "btn light", href: "index.html#catalogue", text: "Continuer mes achats" })));
+    el("a", { class: "btn light", href: LO.url.shop, text: "Continuer mes achats" })));
   parts.push(el("p", { class: "note", style: "margin-top:12px", text: "Gardez précieusement le lien de cette page : c'est ici que vous retrouvez vos clés et téléchargements." }));
   view.replaceChildren(...parts);
 

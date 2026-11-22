@@ -5,14 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>Mon panier — licenceoff</title>
-<link rel="stylesheet" href="shop.css">
+<link rel="stylesheet" href="/shop.css">
 </head>
 <body>
 <main class="wrap">
   <h1 style="margin:24px 0 0">Mon panier</h1>
   <div id="view"></div>
 </main>
-<script src="shop.js"></script>
+<script src="/shop.js"></script>
 <script>
 LO.page("shop");
 const { el, $, fcfa } = LO;
@@ -30,7 +30,7 @@ function render() {
   const view = $("#view");
   if (!items.length) {
     view.replaceChildren(el("div", { class: "panel empty", style: "margin:24px 0" },
-      el("p", { text: "Votre panier est vide." }), el("a", { class: "btn", href: "index.html#catalogue", text: "Découvrir la boutique" })));
+      el("p", { text: "Votre panier est vide." }), el("a", { class: "btn", href: LO.url.shop, text: "Découvrir la boutique" })));
     return;
   }
   const total = items.reduce((s, i) => s + i.price * i.qty, 0);
@@ -39,9 +39,9 @@ function render() {
     const setQ = (n) => { const all = LO.cart(); all[idx].qty = Math.max(1, Math.min(i.max || 20, Math.floor(n) || 1)); LO.saveCart(all); render(); };
     q.addEventListener("change", () => setQ(Number(q.value)));
     return el("div", { class: "line" },
-      el("a", { class: "th", href: "produit.html?p=" + encodeURIComponent(i.slug) }, i.image ? el("img", { src: i.image, alt: "" }) : LO.initials(i.name)),
+      el("a", { class: "th", href: LO.url.product(i.slug) }, i.image ? el("img", { src: i.image, alt: "" }) : LO.initials(i.name)),
       el("div", {},
-        el("a", { class: "nm", href: "produit.html?p=" + encodeURIComponent(i.slug), style: "color:inherit", text: i.name }),
+        el("a", { class: "nm", href: LO.url.product(i.slug), style: "color:inherit", text: i.name }),
         el("div", { class: "note", text: fcfa(i.price) + " l'unité" }),
         el("div", { style: "display:flex;gap:12px;align-items:center;margin-top:6px" },
           el("div", { class: "qty", style: "transform:scale(.85);transform-origin:left" },
@@ -63,7 +63,7 @@ function render() {
       });
       if (d.token) {
         LO.saveCart([]);
-        location.href = "commande.html?o=" + encodeURIComponent(d.token) + "&pay=1";
+        location.href = "/commande?o=" + encodeURIComponent(d.token) + "&pay=1";
         return;
       }
       msg.textContent = d.error === "stock_insuffisant"

@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boutique — licenceoff</title>
+<meta name="description" content="Tous nos produits : licences Windows, Microsoft Office, logiciels et services informatiques. Livraison immédiate au Sénégal.">
+<meta name="theme-color" content="#1E4FB8">
+<link rel="stylesheet" href="/shop.css">
+</head>
+<body>
+<main class="wrap">
+  <div id="crumbs"></div>
+  <div class="sec-title" style="margin-top:6px"><h1 id="catTitle" style="margin:0;font-size:28px">Boutique</h1><span id="count" class="note"></span></div>
+  <p id="catIntro" class="note" style="margin:6px 0 14px"></p>
+  <nav id="chips" class="chips" aria-label="Catégories"></nav>
+  <div id="grid" class="grid" style="margin:14px 0 30px">
+    <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
+  </div>
+</main>
+<script src="/shop.js"></script>
+<script>
+LO.page("shop");
+const { el, $, url } = LO;
+// /boutique = tous les produits ; /categorie/licences-windows = une catégorie
+const current = LO.slugFromPath("categorie", "c");
+const query = (new URLSearchParams(location.search).get("q") || "").trim();
+const INTRO = {
+  "licences-windows": "Licences Windows 10 et Windows 11 authentiques, livrées en quelques minutes.",
+  "microsoft-office": "Microsoft Office et Microsoft 365 : licences authentiques et logiciel à télécharger.",
+  "logiciels": "Antivirus, utilitaires et logiciels professionnels avec licence officielle.",
+  "services-informatiques": "Installation, dépannage et assistance informatique à Dakar et à distance.",
+};
+
+function render(data) {
+  const cat = data.categories.find((c) => c.slug === current);
+  const names = Object.fromEntries(data.categories.map((c) => [c.slug, c.name]));
+  if (current && !cat) {
+    $("#crumbs").replaceChildren(LO.crumbs([["Accueil", url.home], ["Boutique", url.shop], ["Catégorie introuvable"]]));
+    $("#catTitle").textContent = "Catégorie introuvable";
+    $("#grid").replaceChildren(el("div", { class: "empty" }, el("p", { text: "Cette catégorie n'existe plus." }), el("a", { class: "btn", href: url.shop, text: "Voir tous les produits" })));
+    return;
+  }
+  const title = query ? "Résultats pour « " + query + " »" : cat ? cat.name : "Tous les produits";
+  LO.seo({
+    title: (cat ? cat.name : "Boutique") + " — licenceoff",
+    description: cat ? (INTRO[cat.slug] || cat.name + " : achat en ligne, livraison immédiate au Sénégal.") : "Tous nos produits : licences Windows, Microsoft Office, logiciels et services informatiques. Livraison immédiate au Sénégal.",
+    path: query ? null : cat ? url.category(cat.slug) : url.shop,
+  });
+  $("#crumbs").replaceChildren(LO.crumbs(cat ? [["Accueil", url.home], ["Boutique", url.shop], [cat.name]] : [["Accueil", url.home], ["Boutique"]]));
+  $("#catTitle").textContent = title;
+  $("#catIntro").textContent = cat ? (INTRO[cat.slug] || "") : "";
+  $("#chips").replaceChildren(
+    el("a", { class: "chip" + (current ? "" : " on"), href: url.shop, text: "Tout" }),
+    ...data.categories.filter((c) => data.products.some((p) => p.category === c.slug))
+      .map((c) => el("a", { class: "chip" + (current === c.slug ? " on" : ""), href: url.category(c.slug), text: c.name })));
+  let list = data.products.filter((p) => !current || p.category === current);
+  if (query) { const q = query.toLowerCase(); list = list.filter((p) => (p.name + " " + p.description).toLowerCase().includes(q)); }
+  $("#count").textContent = list.length + " produit" + (list.length > 1 ? "s" : "");
+  const grid = $("#grid");
+  grid.replaceChildren(...list.map((p) => LO.productCard(p, names[p.category])));
+  if (!list.length) grid.append(el("div", { class: "empty" }, el("p", { text: query ? "Aucun produit ne correspond à votre recherche." : "Aucun produit dans cette catégorie pour le moment." }),
+    el("a", { class: "btn", href: url.shop, text: "Voir tous les produits" })));
+}
+
+LO.boutique({ action: "catalog" }).then((d) => { if (d.products) render(d); else throw 0; })
+  .catch(() => $("#grid").replaceChildren(el("div", { class: "empty", text: "Impossible de charger les produits. Réessayez dans un instant." })));
+</script>
+</body>
+</html>

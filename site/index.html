@@ -7,15 +7,17 @@
 <meta property="og:image" content="https://www.licenceoff.com/img/banniere.jpg">
 <meta name="theme-color" content="#1E4FB8">
 <meta name="description" content="Achetez vos licences Windows, Microsoft Office et logiciels authentiques. Livraison immédiate, paiement Wave, Orange Money ou carte.">
-<link rel="stylesheet" href="shop.css">
+<link rel="canonical" href="https://www.licenceoff.com/">
+<meta property="og:title" content="licenceoff — Licences & solutions numériques au Sénégal">
+<link rel="stylesheet" href="/shop.css">
 </head>
 <body>
 <main>
   <section class="hero-banner">
     <picture>
-      <source media="(max-width: 640px)" srcset="img/banniere-mobile.webp">
-      <source type="image/webp" srcset="img/banniere-900.webp 900w, img/banniere-1600.webp 1600w" sizes="100vw">
-      <img src="img/banniere.jpg" width="1600" height="595" alt="licenceoff — Licences &amp; solutions numériques : Windows, Office, Solutions PC. Commande rapide, assistance personnalisée, livraison numérique." fetchpriority="high">
+      <source media="(max-width: 640px)" srcset="/img/banniere-mobile.webp">
+      <source type="image/webp" srcset="/img/banniere-900.webp 900w, /img/banniere-1600.webp 1600w" sizes="100vw">
+      <img src="/img/banniere.jpg" width="1600" height="595" alt="licenceoff — Licences &amp; solutions numériques : Windows, Office, Solutions PC. Commande rapide, assistance personnalisée, livraison numérique." fetchpriority="high">
     </picture>
   </section>
   <section class="intro">
@@ -24,7 +26,7 @@
         <h1>Licences &amp; solutions numériques au Sénégal</h1>
         <p>Windows, Office et logiciels authentiques, livrés en quelques minutes. <span class="hand">Vos logiciels, notre engagement !</span></p>
       </div>
-      <a class="btn orange" href="#catalogue">Voir la boutique</a>
+      <a class="btn orange" href="/boutique">Voir la boutique</a>
     </div>
   </section>
   <div class="wrap">
@@ -38,9 +40,9 @@
   <section class="block">
     <div class="wrap">
       <div class="pillars">
-        <a class="pillar" href="index.html?c=licences-windows#catalogue"><span class="sq"><svg width="30" height="30" viewBox="0 0 24 24" fill="#fff"><path d="M3 5.5 10.5 4.4v7.1H3zM11.5 4.3 21 3v8.5h-9.5zM3 12.5h7.5v7.1L3 18.5zM11.5 12.5H21V21l-9.5-1.3z"/></svg></span>Windows<small>Licences Windows 10 et 11</small></a>
-        <a class="pillar" href="index.html?c=microsoft-office#catalogue"><span class="sq o"><svg width="28" height="28" viewBox="0 0 24 24" fill="#fff"><path d="M14 2 4 5.5v13L14 22l6-2V4zm0 3v14l-6.5-2.2V7.4z"/></svg></span>Office<small>Microsoft Office et 365</small></a>
-        <a class="pillar" href="index.html?c=services-informatiques#catalogue"><span class="sq"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 2.5 15.3 0 18M12 3c-2.5 2.7-2.5 15.3 0 18"/></svg></span>Solutions PC<small>Logiciels et services informatiques</small></a>
+        <a class="pillar" href="/categorie/licences-windows"><span class="sq"><svg width="30" height="30" viewBox="0 0 24 24" fill="#fff"><path d="M3 5.5 10.5 4.4v7.1H3zM11.5 4.3 21 3v8.5h-9.5zM3 12.5h7.5v7.1L3 18.5zM11.5 12.5H21V21l-9.5-1.3z"/></svg></span>Windows<small>Licences Windows 10 et 11</small></a>
+        <a class="pillar" href="/categorie/microsoft-office"><span class="sq o"><svg width="28" height="28" viewBox="0 0 24 24" fill="#fff"><path d="M14 2 4 5.5v13L14 22l6-2V4zm0 3v14l-6.5-2.2V7.4z"/></svg></span>Office<small>Microsoft Office et 365</small></a>
+        <a class="pillar" href="/categorie/services-informatiques"><span class="sq"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 2.5 15.3 0 18M12 3c-2.5 2.7-2.5 15.3 0 18"/></svg></span>Solutions PC<small>Logiciels et services informatiques</small></a>
       </div>
     </div>
   </section>
@@ -54,8 +56,8 @@
 
   <section class="block" id="catalogue">
     <div class="wrap">
-      <div class="sec-title"><h2 id="catTitle">Tous les produits</h2><span id="count" class="note"></span></div>
-      <div id="chips" class="chips"></div>
+      <div class="sec-title"><h2 id="catTitle">Tous les produits</h2><a href="/boutique">Toute la boutique →</a></div>
+      <nav id="chips" class="chips" aria-label="Catégories"></nav>
       <div id="grid" class="grid" style="margin-top:14px">
         <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
       </div>
@@ -64,48 +66,33 @@
 
   <section class="block" id="blogBlock" hidden>
     <div class="wrap">
-      <div class="sec-title"><h2>Derniers articles</h2><a href="blog.html">Tout le blog →</a></div>
+      <div class="sec-title"><h2>Derniers articles</h2><a href="/blog">Tout le blog →</a></div>
       <div id="posts" class="posts"></div>
     </div>
   </section>
 </main>
 
-<script src="shop.js"></script>
+<script src="/shop.js"></script>
 <script>
 LO.page("home");
 const { el, $ } = LO;
+// anciennes adresses (?c= ou ?q=) → nouvelles pages
 const params = new URLSearchParams(location.search);
-let current = params.get("c") || "";
-const query = (params.get("q") || "").trim().toLowerCase();
+if (params.get("c")) location.replace(LO.url.category(params.get("c")));
+else if (params.get("q")) location.replace(LO.url.search(params.get("q")));
 let data = { categories: [], products: [] };
 
 function render() {
   const names = Object.fromEntries(data.categories.map((c) => [c.slug, c.name]));
-  // filtres par catégorie
-  const chips = $("#chips");
-  chips.replaceChildren(
-    el("button", { class: "chip" + (current ? "" : " on"), text: "Tout", onclick: () => select("") }),
+  $("#chips").replaceChildren(
+    el("a", { class: "chip on", href: LO.url.shop, text: "Tout" }),
     ...data.categories.filter((c) => data.products.some((p) => p.category === c.slug))
-      .map((c) => el("button", { class: "chip" + (current === c.slug ? " on" : ""), text: c.name, onclick: () => select(c.slug) })),
-  );
-  let list = data.products.filter((p) => !current || p.category === current);
-  if (query) list = list.filter((p) => (p.name + " " + p.description).toLowerCase().includes(query));
-  $("#catTitle").textContent = query ? "Résultats pour « " + query + " »" : current ? names[current] || "Produits" : "Tous les produits";
-  $("#count").textContent = list.length + " produit" + (list.length > 1 ? "s" : "");
-  const grid = $("#grid");
-  grid.replaceChildren(...list.map((p) => LO.productCard(p, names[p.category])));
-  if (!list.length) grid.append(el("div", { class: "empty", text: query ? "Aucun produit ne correspond à votre recherche." : "Aucun produit dans cette catégorie pour le moment." }));
-
+      .map((c) => el("a", { class: "chip", href: LO.url.category(c.slug), text: c.name })));
+  $("#grid").replaceChildren(...data.products.slice(0, 12).map((p) => LO.productCard(p, names[p.category])));
+  if (!data.products.length) $("#grid").append(el("div", { class: "empty", text: "Aucun produit pour le moment." }));
   const feat = data.products.filter((p) => p.featured).slice(0, 4);
-  $("#featuredBlock").hidden = !feat.length || !!current || !!query;
+  $("#featuredBlock").hidden = !feat.length;
   $("#featured").replaceChildren(...feat.map((p) => LO.productCard(p, names[p.category])));
-}
-function select(slug) {
-  current = slug;
-  const u = new URL(location.href);
-  slug ? u.searchParams.set("c", slug) : u.searchParams.delete("c");
-  history.replaceState(null, "", u);
-  render();
 }
 
 LO.boutique({ action: "catalog" }).then((d) => { if (d.products) { data = d; render(); } else throw 0; })
@@ -118,7 +105,7 @@ LO.boutique({ action: "posts", limit: 3 }).then((d) => {
 }).catch(() => {});
 
 function postCard(p) {
-  return el("a", { class: "post-card", href: "article.html?a=" + encodeURIComponent(p.slug) },
+  return el("a", { class: "post-card", href: LO.url.post(p.slug) },
     el("div", { class: "cv" }, p.cover_url ? el("img", { src: p.cover_url, alt: "", loading: "lazy" }) : null),
     el("div", { class: "body" },
       el("div", { class: "note", text: new Date(p.published_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }) }),
