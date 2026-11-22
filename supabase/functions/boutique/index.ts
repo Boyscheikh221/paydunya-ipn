@@ -277,16 +277,19 @@ function publicProduct(p: any, counts: Record<string, number>, cats: Record<stri
 async function sitemap() {
   const site = (Deno.env.get("SITE_URL") ?? "https://www.licenceoff.com").trim().replace(/\/$/, "");
   const [{ data: cats }, { data: prods }, { data: posts }] = await Promise.all([
-    db.from("categories").select("id, slug").eq("active", true),
+    db.from("categories").select("id, slug, parent_id").eq("active", true),
     db.from("products").select("slug, category_id").eq("active", true),
     db.from("posts").select("slug, published_at").eq("published", true),
   ]);
+  const catById = Object.fromEntries((cats ?? []).map((c) => [c.id, c]));
   const used = new Set((prods ?? []).map((p) => p.category_id));
+  for (const id of [...used]) { const par = catById[id as string]?.parent_id; if (par) used.add(par); }
+  const catPath = (c: { slug: string; parent_id: string | null }) => (c.parent_id && catById[c.parent_id] ? encodeURIComponent(catById[c.parent_id].slug) + "/" : "") + encodeURIComponent(c.slug);
   const x = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
   const day = (d?: string | null) => d ? `<lastmod>${String(d).slice(0, 10)}</lastmod>` : "";
   const urls = [
     `<url><loc>${site}/</loc></url>`, `<url><loc>${site}/boutique</loc></url>`, `<url><loc>${site}/blog</loc></url>`, `<url><loc>${site}/faq</loc></url>`,
-    ...(cats ?? []).filter((c) => used.has(c.id)).map((c) => `<url><loc>${site}/categorie/${x(encodeURIComponent(c.slug))}</loc></url>`),
+    ...(cats ?? []).filter((c) => used.has(c.id)).map((c) => `<url><loc>${site}/categorie/${x(catPath(c))}</loc></url>`),
     // deno-lint-ignore no-explicit-any
     ...(prods ?? []).map((p: any) => `<url><loc>${site}/produit/${x(encodeURIComponent(p.slug))}</loc></url>`),
     ...(posts ?? []).map((p) => `<url><loc>${site}/blog/${x(encodeURIComponent(p.slug))}</loc>${day(p.published_at)}</url>`),
@@ -323,14 +326,15 @@ Deno.serve(async (req) => {
     // ---------- Catalogue complet ----------
     case "catalog": {
       const [{ data: cats }, { data: prods, error }] = await Promise.all([
-        db.from("categories").select("id, slug, name, sort").eq("active", true).order("sort").order("name"),
+        db.from("categories").select("id, slug, name, sort, parent_id, description").eq("active", true).order("sort").order("name"),
         db.from("products").select(PRODUCT_FIELDS).eq("active", true).order("sort").order("name"),
       ]);
       if (error) return json({ error: "error" }, 500);
       const byId = Object.fromEntries((cats ?? []).map((c) => [c.id, c]));
       const counts = await stockCounts((prods ?? []).filter((p) => STOCK_TYPES.includes(p.delivery_type)).map((p) => p.id));
       return json({
-        categories: (cats ?? []).map((c) => ({ slug: c.slug, name: c.name })),
+        // parent = slug de la catégorie principale (null pour une catégorie principale)
+        categories: (cats ?? []).map((c) => ({ slug: c.slug, name: c.name, description: c.description ?? "", parent: byId[c.parent_id]?.slug ?? null })),
         products: (prods ?? []).map((p) => publicProduct(p, counts, byId)),
       });
     }
@@ -339,10 +343,12 @@ Deno.serve(async (req) => {
     case "product": {
       const { data: p } = await db.from("products").select(PRODUCT_FIELDS).eq("slug", str(body.slug, 80)).eq("active", true).maybeSingle();
       if (!p) return json({ error: "not_found" }, 404);
-      const { data: cats } = await db.from("categories").select("id, slug, name");
+      const { data: cats } = await db.from("categories").select("id, slug, name, parent_id");
       const byId = Object.fromEntries((cats ?? []).map((c) => [c.id, c]));
       const counts = await stockCounts(STOCK_TYPES.includes(p.delivery_type) ? [p.id] : []);
-      return json({ product: { ...publicProduct(p, counts, byId), category_name: byId[p.category_id]?.name ?? null } });
+      const cat = byId[p.category_id], parent = cat?.parent_id ? byId[cat.parent_id] : null;
+      return json({ product: { ...publicProduct(p, counts, byId), category_name: cat?.name ?? null,
+        category_parent: parent ? { slug: parent.slug, name: parent.name } : null } });
     }
 
     // ---------- FAQ ----------
@@ -408,6 +414,9 @@ Deno.serve(async (req) => {
         const row = {
           ref: newRef(), public_token: newToken(), customer_name: name, email, phone,
           amount_fcfa: total, payment_method: "paydunya", source: "site",
+          // CRM / anti-fraude (voir la page Confidentialité)
+          ip: (req.headers.get("cf-connecting-ip") ?? req.headers.get("x-forwarded-for")?.split(",")[0] ?? "").trim().slice(0, 64) || null,
+          user_agent: (req.headers.get("user-agent") ?? "").slice(0, 200) || null,
         };
         const { data: o, error } = await db.from("orders").insert(row).select("id").single();
         if (error) {

@@ -4,20 +4,21 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Produit — licenceoff</title>
-<link rel="stylesheet" href="/shop.css?v=4">
+<link rel="stylesheet" href="/shop.css?v=5">
 </head>
 <body>
 <main class="wrap">
   <div id="view"><div class="product"><div class="skeleton"></div><div class="skeleton"></div></div></div>
 </main>
-<script src="/shop.js?v=4"></script>
+<script src="/shop.js?v=5"></script>
 <script>
 LO.page("shop");
 const { el, $, fcfa } = LO;
 const slug = LO.slugFromPath("produit", "p");
 
 function show(p) {
-  const catPath = p.category ? LO.url.category(p.category) : null;
+  const par = p.category_parent;
+  const catPath = p.category ? LO.url.category(p.category, par ? par.slug : null) : null;
   LO.seo({ title: p.name + " — licenceoff", description: (p.description || p.name).replace(/\s+/g, " ").slice(0, 160), path: LO.url.product(p.slug), image: p.image_url || null });
   LO.jsonLd({ "@context": "https://schema.org", "@type": "Product", name: p.name, description: p.description || p.name, image: p.image_url || undefined,
     offers: { "@type": "Offer", price: p.price_fcfa, priceCurrency: "XOF", availability: "https://schema.org/" + (p.in_stock ? "InStock" : "OutOfStock"), url: LO.SITE + LO.url.product(p.slug) } });
@@ -34,7 +35,7 @@ function show(p) {
   const buy = el("button", { class: "btn orange", disabled: !p.in_stock, text: "Acheter maintenant",
     onclick: () => { clampQ(); LO.addToCart(p, Number(qtyIn.value)); location.href = LO.url.cart; } });
 
-  $("#view").replaceChildren(LO.crumbs([["Accueil", LO.url.home], ["Boutique", LO.url.shop], ...(catPath ? [[p.category_name || "Catégorie", catPath]] : []), [p.name]]), el("div", { class: "product" },
+  $("#view").replaceChildren(LO.crumbs([["Accueil", LO.url.home], ["Boutique", LO.url.shop], ...(par ? [[par.name, LO.url.category(par.slug)]] : []), ...(catPath ? [[p.category_name || "Catégorie", catPath]] : []), [p.name]]), el("div", { class: "product" },
     el("div", { class: "img" }, p.image_url ? el("img", { src: p.image_url, alt: p.name }) : el("span", { class: "ph", style: "font-size:64px;font-weight:800;color:#94a3b8", text: LO.initials(p.name) })),
     el("div", {},
       el("h1", { text: p.name }),

@@ -222,8 +222,10 @@
       <div class="box"><div class="tablewrap"><table><thead><tr><th></th><th>Produit</th><th>Catégorie</th><th>Prix</th><th>Livraison</th><th>Statut</th><th></th></tr></thead><tbody id="pRows"></tbody></table></div></div>
 
       <div class="box">
-        <h2>Catégories</h2>
-        <div class="bar"><input type="hidden" id="cId"><input id="cName" class="grow" placeholder="Nom de la catégorie"><input id="cSort" type="number" min="0" placeholder="Ordre" style="width:90px"><label class="check" style="margin:0"><input type="checkbox" id="cActive" checked> Visible</label><button id="cSave" class="green">Enregistrer</button><button id="cReset" class="grey">Nouvelle</button></div>
+        <h2>Catégories et sous-catégories</h2>
+        <p class="small">Une sous-catégorie (ex : Windows 11) se range dans une catégorie principale (ex : Windows). Mettez les produits dans la catégorie la plus précise.</p>
+        <div class="bar"><input type="hidden" id="cId"><input id="cName" class="grow" placeholder="Nom (ex : Windows 11)"><select id="cParent" style="min-width:200px"></select><input id="cSort" type="number" min="0" placeholder="Ordre" style="width:90px"><label class="check" style="margin:0"><input type="checkbox" id="cActive" checked> Visible</label><button id="cSave" class="green">Enregistrer</button><button id="cReset" class="grey">Nouvelle</button></div>
+        <input id="cDesc" placeholder="Phrase de présentation affichée sur la page de la catégorie (facultatif)" style="margin-top:8px">
         <table class="small"><tbody id="cRows"></tbody></table>
       </div>
     </section>
@@ -402,7 +404,7 @@ const ERR = {
   commande_deja_payee: "Commande déjà payée, impossible de l'annuler.", cle_deja_envoyee: "Cette clé a déjà été envoyée.",
   not_delivered: "L'article n'est pas encore livré.", no_installer: "Ce produit n'a pas de fichier.", not_to_process: "Cet article n'est pas à traiter.",
   produit_sans_stock: "Ce produit n'utilise pas de stock (type logiciel ou service).", fichier_obligatoire: "Choisissez ou envoyez le fichier du logiciel.",
-  code_deja_utilise: "Ce nom est déjà utilisé, choisissez-en un autre.", nom_obligatoire: "Le nom est obligatoire.", panier_vide: "Ajoutez au moins un produit.", pas_en_installation: "Cet article n'attend plus l'installation.", rien_a_envoyer: "Rien à envoyer pour cette commande.", nom_invalide: "Nom du client trop court.", produit_introuvable: "Produit introuvable.",
+  code_deja_utilise: "Ce nom est déjà utilisé, choisissez-en un autre.", nom_obligatoire: "Le nom est obligatoire.", panier_vide: "Ajoutez au moins un produit.", parent_invalide: "Une sous-catégorie doit être rangée dans une catégorie principale (un seul niveau).", pas_en_installation: "Cet article n'attend plus l'installation.", rien_a_envoyer: "Rien à envoyer pour cette commande.", nom_invalide: "Nom du client trop court.", produit_introuvable: "Produit introuvable.",
 };
 
 // ---------- outils ----------
@@ -472,7 +474,8 @@ async function loadRefs() {
   products = p.rows; categories = c.rows; templates = t.rows || [];
   const stockProds = products.filter((x) => STOCK_TYPES.includes(x.delivery_type));
   const fill = (id, list, first) => { const s = $(id), keep = s.value; s.replaceChildren(); if (first) s.append(new Option(first, "")); for (const x of list) s.append(new Option(x.name, x.id)); if (keep) s.value = keep; };
-  fill("kProd", stockProds); fill("kFilterProd", stockProds, "Tous les produits"); fill("pCat", categories, "— Sans catégorie —");
+  fill("kProd", stockProds); fill("kFilterProd", stockProds, "Tous les produits"); fill("pCat", catTree().map((c) => ({ id: c.id, name: (c.parent_id ? "↳ " : "") + c.name })), "— Sans catégorie —");
+  fill("cParent", categories.filter((c) => !c.parent_id), "— Catégorie principale —");
   fill("pTpl", templates.filter((x) => !x.is_default && x.kind !== "install"), "Modèle par défaut");
   fill("pInstTpl", templates.filter((x) => !x.is_default && x.kind === "install"), "Modèle d'installation par défaut");
 }
@@ -679,16 +682,21 @@ $("pSave").addEventListener("click", async () => {
     toast("Produit enregistré ✔"); resetProduct(); await loadProducts();
   } catch (e) { toast(errMsg(e)); }
 });
-function renderCategories() {
-  $("cRows").replaceChildren(...categories.map((c) => tr(td(el("strong", c.name)), td(el("span", c.slug, "small mono")), td(tag(c.active ? "visible" : "hidden")),
-    td(el("span", products.filter((p) => p.category_id === c.id).length + " produit(s)", "small")),
-    td(btn("Modifier", "grey", () => { $("cId").value = c.id; $("cName").value = c.name; $("cSort").value = c.sort; $("cActive").checked = c.active; $("cName").focus(); }),
-      " ", btn("Supprimer", "red", async () => { if (confirm("Supprimer la catégorie « " + c.name + " » ? Ses produits resteront, sans catégorie.")) { await api({ action: "category_delete", id: c.id }); await loadProducts(); } })))));
+// catégories principales suivies de leurs sous-catégories
+function catTree() {
+  const tops = categories.filter((c) => !c.parent_id || !categories.some((k) => k.id === c.parent_id));
+  return tops.flatMap((t) => [t, ...categories.filter((c) => c.parent_id === t.id)]);
 }
-const resetCat = () => { $("cId").value = ""; $("cName").value = ""; $("cSort").value = ""; $("cActive").checked = true; };
+function renderCategories() {
+  $("cRows").replaceChildren(...catTree().map((c) => tr(td(c.parent_id ? el("span", "↳ " + c.name) : el("strong", c.name)), td(el("span", c.slug, "small mono")), td(tag(c.active ? "visible" : "hidden")),
+    td(el("span", products.filter((p) => p.category_id === c.id).length + " produit(s)", "small")),
+    td(btn("Modifier", "grey", () => { $("cId").value = c.id; $("cName").value = c.name; $("cSort").value = c.sort; $("cActive").checked = c.active; $("cParent").value = c.parent_id || ""; $("cDesc").value = c.description || ""; $("cName").focus(); }),
+      " ", btn("Supprimer", "red", async () => { if (confirm("Supprimer la catégorie « " + c.name + " » ? Ses produits resteront, sans catégorie, et ses sous-catégories deviendront des catégories principales.")) { await api({ action: "category_delete", id: c.id }); await loadProducts(); } })))));
+}
+const resetCat = () => { $("cId").value = ""; $("cName").value = ""; $("cSort").value = ""; $("cActive").checked = true; $("cParent").value = ""; $("cDesc").value = ""; };
 $("cReset").addEventListener("click", resetCat);
 $("cSave").addEventListener("click", async () => {
-  try { await api({ action: "category_save", id: $("cId").value || undefined, name: $("cName").value, sort: $("cSort").value, active: $("cActive").checked }); toast("Catégorie enregistrée ✔"); resetCat(); await loadProducts(); }
+  try { await api({ action: "category_save", id: $("cId").value || undefined, name: $("cName").value, sort: $("cSort").value, active: $("cActive").checked, parent_id: $("cParent").value, description: $("cDesc").value }); toast("Catégorie enregistrée ✔"); resetCat(); await loadProducts(); }
   catch (e) { toast(errMsg(e)); }
 });
 

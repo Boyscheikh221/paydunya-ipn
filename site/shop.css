@@ -167,3 +167,13 @@ footer.site .copy { border-top: 1px solid rgba(255,255,255,.12); margin-top: 22p
 .crumbs .sep { color:#a3b0c6; }
 .crumbs [aria-current] { color:var(--nuit, #0F2A6B); font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:60vw; }
 .chips a.chip { text-decoration:none; display:inline-block; }
+.chips.sub { margin-top:8px; }
+.chips.sub .chip { font-size:13px; padding:6px 12px; }
+
+/* bandeau cookies */
+.cookie-bar { position:fixed; left:12px; right:12px; bottom:12px; z-index:60; max-width:720px; margin:0 auto; background:#fff; color:var(--nuit);
+  border:1px solid var(--ligne); border-radius:14px; box-shadow:0 10px 30px rgba(15,42,107,.18); padding:14px 16px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+.cookie-bar p { margin:0; flex:1 1 280px; font-size:14px; line-height:1.5; }
+.cookie-bar a { color:var(--bleu); font-weight:700; }
+.cookie-bar .cb-btns { display:flex; gap:8px; }
+.cookie-bar .btn { padding:10px 16px; }

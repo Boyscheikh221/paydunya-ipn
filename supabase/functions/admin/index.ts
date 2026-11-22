@@ -541,8 +541,15 @@ Deno.serve(async (req) => {
         const row = {
           name: str(body.name, 80), slug: slugify(str(body.slug, 80) || str(body.name, 80)),
           sort: clamp(Number(body.sort) || 0, 0, 1000), active: body.active !== false,
+          parent_id: str(body.parent_id, 40) || null, description: str(body.description, 300) || null,
         };
         if (!row.name || !row.slug) return json({ error: "nom_obligatoire" }, 400);
+        if (row.parent_id && row.parent_id === body.id) return json({ error: "parent_invalide" }, 400);
+        if (row.parent_id) { // un seul niveau : la catégorie parente doit être principale
+          const { data: par } = await db.from("categories").select("parent_id").eq("id", row.parent_id).maybeSingle();
+          if (!par || par.parent_id) return json({ error: "parent_invalide" }, 400);
+          if (body.id) { const { count } = await db.from("categories").select("id", { count: "exact", head: true }).eq("parent_id", body.id); if (count) return json({ error: "parent_invalide" }, 400); }
+        }
         const r = body.id ? await db.from("categories").update(row).eq("id", body.id).select().single()
           : await db.from("categories").insert(row).select().single();
         if (r.error) return json({ error: r.error.message.includes("duplicate") ? "code_deja_utilise" : r.error.message }, 400);

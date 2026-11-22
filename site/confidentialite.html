@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Confidentialité et cookies — licenceoff</title>
+<meta name="description" content="Quelles données licenceoff collecte, pourquoi, combien de temps, et comment gérer vos cookies.">
+<meta name="theme-color" content="#1E4FB8">
+<link rel="stylesheet" href="/shop.css?v=5">
+<style>
+  .legal h2 { font-size:20px; margin:26px 0 8px; } .legal p, .legal li { line-height:1.7; }
+  .legal table { width:100%; border-collapse:collapse; font-size:14px; background:#fff; } .legal td, .legal th { border:1px solid var(--ligne); padding:8px; text-align:left; vertical-align:top; }
+</style>
+</head>
+<body>
+<main class="wrap legal" style="max-width:820px">
+  <div id="crumbs"></div>
+  <h1 style="margin:8px 0 6px">Confidentialité et cookies</h1>
+  <p class="note">Dernière mise à jour : 22 novembre 2026</p>
+
+  <h2>Qui sommes-nous ?</h2>
+  <p>licenceoff (www.licenceoff.com) vend des licences et des solutions numériques depuis Dakar, au Sénégal. Pour toute question sur vos données, écrivez-nous sur <a href="https://wa.me/221777860777" target="_blank" rel="noopener">WhatsApp</a>.</p>
+
+  <h2>Les données que nous collectons</h2>
+  <ul>
+    <li><b>Quand vous commandez :</b> votre nom, votre email, votre numéro WhatsApp (facultatif), les produits achetés, le montant, la date et la référence du paiement.</li>
+    <li><b>L'adresse IP</b> de l'appareil qui passe la commande, pour lutter contre la fraude et rattacher correctement une vente à un parrain.</li>
+    <li><b>Le code parrain</b> utilisé, si vous êtes venu par le lien d'un parrain.</li>
+    <li><b>Les visites</b> (page vue, type d'appareil, site d'où vous venez). Un identifiant de visite n'est enregistré dans votre navigateur que si vous acceptez les cookies.</li>
+  </ul>
+
+  <h2>Pourquoi ?</h2>
+  <ul>
+    <li>Livrer votre commande (clés, liens de téléchargement) et vous envoyer les emails qui vont avec.</li>
+    <li>Vous aider en cas de problème (installation, activation, nouveau lien).</li>
+    <li>Calculer et verser la part des parrains.</li>
+    <li>Améliorer le site grâce aux statistiques de visite.</li>
+  </ul>
+  <p>Nous ne vendons jamais vos données.</p>
+
+  <h2>Qui y a accès ?</h2>
+  <p>Seulement licenceoff et les services techniques qui font marcher la boutique : PayDunya (paiement), Supabase (base de données et hébergement des fichiers), Cloudflare (hébergement du site), Resend (envoi des emails). Un parrain voit seulement les ventes faites avec son lien, sans vos coordonnées complètes.</p>
+
+  <h2>Combien de temps ?</h2>
+  <p>Les données de commande sont gardées tant que c'est utile pour vos licences et pour nos obligations comptables. Les statistiques de visite sont gardées au maximum 13 mois.</p>
+
+  <h2>Cookies et stockage du navigateur</h2>
+  <table>
+    <tr><th>Nom</th><th>À quoi ça sert</th><th>Accord nécessaire ?</th></tr>
+    <tr><td>lo_cart</td><td>Votre panier</td><td>Non (indispensable)</td></tr>
+    <tr><td>lo_consent</td><td>Mémoriser votre choix sur les cookies</td><td>Non (indispensable)</td></tr>
+    <tr><td>lo_ref</td><td>Le code du parrain qui vous a envoyé (30 jours), pour votre réduction</td><td>Non (nécessaire à la réduction)</td></tr>
+    <tr><td>lo_v</td><td>Identifiant anonyme de visite pour les statistiques</td><td>Oui</td></tr>
+  </table>
+  <p style="margin-top:12px"><button class="btn" id="manage" type="button">Modifier mon choix sur les cookies</button></p>
+
+  <h2>Vos droits</h2>
+  <p>Conformément à la loi sénégalaise sur la protection des données personnelles (loi n° 2008-12), vous pouvez demander à voir, corriger ou supprimer vos données, ou vous opposer à leur utilisation. Écrivez-nous sur WhatsApp. Vous pouvez aussi saisir la Commission de protection des données personnelles (CDP).</p>
+</main>
+<script src="/shop.js?v=5"></script>
+<script>
+LO.page("");
+LO.seo({ path: LO.url.privacy });
+document.getElementById("crumbs").replaceChildren(LO.crumbs([["Accueil", LO.url.home], ["Confidentialité et cookies"]]));
+document.getElementById("manage").addEventListener("click", () => LO.cookieBar(true));
+</script>
+</body>
+</html>

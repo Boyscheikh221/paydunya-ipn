@@ -26,16 +26,16 @@ const LO = (() => {
   const SITE = "https://www.licenceoff.com";
   const enc = encodeURIComponent;
   const url = {
-    home: "/", shop: "/boutique", cart: "/panier", blog: "/blog", faq: "/faq",
-    category: (slug) => "/categorie/" + enc(slug),
+    home: "/", shop: "/boutique", cart: "/panier", blog: "/blog", faq: "/faq", privacy: "/confidentialite",
+    category: (slug, parent) => "/categorie/" + (parent ? enc(parent) + "/" : "") + enc(slug),
     product: (slug) => "/produit/" + enc(slug),
     post: (slug) => "/blog/" + enc(slug),
     search: (q) => "/boutique?q=" + enc(q),
   };
   // le mot après /produit/, /categorie/ ou /blog/ (sinon l'ancien paramètre ?p= ?c= ?a=)
   function slugFromPath(prefix, param) {
-    const m = location.pathname.match(new RegExp("^/" + prefix + "/([^/]+)"));
-    if (m) return decodeURIComponent(m[1]);
+    const m = location.pathname.match(new RegExp("^/" + prefix + "/(.+?)/?$"));
+    if (m) return decodeURIComponent(m[1].split("/").pop());
     return new URLSearchParams(location.search).get(param) || "";
   }
   // titre, description, adresse officielle (canonical) ; remplace l'ancienne adresse dans la barre
@@ -51,6 +51,13 @@ const LO = (() => {
       const qs = keep.toString();
       if (location.pathname !== path) try { history.replaceState(null, "", path + (qs ? "?" + qs : "") + location.hash); } catch (_) {}
     }
+  }
+  // catégories principales qui ont des produits (directement ou dans une sous-catégorie)
+  function mainCats(d) {
+    const used = new Set((d.products || []).map((p) => p.category));
+    const parentOf = Object.fromEntries((d.categories || []).map((c) => [c.slug, c.parent]));
+    for (const s of [...used]) if (parentOf[s]) used.add(parentOf[s]);
+    return (d.categories || []).filter((c) => !c.parent && used.has(c.slug));
   }
   function jsonLd(obj) { const s = document.createElement("script"); s.type = "application/ld+json"; s.textContent = JSON.stringify(obj); document.head.append(s); }
   // fil d'Ariane : [["Accueil", "/"], ["Catégorie", "/categorie/x"], ["Page actuelle"]]
@@ -128,7 +135,8 @@ const LO = (() => {
           el("div", {}, el("div", { class: "logo" }, el("span", { class: "a", text: "licence" }), el("span", { class: "b", text: "off" })),
             el("p", { text: "Licences & solutions numériques. Licences et logiciels authentiques, livrés en quelques minutes. Basé à Dakar." }),
             el("p", { class: "tag-line", text: "Vos logiciels, notre engagement !" })),
-          el("div", {}, el("b", { text: "Boutique" }), el("a", { href: url.shop, text: "Tous les produits" }), el("a", { href: url.cart, text: "Mon panier" }), el("a", { href: url.blog, text: "Blog" }), el("a", { href: url.faq, text: "Questions fréquentes" })),
+          el("div", {}, el("b", { text: "Boutique" }), el("a", { href: url.shop, text: "Tous les produits" }), el("a", { href: url.cart, text: "Mon panier" }), el("a", { href: url.blog, text: "Blog" }), el("a", { href: url.faq, text: "Questions fréquentes" }), el("a", { href: url.privacy, text: "Confidentialité et cookies" }),
+            el("a", { href: "#", text: "Gérer les cookies", onclick: (e) => { e.preventDefault(); cookieBar(true); } })),
           el("div", {}, el("b", { text: "Aide" }), el("a", { href: "https://wa.me/" + WHATSAPP_NUMBER, target: "_blank", rel: "noopener", text: "WhatsApp : +" + WHATSAPP_NUMBER }),
             el("span", { text: "Paiement sécurisé via PayDunya" })),
         ),
@@ -187,15 +195,35 @@ const LO = (() => {
     return frag;
   }
 
-  // ---------- statistiques de visites (anonymes, sans cookie) ----------
+  // ---------- cookies : choix du visiteur (accepter / refuser) ----------
+  // Essentiel (toujours) : panier, ce choix, le code parrain. Facultatif (si accepté) : identifiant de visite pour les statistiques.
+  const CONSENT_KEY = "lo_consent";
+  function consent() { try { return localStorage.getItem(CONSENT_KEY) || ""; } catch (_) { return ""; } }
+  function setConsent(v) {
+    try { localStorage.setItem(CONSENT_KEY, v); if (v !== "yes") localStorage.removeItem("lo_v"); } catch (_) {}
+    document.querySelector(".cookie-bar")?.remove();
+  }
+  function cookieBar(force) {
+    if (!force && consent()) return;
+    document.querySelector(".cookie-bar")?.remove();
+    document.body.append(el("div", { class: "cookie-bar", role: "dialog", "aria-label": "Cookies" },
+      el("p", {}, "Nous utilisons le stockage de votre navigateur pour votre panier (indispensable) et, si vous l'acceptez, pour mesurer les visites. ",
+        el("a", { href: url.privacy, text: "En savoir plus" })),
+      el("div", { class: "cb-btns" },
+        el("button", { class: "btn light", text: "Refuser", onclick: () => setConsent("no") }),
+        el("button", { class: "btn", text: "Accepter", onclick: () => { setConsent("yes"); hit(); } }))));
+  }
+
+  // ---------- statistiques de visites ----------
+  // Sans accord : une visite est comptée sans aucun identifiant (rien n'est enregistré dans le navigateur).
   function hit() {
     let v = "";
-    try { v = localStorage.getItem("lo_v") || ""; if (!v) { v = Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem("lo_v", v); } } catch (_) {}
+    if (consent() === "yes") try { v = localStorage.getItem("lo_v") || ""; if (!v) { v = Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem("lo_v", v); } } catch (_) {}
     try { fetch(SUPABASE + "/boutique", { method: "POST", headers: { "Content-Type": "application/json" }, keepalive: true,
       body: JSON.stringify({ action: "hit", page: location.pathname.replace(/\.html$/, "").replace(/\/index$/, "/") || "/", v, ref: document.referrer }) }); } catch (_) {}
   }
 
-  function page(active) { header(active); footer(); hit(); }
+  function page(active) { header(active); footer(); hit(); cookieBar(); }
   const DELIVERY_TEXT = {
     key: "Clé de licence livrée immédiatement après paiement",
     key_file: "Clé de licence + lien de téléchargement livrés immédiatement",
@@ -204,5 +232,5 @@ const LO = (() => {
     manual: "Service traité par notre équipe après paiement",
   };
 
-  return { url, slugFromPath, seo, jsonLd, crumbs, SITE, $, el, fcfa, api, boutique, cart, saveCart, addToCart, cartCount, page, toast, productCard, initials, richText, DELIVERY_TEXT };
+  return { cookieBar, url, slugFromPath, seo, jsonLd, crumbs, mainCats, SITE, $, el, fcfa, api, boutique, cart, saveCart, addToCart, cartCount, page, toast, productCard, initials, richText, DELIVERY_TEXT };
 })();

@@ -9,7 +9,7 @@
 <meta name="description" content="Achetez vos licences Windows, Microsoft Office et logiciels authentiques. Livraison immédiate, paiement Wave, Orange Money ou carte.">
 <link rel="canonical" href="https://www.licenceoff.com/">
 <meta property="og:title" content="licenceoff — Licences & solutions numériques au Sénégal">
-<link rel="stylesheet" href="/shop.css?v=4">
+<link rel="stylesheet" href="/shop.css?v=5">
 </head>
 <body>
 <main>
@@ -40,9 +40,9 @@
   <section class="block">
     <div class="wrap">
       <div class="pillars">
-        <a class="pillar" href="/categorie/licences-windows"><span class="sq"><svg width="30" height="30" viewBox="0 0 24 24" fill="#fff"><path d="M3 5.5 10.5 4.4v7.1H3zM11.5 4.3 21 3v8.5h-9.5zM3 12.5h7.5v7.1L3 18.5zM11.5 12.5H21V21l-9.5-1.3z"/></svg></span>Windows<small>Licences Windows 10 et 11</small></a>
-        <a class="pillar" href="/categorie/microsoft-office"><span class="sq o"><svg width="28" height="28" viewBox="0 0 24 24" fill="#fff"><path d="M14 2 4 5.5v13L14 22l6-2V4zm0 3v14l-6.5-2.2V7.4z"/></svg></span>Office<small>Microsoft Office et 365</small></a>
-        <a class="pillar" href="/categorie/services-informatiques"><span class="sq"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 2.5 15.3 0 18M12 3c-2.5 2.7-2.5 15.3 0 18"/></svg></span>Solutions PC<small>Logiciels et services informatiques</small></a>
+        <a class="pillar" href="/categorie/windows"><span class="sq"><svg width="30" height="30" viewBox="0 0 24 24" fill="#fff"><path d="M3 5.5 10.5 4.4v7.1H3zM11.5 4.3 21 3v8.5h-9.5zM3 12.5h7.5v7.1L3 18.5zM11.5 12.5H21V21l-9.5-1.3z"/></svg></span>Windows<small>Windows 10, 11 et Server</small></a>
+        <a class="pillar" href="/categorie/microsoft-office"><span class="sq o"><svg width="28" height="28" viewBox="0 0 24 24" fill="#fff"><path d="M14 2 4 5.5v13L14 22l6-2V4zm0 3v14l-6.5-2.2V7.4z"/></svg></span>Office<small>Office 2019, 2021, 2024 et 365</small></a>
+        <a class="pillar" href="/categorie/solutions-pc"><span class="sq"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 2.5 15.3 0 18M12 3c-2.5 2.7-2.5 15.3 0 18"/></svg></span>Solutions PC<small>Logiciels et services informatiques</small></a>
       </div>
     </div>
   </section>
@@ -72,7 +72,7 @@
   </section>
 </main>
 
-<script src="/shop.js?v=4"></script>
+<script src="/shop.js?v=5"></script>
 <script>
 LO.page("home");
 const { el, $ } = LO;
@@ -86,8 +86,7 @@ function render() {
   const names = Object.fromEntries(data.categories.map((c) => [c.slug, c.name]));
   $("#chips").replaceChildren(
     el("a", { class: "chip on", href: LO.url.shop, text: "Tout" }),
-    ...data.categories.filter((c) => data.products.some((p) => p.category === c.slug))
-      .map((c) => el("a", { class: "chip", href: LO.url.category(c.slug), text: c.name })));
+    ...LO.mainCats(data).map((c) => el("a", { class: "chip", href: LO.url.category(c.slug), text: c.name })));
   $("#grid").replaceChildren(...data.products.slice(0, 12).map((p) => LO.productCard(p, names[p.category])));
   if (!data.products.length) $("#grid").append(el("div", { class: "empty", text: "Aucun produit pour le moment." }));
   const feat = data.products.filter((p) => p.featured).slice(0, 4);
