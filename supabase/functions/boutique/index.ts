@@ -687,7 +687,7 @@ Deno.serve(async (req) => {
       const token = str(body.o, 64);
       if (!token) return json({ error: "not_found" }, 404);
       const { data: o } = await db.from("orders")
-        .select("id, ref, status, amount_fcfa, payment_method, payment_ref, paydunya_token, created_at, delivered_at, shipping_method, shipping_fee_fcfa, shipping_address, shipping_zone, order_items(id, product_name, delivery_type, unit_price, quantity, status, created_at, claim_requested_at, products(slug, image_url, installer_path), product_reviews(id))")
+        .select("id, ref, status, amount_fcfa, payment_method, payment_ref, paydunya_token, created_at, delivered_at, shipping_method, shipping_fee_fcfa, shipping_address, shipping_zone, order_items(id, product_name, delivery_type, unit_price, quantity, status, created_at, claim_requested_at, products(slug, image_url, installer_path))")
         .eq("public_token", token).maybeSingle();
       if (!o) return json({ error: "not_found" }, 404);
       const paid = ["paid", "processing", "installing", "delivered"].includes(o.status);
@@ -695,6 +695,9 @@ Deno.serve(async (req) => {
       // deno-lint-ignore no-explicit-any
       const items = ((o.order_items ?? []) as any[]).sort((a, b) => a.created_at.localeCompare(b.created_at));
       const ids = items.map((i) => i.id);
+      // articles déjà notés par le client
+      const { data: revd } = ids.length ? await db.from("product_reviews").select("order_item_id").in("order_item_id", ids) : { data: [] };
+      const reviewedIds = new Set((revd ?? []).map((r) => r.order_item_id));
       const keysByItem: Record<string, string[]> = {};
       // deno-lint-ignore no-explicit-any
       const linkByItem: Record<string, any> = {};
@@ -725,9 +728,8 @@ Deno.serve(async (req) => {
             keys: i.status === "delivered" ? (keysByItem[i.id] ?? []) : [], download,
             id: i.id, can_claim: i.status === "awaiting_install" && !i.claim_requested_at,
             claimed: !!i.claim_requested_at && i.status !== "delivered",
-            // relation 1-1 (order_item_id unique) : PostgREST renvoie un objet, ou un tableau selon la version
-            reviewed: Array.isArray(i.product_reviews) ? i.product_reviews.length > 0 : !!i.product_reviews,
-            can_review: i.status === "delivered" && !!i.products?.slug && !(Array.isArray(i.product_reviews) ? i.product_reviews.length : i.product_reviews),
+            reviewed: reviewedIds.has(i.id),
+            can_review: i.status === "delivered" && !!i.products?.slug && !reviewedIds.has(i.id),
           };
         }),
       });
