@@ -319,6 +319,7 @@ const METHOD = { wave: "Wave", orange_money: "Orange Money", free_money: "Free M
 const ERR = {
   out_of_stock: "Stock insuffisant : la commande est payée et sera livrée dès que vous ajoutez du stock.",
   to_process: "Commande payée. Certains articles sont à traiter par vous (voir « À traiter »).",
+  resend_non_configure: "Email pas encore configuré (clé Resend manquante dans Supabase).", envoi_echoue: "L'email n'a pas pu partir. Vérifiez le domaine dans Resend.",
   commande_deja_payee: "Commande déjà payée, impossible de l'annuler.", cle_deja_envoyee: "Cette clé a déjà été envoyée.",
   not_delivered: "L'article n'est pas encore livré.", no_installer: "Ce produit n'a pas de fichier.", not_to_process: "Cet article n'est pas à traiter.",
   produit_sans_stock: "Ce produit n'utilise pas de stock (type logiciel ou service).", fichier_obligatoire: "Choisissez ou envoyez le fichier du logiciel.",
@@ -490,13 +491,16 @@ async function loadOrders() {
       acts.append(btn("Copier le message client", "org", () => copy(clientMessage(o), "Message copié ✔")));
       if (o.phone) acts.append(btn("WhatsApp", "grey", () => window.open("https://wa.me/" + waNumber(o.phone) + "?text=" + encodeURIComponent(clientMessage(o)), "_blank", "noopener")));
     }
+    if (["delivered", "processing", "paid"].includes(o.status)) acts.append(btn(o.emailed_at ? "✉ Renvoyer l'email" : "✉ Envoyer l'email", "grey", async () => {
+      if (confirm("Envoyer l'email de livraison à " + o.email + " ?")) await run({ action: "order_email", id: o.id }, "Email envoyé ✔", reload)();
+    }));
     acts.append(btn("Page client", "grey", () => copy(ORDER_PAGE + "?o=" + o.public_token, "Lien de la page client copié ✔")));
     tb.append(tr(
       td(el("strong", o.ref), el("br"), el("span", dt(o.created_at), "small"), el("br"), el("span", o.source === "admin" ? "vente manuelle" : "site", "small")),
       td(el("strong", o.customer_name), el("br"), el("span", o.email, "small"), el("br"), el("span", o.phone || "", "small")),
       cItems,
       td(el("strong", fcfa(o.amount_fcfa)), el("br"), el("span", METHOD[o.payment_method] || o.payment_method || "—", "small"), el("br"), el("span", o.payment_ref || "", "small mono")),
-      td(tag(o.status), o.note ? el("div", o.note, "small") : null),
+      td(tag(o.status), o.emailed_at ? el("div", "✉ email envoyé " + dt(o.emailed_at), "small") : null, o.note ? el("div", o.note, "small") : null),
       td(acts)));
   }
 }
