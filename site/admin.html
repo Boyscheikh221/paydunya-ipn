@@ -182,6 +182,7 @@
         </div>
         <label>Description (affichée sur la fiche produit)</label>
         <textarea id="pDesc" placeholder="Ce que le client reçoit, compatibilité, durée…"></textarea>
+        <label class="check" style="margin:12px 0 0;padding:10px 12px;background:#fff7e6;border-radius:10px"><input type="checkbox" id="pPhysical"> <strong>Produit physique</strong> &nbsp;<span class="small">(objet à livrer : clé USB, PC, accessoire… ; décoché = produit digital)</span></label>
         <div class="grid" style="align-items:end">
           <div>
             <label>Photo du produit</label>
@@ -189,6 +190,8 @@
             <input type="hidden" id="pImg"><div id="pImgMsg" class="small"></div>
           </div>
           <div>
+            <div id="pQtyBox" class="hidden"><label>Quantité disponible (vide = illimitée)</label><input id="pQty" type="number" min="0" placeholder="ex : 10"></div>
+            <div id="pTypeBox">
             <label>Ce que reçoit le client</label>
             <select id="pType">
               <option value="key">Clé de licence (prise dans le stock)</option>
@@ -197,27 +200,35 @@
               <option value="stock">Identifiants / codes (pris dans le stock)</option>
               <option value="manual">Service : je le traite moi-même</option>
             </select>
+            </div>
           </div>
         </div>
         <div id="pFileBox" class="box hidden" style="margin:12px 0 0;background:#fafbfc">
-          <label>Fichier du logiciel (espace privé, téléchargeable seulement avec un lien à usage unique)</label>
+          <label>Fichier du logiciel : envoyez-le ici, ou collez un lien de téléchargement. Le client reçoit toujours un lien licenceoff à usage unique.</label>
           <div class="bar">
             <select id="pFile" class="grow"></select>
             <span class="small">ou</span>
             <input id="pUpload" type="file">
             <button id="pUploadBtn" class="org">Envoyer le fichier</button>
           </div>
-          <div id="pUpMsg" class="small">Taille max sur l'offre gratuite Supabase : 50 Mo par fichier.</div>
+          <div id="pUpMsg" class="small">Taille max sur l'offre gratuite Supabase : 50 Mo par fichier. Plus gros : mettez-le sur Google Drive ou Mega et collez le lien ci-dessous.</div>
+          <label>ou lien de téléchargement</label>
+          <input id="pLink" placeholder="https://… (Google Drive, site de Microsoft…)">
+        </div>
+        <div id="pKeysBox" class="box hidden" style="margin:12px 0 0;background:#fafbfc">
+          <label>Ajouter des licences au stock (une par ligne) · <span id="pKeysInfo" class="small"></span></label>
+          <textarea id="pKeys" rows="4" placeholder="XXXXX-XXXXX-XXXXX-XXXXX-XXXXX"></textarea>
+          <label class="check" style="margin:6px 0 0"><input type="checkbox" id="pKeysReuse"> Sérialiseur réutilisable (la même clé peut être envoyée à plusieurs clients). Décoché = chaque clé n'est envoyée qu'une fois.</label>
         </div>
         <div class="grid">
-          <label class="check"><input type="checkbox" id="pAuto" checked> Livraison automatique après paiement</label>
+          <label class="check" id="pAutoLbl"><input type="checkbox" id="pAuto" checked> Livraison automatique après paiement</label>
           <label class="check"><input type="checkbox" id="pActive" checked> En vente sur le site</label>
           <label class="check"><input type="checkbox" id="pFeatured"> Mettre en avant (accueil)</label>
           <div><label>Alerte stock bas sous</label><input id="pLow" type="number" min="0" value="5"></div>
           <div><label>Ordre d'affichage</label><input id="pSort" type="number" min="0" value="0"></div>
           <div><label>Email de la clé (ou de livraison)</label><select id="pTpl"></select></div>
         </div>
-        <div class="box" style="background:#f4f8ff;margin:10px 0 0;padding:12px">
+        <div id="pTwoWrap" class="box" style="background:#f4f8ff;margin:10px 0 0;padding:12px">
           <label class="check" style="margin:0"><input type="checkbox" id="pTwo"> Livraison en 2 temps : le client reçoit d'abord le logiciel, puis clique « J'ai fini l'installation » pour recevoir sa clé</label>
           <div id="pTwoBox" class="grid" style="margin-top:8px"><div><label>Email d'installation (étape 1)</label><select id="pInstTpl"></select></div></div>
         </div>
@@ -432,8 +443,9 @@ const ST = {
   active: "Actif", revoked: "Désactivé", used: "Utilisé", expired: "Expiré", on: "Activée", off: "Désactivée",
   sale: "En vente", hidden: "Caché", visible: "Visible", pub: "Publié", draft: "Brouillon",
 };
-const TYPES = { key: "Clé", key_file: "Clé + logiciel", file: "Logiciel", stock: "Identifiants", manual: "Service manuel" };
+const TYPES = { key: "Clé", key_file: "Clé + logiciel", file: "Logiciel", stock: "Identifiants", manual: "Service manuel", physical: "Produit physique" };
 const STOCK_TYPES = ["key", "key_file", "stock"];
+let stock = []; // stock de clés par produit (rempli par le tableau de bord)
 const METHOD = { wave: "Wave", orange_money: "Orange Money", free_money: "Free Money", especes: "Espèces", paydunya: "PayDunya", manuel: "Transfert manuel", autre: "Autre" };
 const ERR = {
   out_of_stock: "Stock insuffisant : la commande est payée et sera livrée dès que vous ajoutez du stock.",
@@ -522,6 +534,7 @@ async function loadRefs() {
 // ---------- tableau de bord ----------
 async function loadDash() {
   const [d, s] = await Promise.all([api({ action: "dashboard" }), api({ action: "settings_get" })]);
+  stock = d.stock || [];
   settings = s.settings;
   $("autoWarn").classList.toggle("hidden", settings.auto_delivery !== false);
   const pays = d.payouts || [];
@@ -601,7 +614,7 @@ async function loadOrders() {
       const acts = el("div", null, "acts"); acts.style.marginTop = "4px";
       if (i.claim_requested_at && i.status !== "delivered") box.append(el("br"), el("span", "📩 Le client a fini l'installation et demande sa clé", "small"));
       if (i.status === "awaiting_install") acts.append(btn("🔑 Envoyer la clé maintenant", "green", async () => { if (confirm("Envoyer la clé sans attendre que le client confirme l'installation ?")) await run({ action: "item_send_key_now", id: i.id }, "Clé envoyée ✔", reload)(); }));
-      if (i.status === "to_process" && i.delivery_type === "manual") acts.append(btn("✔ Marquer fait", "green", run({ action: "item_complete", id: i.id }, "Article marqué livré ✔", reload)));
+      if (i.status === "to_process" && ["manual", "physical"].includes(i.delivery_type)) acts.append(btn(i.delivery_type === "physical" ? "📦 Marquer livré" : "✔ Marquer fait", "green", run({ action: "item_complete", id: i.id }, "Article marqué livré ✔", reload)));
       if (i.status === "delivered" && ["key_file", "file"].includes(i.delivery_type)) acts.append(btn("Nouveau lien", "grey", async () => { if (confirm("Créer un nouveau lien à usage unique ? L'ancien lien non utilisé sera désactivé.")) await run({ action: "item_new_link", id: i.id }, "Nouveau lien créé ✔", reload)(); }));
       if (acts.childNodes.length) box.append(acts);
       cItems.append(box);
@@ -671,7 +684,20 @@ async function loadFiles(selectName) {
   if (keep && ![...s.options].some((o) => o.value === keep)) s.append(new Option(keep + " (introuvable)", keep));
   s.value = keep || "";
 }
-function syncType() { $("pFileBox").classList.toggle("hidden", !["key_file", "file"].includes($("pType").value)); }
+// produit physique : quantité à la place du type de livraison, des fichiers et des clés
+function syncType() {
+  const phys = $("pPhysical").checked, t = $("pType").value;
+  $("pQtyBox").classList.toggle("hidden", !phys); $("pTypeBox").classList.toggle("hidden", phys);
+  $("pFileBox").classList.toggle("hidden", phys || !["key_file", "file"].includes(t));
+  $("pKeysBox").classList.toggle("hidden", phys || !STOCK_TYPES.includes(t));
+  $("pTwoWrap").classList.toggle("hidden", phys || !["key", "key_file"].includes(t));
+  $("pAutoLbl").classList.toggle("hidden", phys);
+}
+$("pPhysical").addEventListener("change", syncType);
+function keysInfo(p) {
+  const s = p ? stock.find((x) => x.id === p.id) : null;
+  $("pKeysInfo").textContent = s ? (s.available ?? 0) + " en stock" + (s.reusable ? " (dont un sérialiseur réutilisable)" : "") : "";
+}
 $("pType").addEventListener("change", syncType);
 $("pImgFile").addEventListener("change", () => uploadImage($("pImgFile"), $("pImg"), $("pImgPrev"), $("pImgMsg")));
 $("pUploadBtn").addEventListener("click", async () => {
@@ -696,7 +722,7 @@ async function loadProducts() {
     td(el("strong", p.name), p.featured ? el("span", " ★", "small") : null),
     td(catName[p.category_id] || "—"),
     td(fcfa(p.price_fcfa)),
-    td(TYPES[p.delivery_type] || p.delivery_type, el("br"), el("span", p.auto_deliver ? "automatique" : "manuelle", "small")),
+    td(TYPES[p.delivery_type] || p.delivery_type, el("br"), el("span", p.delivery_type === "physical" ? (p.stock_qty == null ? "quantité illimitée" : p.stock_qty + " en stock") : p.auto_deliver ? "automatique" : "manuelle", "small")),
     td(tag(p.active ? "sale" : "hidden")),
     td(btn("Modifier", "grey", () => editProduct(p))))));
   renderCategories();
@@ -706,7 +732,10 @@ function editProduct(p) {
   $("pId").value = p.id; $("pName").value = p.name; $("pCat").value = p.category_id || ""; $("pPrice").value = p.price_fcfa;
   $("pCompare").value = p.compare_price_fcfa || ""; $("pWholesale").value = p.wholesale_price_fcfa ?? ""; $("pDesc").value = p.description || ""; $("pImg").value = p.image_url || "";
   $("pImgPrev").src = p.image_url || ""; $("pImgPrev").classList.toggle("hidden", !p.image_url); $("pImgMsg").textContent = "";
-  $("pType").value = p.delivery_type; syncType(); loadFiles(p.installer_path || "").catch(() => {});
+  const ext = /^https:\/\//i.test(p.installer_path || "");
+  $("pPhysical").checked = p.delivery_type === "physical"; $("pQty").value = p.stock_qty ?? "";
+  $("pType").value = p.delivery_type === "physical" ? "key" : p.delivery_type; $("pLink").value = ext ? p.installer_path : ""; $("pKeys").value = ""; $("pKeysReuse").checked = false; keysInfo(p);
+  syncType(); loadFiles(ext ? "" : p.installer_path || "").catch(() => {});
   $("pAuto").checked = p.auto_deliver !== false; $("pActive").checked = p.active; $("pFeatured").checked = p.featured;
   $("pLow").value = p.low_stock_threshold; $("pSort").value = p.sort || 0; $("pTpl").value = p.email_template_id || ""; $("pTwo").checked = !!p.two_step; $("pInstTpl").value = p.install_template_id || ""; twoVis();
   $("pForm").scrollIntoView({ behavior: "smooth" });
@@ -714,17 +743,24 @@ function editProduct(p) {
 function resetProduct() {
   $("pFormTitle").textContent = "Nouveau produit";
   for (const id of ["pId", "pName", "pPrice", "pCompare", "pWholesale", "pDesc", "pImg", "pFile"]) $(id).value = "";
-  $("pCat").value = ""; $("pType").value = "key"; syncType(); $("pImgPrev").classList.add("hidden"); $("pImgMsg").textContent = "";
+  $("pCat").value = ""; $("pType").value = "key"; $("pPhysical").checked = false; $("pQty").value = ""; $("pLink").value = ""; $("pKeys").value = ""; $("pKeysReuse").checked = false; keysInfo(null); syncType(); $("pImgPrev").classList.add("hidden"); $("pImgMsg").textContent = "";
   $("pAuto").checked = true; $("pActive").checked = true; $("pFeatured").checked = false; $("pLow").value = 5; $("pSort").value = 0; $("pTpl").value = ""; $("pTwo").checked = false; $("pInstTpl").value = ""; twoVis();
 }
 $("pReset").addEventListener("click", resetProduct);
 $("pSave").addEventListener("click", async () => {
   try {
-    await api({ action: "product_save", id: $("pId").value || undefined, name: $("pName").value, category_id: $("pCat").value,
+    const phys = $("pPhysical").checked, link = $("pLink").value.trim();
+    if (link && !/^https:\/\/\S+$/i.test(link)) return toast("Le lien doit commencer par https://");
+    const saved = await api({ action: "product_save", id: $("pId").value || undefined, name: $("pName").value, category_id: $("pCat").value, stock_qty: $("pQty").value,
       price_fcfa: $("pPrice").value, compare_price_fcfa: $("pCompare").value, wholesale_price_fcfa: $("pWholesale").value, description: $("pDesc").value, image_url: $("pImg").value,
-      delivery_type: $("pType").value, installer_path: $("pFile").value, auto_deliver: $("pAuto").checked, active: $("pActive").checked,
+      delivery_type: phys ? "physical" : $("pType").value, installer_path: link || $("pFile").value, auto_deliver: $("pAuto").checked, active: $("pActive").checked,
       featured: $("pFeatured").checked, low_stock_threshold: $("pLow").value, sort: $("pSort").value, email_template_id: $("pTpl").value, two_step: $("pTwo").checked, install_template_id: $("pInstTpl").value });
-    toast("Produit enregistré ✔"); resetProduct(); await loadProducts();
+    let msg = "Produit enregistré ✔";
+    if (!phys && STOCK_TYPES.includes($("pType").value) && $("pKeys").value.trim()) {
+      const k = await api({ action: "keys_import", product_id: saved.row.id, text: $("pKeys").value, reusable: $("pKeysReuse").checked });
+      msg += " · " + (k.added ?? 0) + " licence(s) ajoutée(s)" + (k.duplicates ? ", " + k.duplicates + " déjà en stock" : "");
+    }
+    toast(msg); resetProduct(); await loadProducts();
   } catch (e) { toast(errMsg(e)); }
 });
 // catégories principales suivies de leurs sous-catégories

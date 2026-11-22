@@ -34,7 +34,7 @@ function newRef(): string {
 }
 const str = (v: unknown, max: number) => String(v ?? "").trim().slice(0, max);
 const STOCK_TYPES = ["key", "key_file", "stock"];
-const PRODUCT_FIELDS = "id, slug, name, description, image_url, price_fcfa, compare_price_fcfa, delivery_type, featured, sort, category_id";
+const PRODUCT_FIELDS = "id, slug, name, description, image_url, price_fcfa, compare_price_fcfa, delivery_type, featured, sort, category_id, stock_qty";
 
 // ================= Email automatique de livraison (Resend) =================
 // Secrets : RESEND_API_KEY (obligatoire pour envoyer), RESEND_FROM (facultatif,
@@ -283,8 +283,10 @@ async function stockCounts(ids: string[]) {
 }
 // deno-lint-ignore no-explicit-any
 function publicProduct(p: any, counts: Record<string, number>, cats: Record<string, any>) {
-  const needsStock = STOCK_TYPES.includes(p.delivery_type);
-  const left = counts[p.id] ?? 0;
+  // produit physique : quantité saisie par l'admin (vide = illimitée)
+  const physical = p.delivery_type === "physical" && p.stock_qty != null;
+  const needsStock = STOCK_TYPES.includes(p.delivery_type) || physical;
+  const left = physical ? p.stock_qty : counts[p.id] ?? 0;
   return {
     slug: p.slug, name: p.name, description: p.description ?? "", image_url: p.image_url ?? "",
     price_fcfa: p.price_fcfa, compare_price_fcfa: p.compare_price_fcfa ?? null,
@@ -551,13 +553,16 @@ Deno.serve(async (req) => {
       }
       if (!want.size) return json({ error: "panier_vide" }, 400);
 
-      const { data: prods } = await db.from("products").select("id, slug, name, price_fcfa, wholesale_price_fcfa, delivery_type")
+      const { data: prods } = await db.from("products").select("id, slug, name, price_fcfa, wholesale_price_fcfa, delivery_type, stock_qty")
         .in("slug", [...want.keys()]).eq("active", true);
       if (!prods || prods.length !== want.size) return json({ error: "produit_introuvable" }, 400);
       const counts = await stockCounts(prods.filter((p) => STOCK_TYPES.includes(p.delivery_type)).map((p) => p.id));
       for (const p of prods) {
         if (STOCK_TYPES.includes(p.delivery_type) && (counts[p.id] ?? 0) < want.get(p.slug)!) {
           return json({ error: "stock_insuffisant", product: p.name, left: counts[p.id] ?? 0 }, 409);
+        }
+        if (p.delivery_type === "physical" && p.stock_qty != null && p.stock_qty < want.get(p.slug)!) {
+          return json({ error: "stock_insuffisant", product: p.name, left: p.stock_qty }, 409);
         }
       }
 

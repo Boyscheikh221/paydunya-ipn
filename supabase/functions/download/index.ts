@@ -70,6 +70,9 @@ Deno.serve(async (req) => {
   if (error) return json({ ok: false, reason: "error" }, 500);
   if (reason !== "ok") return json({ ok: false, reason });
 
+  // Lien externe (Google Drive, site de l'éditeur…) : on le donne tel quel, le lien licenceoff reste à usage unique
+  if (/^https:\/\//i.test(file)) return json({ ok: true, url: file });
+
   // Adresse du fichier valable 60 secondes seulement
   const { data: signed, error: e2 } = await db.storage
     .from(BUCKET)

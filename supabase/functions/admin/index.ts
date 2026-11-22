@@ -22,7 +22,7 @@ const db = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 const DAY = 86400000;
 const LINK_DAYS = 7;
 const STOCK_TYPES = ["key", "key_file", "stock"];
-const DELIVERY_TYPES = ["key", "key_file", "file", "stock", "manual"];
+const DELIVERY_TYPES = ["key", "key_file", "file", "stock", "manual", "physical"];
 
 function newToken(n = 18): string {
   const b = new Uint8Array(n);
@@ -602,7 +602,9 @@ Deno.serve(async (req) => {
           price_fcfa: clamp(Number(body.price_fcfa) || 0, 0, 100_000_000),
           compare_price_fcfa: Number(body.compare_price_fcfa) > 0 ? clamp(Number(body.compare_price_fcfa), 0, 100_000_000) : null,
           delivery_type: dtype,
-          installer_path: ["key_file", "file"].includes(dtype) ? (str(body.installer_path, 200) || null) : null,
+          // fichier dans l'espace privé, ou lien https:// externe (Google Drive, site de l'éditeur…)
+          installer_path: ["key_file", "file"].includes(dtype) ? (str(body.installer_path, 500) || null) : null,
+          stock_qty: dtype === "physical" && body.stock_qty !== "" && body.stock_qty != null ? clamp(Math.round(Number(body.stock_qty) || 0), 0, 1_000_000) : null,
           active: body.active !== false,
           featured: body.featured === true,
           auto_deliver: body.auto_deliver !== false,
@@ -615,6 +617,7 @@ Deno.serve(async (req) => {
         };
         if (!row.slug || !row.name) return json({ error: "nom_obligatoire" }, 400);
         if (["key_file", "file"].includes(dtype) && !row.installer_path) return json({ error: "fichier_obligatoire" }, 400);
+        if (row.installer_path && /^[a-z]+:/i.test(row.installer_path) && !/^https:\/\/[^\s]+$/i.test(row.installer_path)) return json({ error: "lien_invalide" }, 400);
         const r = body.id ? await db.from("products").update(row).eq("id", body.id).select().single()
           : await db.from("products").insert(row).select().single();
         if (r.error) return json({ error: r.error.message.includes("duplicate") ? "code_deja_utilise" : r.error.message }, 400);

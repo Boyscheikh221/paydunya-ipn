@@ -247,6 +247,7 @@ const LO = (() => {
     file: "Lien de téléchargement livré immédiatement",
     stock: "Identifiants livrés immédiatement après paiement",
     manual: "Service traité par notre équipe après paiement",
+    physical: "Produit physique : nous vous contactons sur WhatsApp pour la livraison",
   };
 
   return { refCode, setRef, cookieBar, url, slugFromPath, seo, jsonLd, crumbs, mainCats, SITE, $, el, fcfa, api, boutique, cart, saveCart, addToCart, cartCount, page, toast, productCard, initials, richText, DELIVERY_TEXT };
