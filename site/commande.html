@@ -6,13 +6,13 @@
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
 <title>Ma commande — licenceoff</title>
-<link rel="stylesheet" href="/shop.css?v=11">
+<link rel="stylesheet" href="/shop.css?v=12">
 </head>
 <body>
 <main class="wrap" style="max-width:820px">
   <div id="view" style="padding:24px 0"><div class="skeleton"></div></div>
 </main>
-<script src="/shop.js?v=11"></script>
+<script src="/shop.js?v=12"></script>
 <script>
 LO.page("shop");
 const { el, $, fcfa } = LO;
@@ -169,6 +169,8 @@ async function load() {
     if (autoPay && !o.has_paydunya) { autoPay = false; setTimeout(() => startPay(pay, msg), 300); }
   }
   parts.push(el("div", { class: "panel" }, el("h2", { style: "margin:0 0 4px;font-size:18px", text: "Articles" }), ...o.items.map(itemBlock)));
+  if (!LO.acct()) parts.push(el("div", { class: "panel note", style: "display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center" },
+    el("span", { text: "Retrouvez toutes vos commandes, vos clés et vos favoris dans votre compte (sans mot de passe)." }), el("a", { class: "btn light", href: "/compte", text: "Mon compte" })));
   if (o.shipping) parts.push(el("div", { class: "panel" }, el("h2", { style: "margin:0 0 4px;font-size:18px", text: "Livraison" }),
     el("p", { style: "margin:4px 0", text: (o.shipping.method === "bus" ? "Envoi par bus" : "À domicile") + " · " + fcfa(o.shipping.fee) }),
     el("p", { class: "note", style: "margin:0", text: [o.shipping.address, o.shipping.zone].filter(Boolean).join(" — ") }),

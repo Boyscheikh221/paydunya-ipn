@@ -6,7 +6,7 @@
 <title>Boutique — licenceoff</title>
 <meta name="description" content="Tous nos produits : licences Windows, Microsoft Office, logiciels et services informatiques. Livraison immédiate au Sénégal.">
 <meta name="theme-color" content="#1E4FB8">
-<link rel="stylesheet" href="/shop.css?v=11">
+<link rel="stylesheet" href="/shop.css?v=12">
 </head>
 <body>
 <main class="wrap">
@@ -18,13 +18,14 @@
     <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
   </div>
 </main>
-<script src="/shop.js?v=11"></script>
+<script src="/shop.js?v=12"></script>
 <script>
 LO.page("shop");
 const { el, $, url } = LO;
 // /boutique = tous les produits ; /categorie/licences-windows = une catégorie
 const current = LO.slugFromPath("categorie", "c");
 const query = (new URLSearchParams(location.search).get("q") || "").trim();
+if (query) LO.track("search", { q: query });
 
 function render(data) {
   const cats = data.categories;

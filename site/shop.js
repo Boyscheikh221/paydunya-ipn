@@ -108,6 +108,8 @@ const LO = (() => {
     cart: '<circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/>',
     search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
     menu: '<path d="M3 6h18M3 12h18M3 18h18"/>',
+    user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/>',
+    heart: '<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/>',
     wa: '<path d="M21 11.5a8.4 8.4 0 0 1-12.6 7.3L3 20l1.3-5A8.4 8.4 0 1 1 21 11.5z"/>',
   };
   function header(active) {
@@ -129,6 +131,7 @@ const LO = (() => {
       el("a", { href: url.home, class: "logo" }, el("span", { class: "a", text: "licence" }), el("span", { class: "b", text: "off" })),
       nav,
       el("div", { class: "search" }, icon(ICONS.search), q),
+      el("a", { href: "/compte", class: "acct-btn", "aria-label": "Mon compte", title: acct() ? "Mon compte" : "Se connecter" }, icon(ICONS.user, 22)),
       el("a", { href: url.cart, class: "cart-btn" }, icon(ICONS.cart), el("span", { class: "t", text: "Panier" }), el("span", { class: "n", text: String(cartCount()) })),
     ));
     document.body.prepend(top, h);
@@ -147,7 +150,7 @@ const LO = (() => {
             el("a", { href: "#", text: "Gérer les cookies", onclick: (e) => { e.preventDefault(); cookieBar(true); } })),
           el("div", { id: "footPages", class: "hidden" }, el("b", { text: "Infos" })),
           el("div", {}, el("b", { text: "Aide" }), el("a", { href: "https://wa.me/" + WHATSAPP_NUMBER, target: "_blank", rel: "noopener", text: "WhatsApp : +" + WHATSAPP_NUMBER }),
-            el("span", { text: "Paiement sécurisé via PayDunya" }), el("a", { href: "/parrain", text: "Espace parrain" })),
+            el("span", { text: "Paiement sécurisé via PayDunya" }), el("a", { href: "/compte", text: "Mon compte" }), el("a", { href: "/parrain", text: "Espace parrain" })),
         ),
         el("div", { class: "copy", text: "© " + year + " licenceoff.com — Tous droits réservés" }),
       )),
@@ -242,6 +245,18 @@ const LO = (() => {
       body: JSON.stringify({ action: "hit", page: location.pathname.replace(/\.html$/, "").replace(/\/index$/, "/") || "/", v, ref: document.referrer }) }); } catch (_) {}
   }
 
+  // ---------- compte client (connexion par lien email ; jeton gardé dans ce navigateur) ----------
+  const ACCT_KEY = "lo_compte";
+  function acct() { try { return localStorage.getItem(ACCT_KEY) || ""; } catch (_) { return ""; } }
+  function setAcct(t) { try { t ? localStorage.setItem(ACCT_KEY, t) : localStorage.removeItem(ACCT_KEY); } catch (_) {} }
+  function visitorId() { try { return consent() === "yes" ? localStorage.getItem("lo_v") || "" : ""; } catch (_) { return ""; } }
+  // historique (produits vus, recherches) : seulement si le visiteur a accepté les cookies
+  function track(kind, data) {
+    if (consent() !== "yes") return;
+    try { fetch(SUPABASE + "/boutique", { method: "POST", headers: { "Content-Type": "application/json" }, keepalive: true,
+      body: JSON.stringify({ action: "track", kind, ...data, v: visitorId(), s: acct() }) }); } catch (_) {}
+  }
+
   // ---------- parrainage : lien ?ref=CODE (gardé 30 jours dans ce navigateur) ----------
   const REF_KEY = "lo_ref";
   function refCode() { try { const r = JSON.parse(localStorage.getItem(REF_KEY) || "null"); return r && Date.now() - r.at < 30 * 86400000 ? r.code : ""; } catch (_) { return ""; } }
@@ -269,5 +284,5 @@ const LO = (() => {
     physical: "Produit physique : nous vous contactons sur WhatsApp pour la livraison",
   };
 
-  return { refCode, setRef, cookieBar, url, slugFromPath, seo, jsonLd, crumbs, mainCats, SITE, $, el, fcfa, api, boutique, cart, saveCart, addToCart, cartCount, page, toast, productCard, initials, richText, DELIVERY_TEXT };
+  return { acct, setAcct, visitorId, track, icon, ICONS, refCode, setRef, cookieBar, url, slugFromPath, seo, jsonLd, crumbs, mainCats, SITE, $, el, fcfa, api, boutique, cart, saveCart, addToCart, cartCount, page, toast, productCard, initials, richText, DELIVERY_TEXT };
 })();

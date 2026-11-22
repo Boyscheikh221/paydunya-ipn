@@ -1151,10 +1151,19 @@ let clients = [];
 async function loadClients() { clients = (await api({ action: "clients_list" })).rows; renderClients(); }
 function renderClients() {
   const q = $("clSearch").value.trim().toLowerCase();
-  const list = clients.filter((c) => !q || [c.name, c.email, c.phone, ...(c.codes || [])].join(" ").toLowerCase().includes(q));
+  const list = clients.filter((c) => !q || [c.name, c.email, c.phone, ...(c.codes || []), ...(c.account ? [...c.account.interests, ...c.account.favorites, ...c.account.searches] : [])].join(" ").toLowerCase().includes(q));
   $("clRows").replaceChildren(...list.slice(0, 500).map((c) => {
     const det = el("details"); det.append(el("summary", c.orders.length + " commande(s)"), ...c.orders.map((o) => el("div", dt(o.date) + " · " + o.ref + " · " + (ST[o.status] || o.status) + " · " + fcfa(o.amount) + " · " + o.items + (o.code ? " · 🤝 " + o.code : "") + (o.ip ? " · IP " + o.ip : ""), "small")));
-    return tr(td(el("strong", c.name), el("br"), el("span", c.email, "small"), el("br"), el("span", c.phone || "", "small")), td(det), td(el("strong", fcfa(c.spent)), el("br"), el("span", c.paid_orders + " payée(s)", "small")),
+    let acc = null;
+    if (c.account) {
+      const a = c.account; acc = el("details"); acc.style.marginTop = "6px";
+      acc.append(el("summary", "👤 Compte client" + (a.last_login_at ? " · vu le " + dt(a.last_login_at) : "")),
+        el("div", "Intérêts : " + (a.interests.join(", ") || "—"), "small"),
+        el("div", "♥ Favoris : " + (a.favorites.join(", ") || "—"), "small"),
+        el("div", "Produits vus : " + (a.viewed.join(", ") || "—"), "small"),
+        el("div", "Recherches : " + (a.searches.join(", ") || "—"), "small"));
+    }
+    return tr(td(el("strong", c.name || "—"), c.account ? el("span", " 👤", "small") : null, el("br"), el("span", c.email, "small"), el("br"), el("span", c.phone || "", "small")), td(det, acc), td(el("strong", fcfa(c.spent)), el("br"), el("span", c.paid_orders + " payée(s)", "small")),
       td(el("span", dt(c.first) + " / " + dt(c.last), "small")), td((c.codes || []).join(", ") || "—"), td(el("span", c.ip || "—", "small mono")));
   }));
   if (!list.length) $("clRows").append(tr(td("Aucun client.")));

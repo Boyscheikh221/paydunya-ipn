@@ -331,6 +331,16 @@ async function parrainFromSession(token: unknown) {
   if (!d || new Date(d.expires_at) < new Date() || d.parrains?.status !== "active") return null;
   return d.parrains;
 }
+// ---------- comptes clients ----------
+async function customerFromSession(token: unknown) {
+  const t = str(token, 100);
+  if (!t) return null;
+  const { data } = await db.from("customer_sessions").select("customer_id, expires_at, customers(*)").eq("token_hash", await sha256(t)).eq("kind", "session").maybeSingle();
+  // deno-lint-ignore no-explicit-any
+  const d = data as any;
+  if (!d || new Date(d.expires_at) < new Date()) return null;
+  return d.customers;
+}
 async function setting(key: string, def: number) {
   const { data } = await db.from("settings").select("value").eq("key", key).maybeSingle();
   const n = Number(data?.value);
@@ -482,6 +492,148 @@ Deno.serve(async (req) => {
     }
 
     // ---------- Espace parrain (connexion par lien envoyé par email) ----------
+    // ================= Comptes clients (lien magique, sans mot de passe) =================
+    case "account_login": {
+      const email = str(body.email, 200).toLowerCase();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json({ error: "email_invalide" }, 400);
+      // anti-abus : 5 liens par email et par heure
+      const { data: c0 } = await db.from("customers").select("id").eq("email", email).maybeSingle();
+      let cid = c0?.id as string | undefined;
+      if (cid) {
+        const { count } = await db.from("customer_sessions").select("token_hash", { count: "exact", head: true })
+          .eq("customer_id", cid).eq("kind", "login").gte("created_at", new Date(Date.now() - 3600_000).toISOString());
+        if ((count ?? 0) >= 5) return json({ ok: true });
+      } else {
+        // nom repris de la dernière commande passée avec cet email, s'il y en a une
+        const { data: last } = await db.from("orders").select("customer_name, phone").eq("email", email).order("created_at", { ascending: false }).limit(1).maybeSingle();
+        const { data: c1, error } = await db.from("customers").insert({ email, name: last?.customer_name ?? null, phone: last?.phone ?? null }).select("id").single();
+        if (error) return json({ error: "error" }, 500);
+        cid = c1.id;
+      }
+      const t = newToken(32);
+      await db.from("customer_sessions").insert({ token_hash: await sha256(t), customer_id: cid, kind: "login", expires_at: new Date(Date.now() + 30 * 60_000).toISOString() });
+      const { site } = siteCtx();
+      const link = site + "/compte?t=" + t;
+      await resendSend(email, {
+        subject: "Votre lien de connexion — licenceoff",
+        html: wrapHtml(`<p style="margin:0 0 12px">Bonjour,</p><p style="margin:0 0 12px">Cliquez sur ce bouton pour ouvrir votre compte licenceoff : vos commandes, vos clés, vos favoris. Le lien marche une seule fois, pendant 30 minutes.</p><p style="text-align:center;margin:22px 0"><a href="${esc(link)}" style="display:inline-block;background:${EM.O};color:#fff;font-weight:800;text-decoration:none;padding:14px 22px;border-radius:10px">Ouvrir mon compte</a></p><p style="font-size:13px;color:#5b6b86">Vous n'avez rien demandé ? Ignorez cet email.</p>`),
+        text: "Votre lien de connexion (30 minutes, une seule fois) : " + link,
+      });
+      return json({ ok: true });
+    }
+    case "account_session": {
+      const h = await sha256(str(body.t, 100));
+      const { data: used } = await db.from("customer_sessions").update({ used_at: new Date().toISOString() })
+        .eq("token_hash", h).eq("kind", "login").is("used_at", null).gt("expires_at", new Date().toISOString()).select("customer_id");
+      if (!used?.length) return json({ error: "lien_expire" }, 401);
+      const cid = used[0].customer_id;
+      const s = newToken(32);
+      await db.from("customer_sessions").insert({ token_hash: await sha256(s), customer_id: cid, kind: "session", expires_at: new Date(Date.now() + 60 * 86400_000).toISOString() });
+      await db.from("customers").update({ last_login_at: new Date().toISOString() }).eq("id", cid);
+      // l'historique de ce navigateur (déjà accepté par les cookies) rejoint le compte
+      const v = str(body.v, 40);
+      if (v) await db.from("customer_events").update({ customer_id: cid }).eq("visitor", v).is("customer_id", null);
+      return json({ s });
+    }
+    case "account_logout": {
+      await db.from("customer_sessions").delete().eq("token_hash", await sha256(str(body.s, 100))).eq("kind", "session");
+      return json({ ok: true });
+    }
+    case "account_me": {
+      const c = await customerFromSession(body.s);
+      if (!c) return json({ error: "non_connecte" }, 401);
+      const [{ data: orders }, { data: favs }, { data: evs }, { data: prods }, { data: cats }] = await Promise.all([
+        db.from("orders").select("ref, public_token, created_at, status, amount_fcfa, order_items(product_id, product_name, quantity)")
+          .eq("email", c.email).order("created_at", { ascending: false }).limit(100),
+        db.from("customer_favorites").select("product_id, created_at").eq("customer_id", c.id).order("created_at", { ascending: false }),
+        db.from("customer_events").select("kind, product_id, query, created_at").eq("customer_id", c.id).order("created_at", { ascending: false }).limit(200),
+        db.from("products").select(PRODUCT_FIELDS).eq("active", true).order("sort").order("name"),
+        db.from("categories").select("id, slug, name, parent_id, sort").eq("active", true).order("sort"),
+      ]);
+      const byId = Object.fromEntries((cats ?? []).map((k) => [k.id, k]));
+      const plist = prods ?? [];
+      const counts = await stockCounts(plist.filter((p) => STOCK_TYPES.includes(p.delivery_type)).map((p) => p.id));
+      const pById = Object.fromEntries(plist.map((p) => [p.id, p]));
+      const pub = (id: string) => pById[id] ? publicProduct(pById[id], counts, byId) : null;
+      // deno-lint-ignore no-explicit-any
+      const bought = new Set((orders ?? []).filter((o: any) => ["paid", "processing", "installing", "delivered"].includes(o.status)).flatMap((o: any) => (o.order_items ?? []).map((i: any) => i.product_id)));
+      const favIds = (favs ?? []).map((f) => f.product_id).filter((id) => pById[id]);
+      const views = (evs ?? []).filter((e) => e.kind === "view" && e.product_id && pById[e.product_id]).map((e) => e.product_id as string);
+      // suggestions : catégories (et catégorie parente) des produits vus, favoris, achetés, et centres d'intérêt
+      const score: Record<string, number> = {};
+      const addCat = (catId: string | null, w: number) => {
+        if (!catId) return;
+        score[catId] = (score[catId] ?? 0) + w;
+        const par = byId[catId]?.parent_id; if (par) score[par] = (score[par] ?? 0) + w / 2;
+      };
+      for (const id of views.slice(0, 50)) addCat(pById[id].category_id, 1);
+      for (const id of favIds) addCat(pById[id].category_id, 3);
+      for (const id of bought) if (pById[id as string]) addCat(pById[id as string].category_id, 2);
+      const interests: string[] = c.interests ?? [];
+      for (const k of cats ?? []) if (interests.includes(k.slug)) addCat(k.id, 3);
+      const pScore = (p: { category_id: string | null; featured: boolean }) => (p.category_id ? (score[p.category_id] ?? 0) + (score[byId[p.category_id]?.parent_id] ?? 0) / 2 : 0) + (p.featured ? 0.5 : 0);
+      const suggestions = plist.filter((p) => !bought.has(p.id) && !favIds.includes(p.id))
+        .map((p) => ({ p, sc: pScore(p) })).sort((a, b) => b.sc - a.sc).slice(0, 8).map((x) => publicProduct(x.p, counts, byId));
+      return json({
+        me: { email: c.email, name: c.name ?? "", phone: c.phone ?? "", interests, created_at: c.created_at },
+        // deno-lint-ignore no-explicit-any
+        orders: (orders ?? []).map((o: any) => ({ ref: o.ref, token: o.public_token, date: o.created_at, status: o.status, amount: o.amount_fcfa,
+          // deno-lint-ignore no-explicit-any
+          items: (o.order_items ?? []).map((i: any) => (i.quantity > 1 ? i.quantity + " × " : "") + i.product_name).join(", ") })),
+        favorites: favIds.map(pub).filter(Boolean),
+        recent: [...new Set(views)].slice(0, 8).map(pub).filter(Boolean),
+        searches: [...new Set((evs ?? []).filter((e) => e.kind === "search" && e.query).map((e) => e.query as string))].slice(0, 10),
+        suggestions,
+        categories: (cats ?? []).map((k) => ({ slug: k.slug, name: k.name, parent: k.parent_id ? byId[k.parent_id]?.slug ?? null : null })),
+      });
+    }
+    case "account_save": {
+      const c = await customerFromSession(body.s);
+      if (!c) return json({ error: "non_connecte" }, 401);
+      const interests = (Array.isArray(body.interests) ? body.interests : []).slice(0, 30).map((x: unknown) => str(x, 80)).filter(Boolean);
+      await db.from("customers").update({ name: str(body.name, 120) || null, phone: str(body.phone, 40) || null, interests }).eq("id", c.id);
+      return json({ ok: true });
+    }
+    case "account_history_clear": {
+      const c = await customerFromSession(body.s);
+      if (!c) return json({ error: "non_connecte" }, 401);
+      await db.from("customer_events").delete().eq("customer_id", c.id);
+      return json({ ok: true });
+    }
+    case "account_delete": { // les commandes restent (comptabilité), le compte, les favoris et l'historique sont effacés
+      const c = await customerFromSession(body.s);
+      if (!c) return json({ error: "non_connecte" }, 401);
+      await db.from("customers").delete().eq("id", c.id);
+      return json({ ok: true });
+    }
+    case "fav": { // état du favori ; avec "set" : ajouter / retirer
+      const c = await customerFromSession(body.s);
+      if (!c) return json({ error: "non_connecte" }, 401);
+      const { data: p } = await db.from("products").select("id").eq("slug", str(body.slug, 80)).maybeSingle();
+      if (!p) return json({ error: "not_found" }, 404);
+      if (body.set === true) await db.from("customer_favorites").upsert({ customer_id: c.id, product_id: p.id });
+      if (body.set === false) await db.from("customer_favorites").delete().eq("customer_id", c.id).eq("product_id", p.id);
+      const { count } = await db.from("customer_favorites").select("product_id", { count: "exact", head: true }).eq("customer_id", c.id).eq("product_id", p.id);
+      return json({ fav: (count ?? 0) > 0 });
+    }
+    case "track": { // appelé par le site seulement si le visiteur a accepté les cookies
+      const kind = body.kind === "search" ? "search" : body.kind === "view" ? "view" : null;
+      if (!kind) return json({ ok: true });
+      const c = await customerFromSession(body.s);
+      const visitor = str(body.v, 40) || null;
+      if (!c && !visitor) return json({ ok: true });
+      let product_id: string | null = null;
+      if (kind === "view") {
+        const { data: p } = await db.from("products").select("id").eq("slug", str(body.slug, 80)).maybeSingle();
+        if (!p) return json({ ok: true });
+        product_id = p.id;
+      }
+      const query = kind === "search" ? str(body.q, 100) : null;
+      if (kind === "search" && !query) return json({ ok: true });
+      await db.from("customer_events").insert({ customer_id: c?.id ?? null, visitor, kind, product_id, query });
+      return json({ ok: true });
+    }
+
     case "parrain_login": {
       const email = str(body.email, 200).toLowerCase();
       const { data: pr } = await db.from("parrains").select("id, name, email, status").eq("email", email).maybeSingle();

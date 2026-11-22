@@ -747,6 +747,24 @@ Deno.serve(async (req) => {
           if (!c.ip && o.ip) c.ip = o.ip;
           c.first = o.created_at;
         }
+        // comptes clients : intérêts, favoris, produits vus, recherches (même sans commande)
+        const [{ data: accs }, { data: favs }, { data: evs }, { data: prods }] = await Promise.all([
+          db.from("customers").select("id, email, name, phone, interests, created_at, last_login_at").limit(10000),
+          db.from("customer_favorites").select("customer_id, product_id").limit(50000),
+          db.from("customer_events").select("customer_id, kind, product_id, query, created_at").not("customer_id", "is", null).order("created_at", { ascending: false }).limit(20000),
+          db.from("products").select("id, name"),
+        ]);
+        const pName = Object.fromEntries((prods ?? []).map((p) => [p.id, p.name]));
+        for (const a of accs ?? []) {
+          const k = String(a.email).toLowerCase();
+          if (!by.has(k)) by.set(k, { email: k, name: a.name ?? "", phone: a.phone, ip: null, orders: [], spent: 0, paid_orders: 0, codes: new Set(), first: a.created_at, last: a.created_at });
+          const c = by.get(k);
+          const ev = (evs ?? []).filter((e) => e.customer_id === a.id);
+          c.account = { created_at: a.created_at, last_login_at: a.last_login_at, interests: a.interests ?? [],
+            favorites: (favs ?? []).filter((f) => f.customer_id === a.id).map((f) => pName[f.product_id]).filter(Boolean),
+            viewed: [...new Set(ev.filter((e) => e.kind === "view").map((e) => pName[e.product_id]).filter(Boolean))].slice(0, 10),
+            searches: [...new Set(ev.filter((e) => e.kind === "search").map((e) => e.query))].slice(0, 10) };
+        }
         return json({ rows: [...by.values()].map((c) => ({ ...c, codes: [...c.codes] })) });
       }
 

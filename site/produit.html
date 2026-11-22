@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Produit — licenceoff</title>
-<link rel="stylesheet" href="/shop.css?v=11">
+<link rel="stylesheet" href="/shop.css?v=12">
 </head>
 <body>
 <main class="wrap">
   <div id="view"><div class="product"><div class="skeleton"></div><div class="skeleton"></div></div></div>
 </main>
-<script src="/shop.js?v=11"></script>
+<script src="/shop.js?v=12"></script>
 <script>
 LO.page("shop");
 const { el, $, fcfa } = LO;
@@ -50,7 +50,7 @@ function show(p) {
       el("div", { class: "price" }, fcfa(p.price_fcfa), off ? el("s", { text: fcfa(p.compare_price_fcfa) }) : null,
         off ? el("span", { class: "tag t-wait", style: "margin-left:8px;vertical-align:middle", text: "-" + off + " %" }) : null),
       el("p", { class: p.in_stock ? "" : "msg", text: p.in_stock ? "✔ En stock" : "Rupture de stock pour le moment. Écrivez-nous sur WhatsApp pour être prévenu." }),
-      el("div", { style: "display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:16px 0" }, qty, add, buy),
+      el("div", { style: "display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:16px 0" }, qty, add, buy, favBtn(p)),
       el("ul", { class: "perks" },
         el("li", { text: LO.DELIVERY_TEXT[p.delivery_type] || "Livraison rapide" }),
         el("li", { text: "Paiement sécurisé : Wave, Orange Money, carte" }),
@@ -59,6 +59,20 @@ function show(p) {
     )), reviewsEl(p));
 }
 
+// favori : réservé aux clients connectés (sinon, on propose de se connecter)
+function favBtn(p) {
+  const b = el("button", { class: "fav-btn", type: "button", "aria-pressed": "false", title: "Ajouter à mes favoris" }, LO.icon(LO.ICONS.heart, 18), el("span", { text: "Favori" }));
+  let on = false;
+  const paint = () => { b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); b.lastChild.textContent = on ? "Dans mes favoris" : "Favori"; };
+  if (LO.acct()) LO.boutique({ action: "fav", s: LO.acct(), slug: p.slug }).then((d) => { if (d.fav != null) { on = d.fav; paint(); } }).catch(() => {});
+  b.addEventListener("click", async () => {
+    if (!LO.acct()) { LO.toast("Connectez-vous pour garder vos favoris"); setTimeout(() => (location.href = "/compte?retour=" + encodeURIComponent(location.pathname)), 900); return; }
+    const d = await LO.boutique({ action: "fav", s: LO.acct(), slug: p.slug, set: !on }).catch(() => ({}));
+    if (d.error === "non_connecte") { LO.setAcct(""); location.href = "/compte"; return; }
+    if (d.fav != null) { on = d.fav; paint(); LO.toast(on ? "Ajouté à vos favoris ♥" : "Retiré de vos favoris"); }
+  });
+  return b;
+}
 function starsEl(n) {
   const r = Math.round(n);
   return el("span", { class: "stars", "aria-label": String(n).replace(".", ",") + " sur 5" }, "★".repeat(r), el("span", { class: "off", text: "★".repeat(5 - r) }));
@@ -77,7 +91,7 @@ function reviewsEl(p) {
 
 if (!slug) location.replace(LO.url.shop);
 LO.boutique({ action: "product", slug }).then((d) => {
-  if (d.product) show(d.product);
+  if (d.product) { show(d.product); LO.track("view", { slug: d.product.slug }); }
   else $("#view").replaceChildren(el("div", { class: "empty" }, el("h1", { text: "Produit introuvable" }), el("p", { text: "Ce produit n'existe plus ou a changé d'adresse." }), el("a", { class: "btn", href: LO.url.shop, text: "Retour à la boutique" })));
 }).catch(() => $("#view").replaceChildren(el("div", { class: "empty", text: "Erreur de chargement. Réessayez dans un instant." })));
 </script>
