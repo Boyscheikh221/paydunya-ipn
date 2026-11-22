@@ -231,8 +231,9 @@
         <div class="grid"><div><label>Produit</label><select id="kProd"></select></div></div>
         <label>Collez une clé (ou un identifiant) par ligne</label>
         <textarea id="kText" class="mono" placeholder="XXXXX-XXXXX-XXXXX-XXXXX-XXXXX&#10;YYYYY-YYYYY-YYYYY-YYYYY-YYYYY"></textarea>
+        <label class="check"><input type="checkbox" id="kReuse"> Réutilisable (sérialiseur envoyé à chaque commande, jamais épuisé)</label>
         <div class="bar" style="margin-top:10px"><button id="kImport" class="green">Ajouter au stock</button><span id="kMsg" class="small"></span></div>
-        <p class="small">Les doublons sont ignorés. Une clé envoyée ne repart jamais. Les commandes payées qui attendaient du stock sont livrées automatiquement.</p>
+        <p class="small">Les doublons sont ignorés. Une clé à usage unique envoyée ne repart jamais. Une clé réutilisable reste en stock et repart à chaque commande (les clés à usage unique du même produit passent d'abord). Les commandes payées qui attendaient du stock sont livrées automatiquement.</p>
       </div>
       <div class="box">
         <div class="bar">
@@ -302,7 +303,7 @@
       <p class="small">Choisissez le produit et l'adresse : l'email part avec le modèle de ce produit (réglé dans Produits), ou le modèle par défaut.</p>
       <div class="box">
         <h2>🔑 Envoyer une clé de licence</h2>
-        <p class="small">Prend une clé dans le stock (elle ne servira plus jamais), l'envoie par email et enregistre la vente dans Commandes.</p>
+        <p class="small">Prend une clé dans le stock (usage unique : elle ne repartira plus ; réutilisable : elle reste en stock), l'envoie par email et enregistre la vente dans Commandes.</p>
         <div class="grid">
           <div><label>Produit</label><select id="mProd"></select></div>
           <div><label>Quantité</label><input id="mQty" type="number" min="1" max="20" value="1"></div>
@@ -480,7 +481,7 @@ async function loadDash() {
   const sum = (arr) => arr.reduce((x, o) => x + (o.amount_fcfa || 0), 0);
   const pending = d.orders.filter((o) => o.status === "pending").length;
   const toDo = d.orders.filter((o) => o.status === "processing" || o.status === "paid").length;
-  const low = d.stock.filter((x) => x.active && x.available <= x.threshold);
+  const low = d.stock.filter((x) => x.active && !x.reusable && x.available <= x.threshold);
   const badge = $("badgePending"); badge.textContent = toDo; badge.classList.toggle("hidden", !toDo);
   const k = [
     ["Ventes aujourd'hui", fcfa(sum(paid.filter((o) => new Date(o.paid_at) >= today)))],
@@ -688,11 +689,12 @@ async function loadKeys() {
   const reload = () => loadKeys();
   $("kRows").replaceChildren(...rows.map((k) => {
     const acts = el("div", null, "acts");
+    if (k.status === "available" && !k.source_key_id) acts.append(btn(k.reusable ? "Passer en usage unique" : "Rendre réutilisable", "grey", run({ action: "key_set_reusable", id: k.id, reusable: !k.reusable }, k.reusable ? "Usage unique" : "Réutilisable", reload)));
     if (k.status === "available") acts.append(btn("Désactiver", "grey", run({ action: "key_set_status", id: k.id, status: "disabled" }, "Désactivée", reload)));
     if (k.status === "disabled") acts.append(btn("Réactiver", "green", run({ action: "key_set_status", id: k.id, status: "available" }, "Réactivée", reload)));
     if (k.status !== "sent") acts.append(btn("Supprimer", "red", async () => { if (confirm("Supprimer du stock ?")) await run({ action: "key_delete", id: k.id }, "Supprimée", reload)(); }));
     const who = k.order_items?.orders ? k.order_items.orders.ref + " · " + k.order_items.orders.customer_name : "—";
-    return tr(td(el("span", mask(k.key_value), "mono")), td(names[k.product_id] || ""), td(tag(k.status)), td(dt(k.added_at)), td(who), td(acts));
+    return tr(td(el("span", mask(k.key_value), "mono")), td(names[k.product_id] || ""), td(tag(k.status), k.reusable ? el("span", " ♻ réutilisable", "small") : null), td(dt(k.added_at)), td(who), td(acts));
   }));
   if (!rows.length) $("kRows").append(tr(td("Aucun élément.")));
 }
@@ -703,8 +705,8 @@ $("kShow").addEventListener("click", () => { showKeys = !showKeys; $("kShow").te
 $("kImport").addEventListener("click", async () => {
   if (!$("kProd").value) { $("kMsg").textContent = "Créez d'abord un produit de type clé ou identifiants."; return; }
   try {
-    const d = await api({ action: "keys_import", product_id: $("kProd").value, text: $("kText").value });
-    $("kText").value = "";
+    const d = await api({ action: "keys_import", product_id: $("kProd").value, text: $("kText").value, reusable: $("kReuse").checked });
+    $("kText").value = ""; $("kReuse").checked = false;
     $("kMsg").textContent = d.added + " ajouté(s), " + d.duplicates + " doublon(s) ignoré(s)" + (d.delivered ? ", " + d.delivered + " commande(s) en attente livrée(s)" : "") + ".";
     await loadKeys();
   } catch (e) { $("kMsg").textContent = e.message === "aucune_cle" ? "Aucune clé trouvée dans le texte." : errMsg(e); }

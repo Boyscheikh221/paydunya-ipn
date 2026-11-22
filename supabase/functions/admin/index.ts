@@ -283,12 +283,13 @@ Deno.serve(async (req) => {
       case "dashboard": {
         const { data: prods } = await db.from("products").select("id, name, active, delivery_type, low_stock_threshold").order("name");
         const stockProds = (prods ?? []).filter((p) => STOCK_TYPES.includes(p.delivery_type));
-        const { data: keys } = await db.from("license_keys").select("product_id, status")
+        const { data: keys } = await db.from("license_keys").select("product_id, status, reusable")
           .in("product_id", stockProds.map((p) => p.id)).limit(20000);
         const stock = stockProds.map((p) => ({
           id: p.id, name: p.name, active: p.active, threshold: p.low_stock_threshold,
           available: (keys ?? []).filter((k) => k.product_id === p.id && k.status === "available").length,
           sent: (keys ?? []).filter((k) => k.product_id === p.id && k.status === "sent").length,
+          reusable: (keys ?? []).some((k) => k.product_id === p.id && k.status === "available" && k.reusable),
         }));
         const since = new Date(Date.now() - 31 * DAY).toISOString();
         const { data: recent } = await db.from("orders")
@@ -421,9 +422,13 @@ Deno.serve(async (req) => {
         const unique = [...new Set(lines)];
         if (!unique.length) return json({ error: "aucune_cle" }, 400);
         if (unique.length > 2000) return json({ error: "max_2000_par_import" }, 400);
-        const { data, error } = await db.from("license_keys")
-          .upsert(unique.map((k) => ({ product_id: p.id, key_value: k })), { onConflict: "product_id,key_value", ignoreDuplicates: true })
-          .select("id");
+        // doublons : déjà dans le stock de ce produit (les copies envoyées des clés réutilisables ne comptent pas)
+        const { data: have } = await db.from("license_keys").select("key_value").eq("product_id", p.id).is("source_key_id", null).limit(50000);
+        const known = new Set((have ?? []).map((k) => k.key_value));
+        const fresh = unique.filter((k) => !known.has(k));
+        const { data, error } = fresh.length
+          ? await db.from("license_keys").insert(fresh.map((k) => ({ product_id: p.id, key_value: k, reusable: body.reusable === true }))).select("id")
+          : { data: [], error: null };
         if (error) return json({ error: error.message }, 500);
         const added = data?.length ?? 0;
         const delivered = await deliverWaiting(p.id);
@@ -437,6 +442,15 @@ Deno.serve(async (req) => {
         if (error) return json({ error: error.message }, 500);
         if (!data?.length) return json({ error: "cle_deja_envoyee" }, 400);
         const delivered = status === "available" ? await deliverWaiting(data[0].product_id) : 0;
+        return json({ ok: true, delivered });
+      }
+
+      case "key_set_reusable": { // usage unique <-> réutilisable (clé encore en stock)
+        const { data, error } = await db.from("license_keys").update({ reusable: body.reusable === true })
+          .eq("id", body.id).neq("status", "sent").select("product_id");
+        if (error) return json({ error: error.message }, 500);
+        if (!data?.length) return json({ error: "cle_deja_envoyee" }, 400);
+        const delivered = body.reusable === true ? await deliverWaiting(data[0].product_id) : 0;
         return json({ ok: true, delivered });
       }
 
