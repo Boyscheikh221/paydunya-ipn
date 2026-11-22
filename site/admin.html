@@ -188,7 +188,7 @@
         <label class="check" style="margin:12px 0 0;padding:10px 12px;background:#fff7e6;border-radius:10px"><input type="checkbox" id="pPhysical"> <strong>Produit physique</strong> &nbsp;<span class="small">(objet à livrer : clé USB, PC, accessoire… ; décoché = produit digital)</span></label>
         <div class="grid" style="align-items:end">
           <div>
-            <label>Photo du produit</label>
+            <label>Photo du produit <span class="small">(indispensable pour apparaître dans Google avec le prix et les étoiles)</span></label>
             <div class="bar" style="margin:0"><img id="pImgPrev" class="preview hidden" alt=""><input id="pImgFile" type="file" accept="image/*" class="grow"></div>
             <input type="hidden" id="pImg"><div id="pImgMsg" class="small"></div>
           </div>
@@ -794,7 +794,7 @@ async function loadProducts() {
   const catName = Object.fromEntries(categories.map((c) => [c.id, c.name]));
   $("pRows").replaceChildren(...products.map((p) => tr(
     td(p.image_url ? Object.assign(el("img", null, "thumb"), { src: p.image_url, alt: "" }) : el("span", null, "thumb")),
-    td(el("strong", p.name), p.featured ? el("span", " ★", "small") : null),
+    td(el("strong", p.name), p.featured ? el("span", " ★", "small") : null, p.image_url ? null : el("div", "⚠️ sans photo : invisible dans les résultats enrichis Google", "small")),
     td(catName[p.category_id] || "—"),
     td(fcfa(p.price_fcfa)),
     td(TYPES[p.delivery_type] || p.delivery_type, el("br"), el("span", p.delivery_type === "physical" ? (p.stock_qty == null ? "quantité illimitée" : p.stock_qty + " en stock") : p.auto_deliver ? "automatique" : "manuelle", "small")),
