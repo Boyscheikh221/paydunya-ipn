@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Ma commande — licenceoff</title>
+<link rel="stylesheet" href="shop.css">
+</head>
+<body>
+<main class="wrap" style="max-width:820px">
+  <div id="view" style="padding:24px 0"><div class="skeleton"></div></div>
+</main>
+<script src="shop.js"></script>
+<script>
+LO.page("shop");
+const { el, $, fcfa } = LO;
+const params = new URLSearchParams(location.search);
+const token = params.get("o") || "";
+let autoPay = params.get("pay") === "1";
+let timer = null, checked = 0;
+
+const STATUS = {
+  pending: ["En attente de paiement", "t-wait"],
+  paid: ["Payée — livraison en préparation", "t-info"],
+  processing: ["Payée — en cours de traitement", "t-info"],
+  delivered: ["Livrée ✔", "t-ok"],
+  cancelled: ["Annulée", "t-ko"],
+};
+const ITEM = {
+  pending: ["En attente", "t-wait"], waiting_stock: ["En préparation", "t-info"], to_process: ["En cours de traitement", "t-info"],
+  delivered: ["Livré", "t-ok"], cancelled: ["Annulé", "t-ko"],
+};
+const wa = (text, label = "Écrire sur WhatsApp") => el("a", { class: "btn light", href: "https://wa.me/" + WHATSAPP_NUMBER + "?text=" + encodeURIComponent(text), target: "_blank", rel: "noopener", text: label });
+
+async function startPay(btn, msg) {
+  btn.disabled = true; btn.textContent = "Ouverture du paiement…";
+  try {
+    const d = await LO.api("paydunya", { action: "create", o: token });
+    if (d.url) { location.href = d.url; return; }
+    msg.textContent = d.error === "paydunya_non_configure"
+      ? "Le paiement en ligne n'est pas encore disponible. Utilisez le paiement manuel ci-dessous."
+      : "Le paiement en ligne n'a pas pu s'ouvrir. Réessayez ou utilisez le paiement manuel ci-dessous.";
+    $("#manual") && ($("#manual").open = true);
+  } catch (_) { msg.textContent = "Erreur de connexion, réessayez."; }
+  btn.disabled = false; btn.textContent = "Payer maintenant";
+}
+
+function itemBlock(i) {
+  const [lab, cls] = ITEM[i.status] || ["", "t-ko"];
+  const box = el("div", { class: "line", style: "grid-template-columns:64px 1fr" },
+    el("div", { class: "th" }, i.image_url ? el("img", { src: i.image_url, alt: "" }) : LO.initials(i.name)),
+    el("div", {},
+      el("div", { style: "display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap" },
+        el("span", { class: "nm", text: (i.quantity > 1 ? i.quantity + " × " : "") + i.name }),
+        el("span", { class: "tag " + cls, text: lab })),
+      el("div", { class: "note", text: fcfa(i.unit_price * i.quantity) })));
+  const body = box.lastChild;
+  if (i.keys?.length) {
+    body.append(el("div", { class: "note", style: "margin-top:8px", text: i.delivery_type === "stock" ? "Vos identifiants :" : (i.keys.length > 1 ? "Vos clés d'activation :" : "Votre clé d'activation :") }));
+    for (const k of i.keys) {
+      const c = el("button", { class: "btn light", style: "padding:6px 10px;font-size:13px", text: "Copier" });
+      c.addEventListener("click", async () => { try { await navigator.clipboard.writeText(k); c.textContent = "Copié ✔"; } catch (_) { c.textContent = "Sélectionnez et copiez"; } });
+      body.append(el("div", { class: "key" }, k), c);
+    }
+  }
+  if (i.download) {
+    if (i.download.state === "ready") {
+      const b = el("button", { class: "btn block", style: "margin-top:10px", text: "Télécharger le logiciel" });
+      b.addEventListener("click", async () => {
+        b.disabled = true; b.textContent = "Préparation…";
+        try {
+          const d = await LO.api("download", { t: i.download.token });
+          if (d.ok && d.url) { b.textContent = "Téléchargement lancé ✔"; location.href = d.url; }
+          else b.textContent = "Lien déjà utilisé";
+        } catch (_) { b.disabled = false; b.textContent = "Erreur, réessayer"; }
+      });
+      body.append(b, el("p", { class: "note", text: "Le lien de téléchargement ne fonctionne qu'une seule fois. Lancez-le depuis l'ordinateur où vous installez le logiciel." }));
+    } else {
+      body.append(el("p", { class: "note", text: "Lien de téléchargement déjà utilisé ou expiré. Écrivez-nous pour en recevoir un nouveau." }));
+    }
+  }
+  if (i.status === "to_process") body.append(el("p", { class: "note", text: "Notre équipe traite cet article et vous contacte rapidement sur WhatsApp." }));
+  return box;
+}
+
+async function load() {
+  clearTimeout(timer);
+  const view = $("#view");
+  if (!token) { view.replaceChildren(el("div", { class: "panel empty" }, el("h1", { text: "Commande introuvable" }))); return; }
+  let o;
+  try { o = await LO.boutique({ action: "status", o: token }); } catch (_) { o = { error: "net" }; }
+  // retour de PayDunya : vérification immédiate du paiement
+  if (!o.error && o.status === "pending" && o.has_paydunya && checked < 40) {
+    checked++;
+    try { const d = await LO.api("paydunya", { action: "check", o: token }); if (d.ok) o = await LO.boutique({ action: "status", o: token }); } catch (_) {}
+  }
+  if (o.error) {
+    view.replaceChildren(el("div", { class: "panel empty" }, el("h1", { text: "Commande introuvable" }),
+      el("p", { text: "Vérifiez que vous avez ouvert le lien en entier." }), wa("Bonjour, je ne retrouve pas ma commande.")));
+    return;
+  }
+  const [lab, cls] = STATUS[o.status] || ["", "t-ko"];
+  const head = el("div", { class: "panel", style: "margin-bottom:14px" },
+    el("div", { style: "display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center" },
+      el("div", {}, el("div", { class: "note", text: "Commande " + o.ref + " · " + new Date(o.created_at).toLocaleDateString("fr-FR") }),
+        el("h1", { style: "margin:4px 0 0;font-size:24px", text: o.status === "delivered" ? "Merci, votre commande est prête !" : "Votre commande" })),
+      el("span", { class: "tag " + cls, text: lab })),
+    el("div", { class: "tot" }, el("span", { text: "Total" }), el("span", { text: fcfa(o.amount_fcfa) })));
+
+  const parts = [head];
+  if (o.status === "pending") {
+    const msg = el("p", { class: "msg" });
+    const pay = el("button", { class: "btn orange block", text: "Payer maintenant" });
+    pay.addEventListener("click", () => startPay(pay, msg));
+    const manual = el("details", { id: "manual", style: "margin-top:14px" }, el("summary", { style: "cursor:pointer;font-weight:700", text: "Payer manuellement par transfert" }));
+    const lines = Object.entries(MANUAL_PAY).map(([k, v]) => el("li", {}, el("b", { text: k + " : " }), v));
+    manual.append(el("p", { text: "Envoyez exactement " + fcfa(o.amount_fcfa) + " à l'un de ces numéros, en indiquant la référence " + o.ref + " :" }), el("ul", {}, ...lines));
+    if (!o.has_payment_ref) {
+      const inp = el("input", { class: "field", placeholder: "N° de transaction reçu par SMS" });
+      const b = el("button", { class: "btn", style: "margin-top:8px", text: "J'ai payé" });
+      b.addEventListener("click", async () => { if (!inp.value.trim()) return inp.focus(); b.disabled = true; await LO.boutique({ action: "add_payment_ref", o: token, payment_ref: inp.value }).catch(() => {}); load(); });
+      manual.append(inp, b);
+    } else manual.append(el("p", { class: "note", text: "Merci, nous vérifions votre paiement manuel." }));
+    parts.push(el("div", { class: "panel", style: "margin-bottom:14px" },
+      el("h2", { style: "margin:0 0 6px;font-size:18px", text: "Paiement" }),
+      el("p", { class: "note", text: "Wave, Orange Money, Free Money ou carte bancaire, via PayDunya. Votre commande est livrée ici dès que le paiement est confirmé." }),
+      pay, msg, manual));
+    if (autoPay && !o.has_paydunya) { autoPay = false; setTimeout(() => startPay(pay, msg), 300); }
+  }
+  parts.push(el("div", { class: "panel" }, el("h2", { style: "margin:0 0 4px;font-size:18px", text: "Articles" }), ...o.items.map(itemBlock)));
+  parts.push(el("div", { style: "margin-top:16px;display:flex;gap:10px;flex-wrap:wrap" },
+    wa("Bonjour, j'ai une question sur ma commande " + o.ref + ".", "Une question ? WhatsApp"),
+    el("a", { class: "btn light", href: "index.html#catalogue", text: "Continuer mes achats" })));
+  parts.push(el("p", { class: "note", style: "margin-top:12px", text: "Gardez précieusement le lien de cette page : c'est ici que vous retrouvez vos clés et téléchargements." }));
+  view.replaceChildren(...parts);
+
+  if ((o.status === "pending" && (o.has_paydunya || o.has_payment_ref)) || o.status === "paid" || o.status === "processing") timer = setTimeout(load, 15000);
+}
+load();
+</script>
+</body>
+</html>

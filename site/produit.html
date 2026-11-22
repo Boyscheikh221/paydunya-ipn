@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Produit — licenceoff</title>
+<link rel="stylesheet" href="shop.css">
+</head>
+<body>
+<main class="wrap">
+  <div id="view"><div class="product"><div class="skeleton"></div><div class="skeleton"></div></div></div>
+</main>
+<script src="shop.js"></script>
+<script>
+LO.page("shop");
+const { el, $, fcfa } = LO;
+const slug = new URLSearchParams(location.search).get("p") || "";
+
+function show(p) {
+  document.title = p.name + " — licenceoff";
+  const off = p.compare_price_fcfa && p.compare_price_fcfa > p.price_fcfa ? Math.round(100 - p.price_fcfa * 100 / p.compare_price_fcfa) : 0;
+  const qtyIn = el("input", { type: "number", min: "1", max: String(p.max_qty || 20), value: "1", "aria-label": "Quantité" });
+  const clampQ = () => { qtyIn.value = Math.max(1, Math.min(p.max_qty || 20, Math.floor(Number(qtyIn.value) || 1))); };
+  qtyIn.addEventListener("change", clampQ);
+  const qty = el("div", { class: "qty" },
+    el("button", { type: "button", text: "−", "aria-label": "Moins", onclick: () => { qtyIn.value = Number(qtyIn.value) - 1; clampQ(); } }),
+    qtyIn,
+    el("button", { type: "button", text: "+", "aria-label": "Plus", onclick: () => { qtyIn.value = Number(qtyIn.value) + 1; clampQ(); } }));
+  const add = el("button", { class: "btn", disabled: !p.in_stock, text: "Ajouter au panier",
+    onclick: () => { clampQ(); LO.addToCart(p, Number(qtyIn.value)); LO.toast("Ajouté au panier ✔"); } });
+  const buy = el("button", { class: "btn orange", disabled: !p.in_stock, text: "Acheter maintenant",
+    onclick: () => { clampQ(); LO.addToCart(p, Number(qtyIn.value)); location.href = "panier.html"; } });
+
+  $("#view").replaceChildren(el("div", { class: "product" },
+    el("div", { class: "img" }, p.image_url ? el("img", { src: p.image_url, alt: p.name }) : el("span", { class: "ph", style: "font-size:64px;font-weight:800;color:#94a3b8", text: LO.initials(p.name) })),
+    el("div", {},
+      el("a", { href: p.category ? "index.html?c=" + encodeURIComponent(p.category) + "#catalogue" : "index.html#catalogue", class: "note", text: "← " + (p.category_name || "Boutique") }),
+      el("h1", { text: p.name }),
+      el("div", { class: "price" }, fcfa(p.price_fcfa), off ? el("s", { text: fcfa(p.compare_price_fcfa) }) : null,
+        off ? el("span", { class: "tag t-wait", style: "margin-left:8px;vertical-align:middle", text: "-" + off + " %" }) : null),
+      el("p", { class: p.in_stock ? "" : "msg", text: p.in_stock ? "✔ En stock" : "Rupture de stock pour le moment. Écrivez-nous sur WhatsApp pour être prévenu." }),
+      el("div", { style: "display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:16px 0" }, qty, add, buy),
+      el("ul", { class: "perks" },
+        el("li", { text: LO.DELIVERY_TEXT[p.delivery_type] || "Livraison rapide" }),
+        el("li", { text: "Paiement sécurisé : Wave, Orange Money, carte" }),
+        el("li", { text: "Assistance à l'installation sur WhatsApp" })),
+      p.description ? el("div", {}, el("h2", { style: "font-size:18px;margin:26px 0 8px", text: "Description" }), el("div", { class: "desc", text: p.description })) : null,
+    )));
+}
+
+if (!slug) location.href = "index.html";
+LO.boutique({ action: "product", slug }).then((d) => {
+  if (d.product) show(d.product);
+  else $("#view").replaceChildren(el("div", { class: "empty" }, el("h1", { text: "Produit introuvable" }), el("a", { class: "btn", href: "index.html#catalogue", text: "Retour à la boutique" })));
+}).catch(() => $("#view").replaceChildren(el("div", { class: "empty", text: "Erreur de chargement. Réessayez dans un instant." })));
+</script>
+</body>
+</html>

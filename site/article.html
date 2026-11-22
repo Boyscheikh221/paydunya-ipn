@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Article — licenceoff</title>
+<link rel="stylesheet" href="shop.css">
+</head>
+<body>
+<main>
+  <article class="post" id="view"><div class="skeleton"></div></article>
+</main>
+<script src="shop.js"></script>
+<script>
+LO.page("blog");
+const { el, $ } = LO;
+const slug = new URLSearchParams(location.search).get("a") || "";
+LO.boutique({ action: "post", slug }).then((d) => {
+  const p = d.post;
+  if (!p) { $("#view").replaceChildren(el("h1", { text: "Article introuvable" }), el("a", { class: "btn", href: "blog.html", text: "Retour au blog" })); return; }
+  document.title = p.title + " — licenceoff";
+  const content = el("div", { class: "content" }); content.append(LO.richText(p.content));
+  $("#view").replaceChildren(
+    el("a", { href: "blog.html", class: "note", text: "← Blog" }),
+    el("h1", { text: p.title }),
+    el("div", { class: "note", text: new Date(p.published_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }) }),
+    p.cover_url ? el("div", { class: "cv" }, el("img", { src: p.cover_url, alt: "" })) : null,
+    content,
+    el("div", { class: "panel", style: "margin-top:28px;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap" },
+      el("strong", { text: "Besoin d'une licence ?" }), el("a", { class: "btn orange", href: "index.html#catalogue", text: "Voir la boutique" })));
+}).catch(() => $("#view").replaceChildren(el("p", { text: "Erreur de chargement." })));
+</script>
+</body>
+</html>

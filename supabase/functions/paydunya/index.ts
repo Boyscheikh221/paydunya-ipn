@@ -1,6 +1,7 @@
 // ============================================================
 // Fonction "paydunya" : paiement en ligne (Wave, Orange Money,
-// carte…) via PayDunya, puis livraison AUTOMATIQUE de la commande.
+// carte…) via PayDunya, puis livraison AUTOMATIQUE de la commande
+// (tous les articles du panier).
 // Supabase > Edge Functions > nom : paydunya
 // IMPORTANT : désactiver "Verify JWT" pour cette fonction.
 //
@@ -53,7 +54,7 @@ async function confirmAndDeliver(invoiceToken: string) {
   const { data: o } = await db.from("orders")
     .select("id, status, amount_fcfa").eq("paydunya_token", invoiceToken).maybeSingle();
   if (!o) return { ok: false, reason: "commande_introuvable" };
-  if (o.status === "delivered") return { ok: true, reason: "already_delivered" };
+  if (o.status === "delivered" || o.status === "processing") return { ok: true, reason: "already_delivered" };
   if (o.status === "cancelled") return { ok: false, reason: "cancelled" };
 
   const r = await fetch(API + "/checkout-invoice/confirm/" + encodeURIComponent(invoiceToken), {
@@ -73,7 +74,8 @@ async function confirmAndDeliver(invoiceToken: string) {
     payment_ref: String(b.receipt_identifier ?? b.provider_reference ?? invoiceToken).slice(0, 100),
   }).eq("id", o.id);
 
-  const { data, error } = await db.rpc("deliver_order", { p_order_id: o.id, p_token: newToken(), p_days: 7 });
+  const tokens = Array.from({ length: 30 }, () => newToken());
+  const { data, error } = await db.rpc("deliver_order_v3", { p_order_id: o.id, p_tokens: tokens, p_days: 7, p_force: false });
   if (error) return { ok: false, reason: "error" };
   return data;
 }
@@ -102,7 +104,7 @@ Deno.serve(async (req) => {
   if (!pub) return json({ error: "not_found" }, 404);
 
   const { data: o } = await db.from("orders")
-    .select("id, ref, status, amount_fcfa, paydunya_token, customer_name, email, phone, products(name)")
+    .select("id, ref, status, amount_fcfa, paydunya_token, customer_name, email, phone, order_items(product_name, quantity)")
     .eq("public_token", pub).maybeSingle();
   if (!o) return json({ error: "not_found" }, 404);
 
@@ -113,7 +115,8 @@ Deno.serve(async (req) => {
       const k = keys();
       if (!k) return json({ error: "paydunya_non_configure" }, 503);
       // deno-lint-ignore no-explicit-any
-      const prodName = (o.products as any)?.name ?? "Licence";
+      const items = (o.order_items ?? []) as any[];
+      const prodName = items.map((i) => (i.quantity > 1 ? i.quantity + " x " : "") + i.product_name).join(", ").slice(0, 180) || "Commande";
       const back = SITE + "/commande.html?o=" + encodeURIComponent(pub);
       const r = await fetch(API + "/checkout-invoice/create", {
         method: "POST",

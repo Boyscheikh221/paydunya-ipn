@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>licenceoff — Licences Windows, Office et logiciels au Sénégal</title>
+<meta name="description" content="Achetez vos licences Windows, Microsoft Office et logiciels authentiques. Livraison immédiate, paiement Wave, Orange Money ou carte.">
+<link rel="stylesheet" href="shop.css">
+</head>
+<body>
+<main>
+  <section class="hero">
+    <div class="wrap">
+      <h1>Licences et logiciels authentiques, livrés en quelques minutes</h1>
+      <p>Windows, Microsoft Office, logiciels et services informatiques. Payez avec Wave, Orange Money ou carte, recevez votre clé tout de suite.</p>
+      <a class="btn orange" href="#catalogue">Voir la boutique</a>
+    </div>
+  </section>
+  <div class="wrap">
+    <div class="trust">
+      <div><b>⚡ Livraison immédiate</b>Clé et téléchargement dès le paiement confirmé</div>
+      <div><b>🔒 Paiement sécurisé</b>Wave, Orange Money, carte via PayDunya</div>
+      <div><b>💬 Support WhatsApp</b>Aide à l'installation et à l'activation</div>
+    </div>
+  </div>
+
+  <section class="block" id="featuredBlock" hidden>
+    <div class="wrap">
+      <div class="sec-title"><h2>Meilleures ventes</h2></div>
+      <div id="featured" class="grid"></div>
+    </div>
+  </section>
+
+  <section class="block" id="catalogue">
+    <div class="wrap">
+      <div class="sec-title"><h2 id="catTitle">Tous les produits</h2><span id="count" class="note"></span></div>
+      <div id="chips" class="chips"></div>
+      <div id="grid" class="grid" style="margin-top:14px">
+        <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="blogBlock" hidden>
+    <div class="wrap">
+      <div class="sec-title"><h2>Derniers articles</h2><a href="blog.html">Tout le blog →</a></div>
+      <div id="posts" class="posts"></div>
+    </div>
+  </section>
+</main>
+
+<script src="shop.js"></script>
+<script>
+LO.page("home");
+const { el, $ } = LO;
+const params = new URLSearchParams(location.search);
+let current = params.get("c") || "";
+const query = (params.get("q") || "").trim().toLowerCase();
+let data = { categories: [], products: [] };
+
+function render() {
+  const names = Object.fromEntries(data.categories.map((c) => [c.slug, c.name]));
+  // filtres par catégorie
+  const chips = $("#chips");
+  chips.replaceChildren(
+    el("button", { class: "chip" + (current ? "" : " on"), text: "Tout", onclick: () => select("") }),
+    ...data.categories.filter((c) => data.products.some((p) => p.category === c.slug))
+      .map((c) => el("button", { class: "chip" + (current === c.slug ? " on" : ""), text: c.name, onclick: () => select(c.slug) })),
+  );
+  let list = data.products.filter((p) => !current || p.category === current);
+  if (query) list = list.filter((p) => (p.name + " " + p.description).toLowerCase().includes(query));
+  $("#catTitle").textContent = query ? "Résultats pour « " + query + " »" : current ? names[current] || "Produits" : "Tous les produits";
+  $("#count").textContent = list.length + " produit" + (list.length > 1 ? "s" : "");
+  const grid = $("#grid");
+  grid.replaceChildren(...list.map((p) => LO.productCard(p, names[p.category])));
+  if (!list.length) grid.append(el("div", { class: "empty", text: query ? "Aucun produit ne correspond à votre recherche." : "Aucun produit dans cette catégorie pour le moment." }));
+
+  const feat = data.products.filter((p) => p.featured).slice(0, 4);
+  $("#featuredBlock").hidden = !feat.length || !!current || !!query;
+  $("#featured").replaceChildren(...feat.map((p) => LO.productCard(p, names[p.category])));
+}
+function select(slug) {
+  current = slug;
+  const u = new URL(location.href);
+  slug ? u.searchParams.set("c", slug) : u.searchParams.delete("c");
+  history.replaceState(null, "", u);
+  render();
+}
+
+LO.boutique({ action: "catalog" }).then((d) => { if (d.products) { data = d; render(); } else throw 0; })
+  .catch(() => $("#grid").replaceChildren(el("div", { class: "empty", text: "Impossible de charger les produits. Réessayez dans un instant." })));
+
+LO.boutique({ action: "posts", limit: 3 }).then((d) => {
+  if (!d.posts?.length) return;
+  $("#blogBlock").hidden = false;
+  $("#posts").replaceChildren(...d.posts.map(postCard));
+}).catch(() => {});
+
+function postCard(p) {
+  return el("a", { class: "post-card", href: "article.html?a=" + encodeURIComponent(p.slug) },
+    el("div", { class: "cv" }, p.cover_url ? el("img", { src: p.cover_url, alt: "", loading: "lazy" }) : null),
+    el("div", { class: "body" },
+      el("div", { class: "note", text: new Date(p.published_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }) }),
+      el("h3", { text: p.title }), p.excerpt ? el("p", { class: "note", text: p.excerpt }) : null));
+}
+</script>
+</body>
+</html>

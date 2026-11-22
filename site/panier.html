@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Mon panier — licenceoff</title>
+<link rel="stylesheet" href="shop.css">
+</head>
+<body>
+<main class="wrap">
+  <h1 style="margin:24px 0 0">Mon panier</h1>
+  <div id="view"></div>
+</main>
+<script src="shop.js"></script>
+<script>
+LO.page("shop");
+const { el, $, fcfa } = LO;
+const ERR = {
+  nom_invalide: "Indiquez votre nom complet.",
+  email_invalide: "Adresse email invalide.",
+  telephone_invalide: "Numéro WhatsApp invalide.",
+  panier_vide: "Votre panier est vide.",
+  produit_introuvable: "Un produit de votre panier n'est plus disponible. Retirez-le et réessayez.",
+  trop_de_commandes: "Vous avez déjà plusieurs commandes en attente. Contactez-nous sur WhatsApp.",
+};
+
+function render() {
+  const items = LO.cart();
+  const view = $("#view");
+  if (!items.length) {
+    view.replaceChildren(el("div", { class: "panel empty", style: "margin:24px 0" },
+      el("p", { text: "Votre panier est vide." }), el("a", { class: "btn", href: "index.html#catalogue", text: "Découvrir la boutique" })));
+    return;
+  }
+  const total = items.reduce((s, i) => s + i.price * i.qty, 0);
+  const lines = items.map((i, idx) => {
+    const q = el("input", { type: "number", min: "1", max: String(i.max || 20), value: String(i.qty), "aria-label": "Quantité" });
+    const setQ = (n) => { const all = LO.cart(); all[idx].qty = Math.max(1, Math.min(i.max || 20, Math.floor(n) || 1)); LO.saveCart(all); render(); };
+    q.addEventListener("change", () => setQ(Number(q.value)));
+    return el("div", { class: "line" },
+      el("a", { class: "th", href: "produit.html?p=" + encodeURIComponent(i.slug) }, i.image ? el("img", { src: i.image, alt: "" }) : LO.initials(i.name)),
+      el("div", {},
+        el("a", { class: "nm", href: "produit.html?p=" + encodeURIComponent(i.slug), style: "color:inherit", text: i.name }),
+        el("div", { class: "note", text: fcfa(i.price) + " l'unité" }),
+        el("div", { style: "display:flex;gap:12px;align-items:center;margin-top:6px" },
+          el("div", { class: "qty", style: "transform:scale(.85);transform-origin:left" },
+            el("button", { type: "button", text: "−", onclick: () => setQ(i.qty - 1) }), q, el("button", { type: "button", text: "+", onclick: () => setQ(i.qty + 1) })),
+          el("button", { class: "rm", text: "Retirer", onclick: () => { const all = LO.cart(); all.splice(idx, 1); LO.saveCart(all); render(); } }))),
+      el("strong", { text: fcfa(i.price * i.qty) }));
+  });
+
+  const f = (id, label, type, ac, ph) => [el("label", { for: id, text: label }), el("input", { id, class: "field", type, autocomplete: ac, placeholder: ph })];
+  const msg = el("div", { class: "msg" });
+  const go = el("button", { class: "btn orange block", style: "margin-top:16px", text: "Commander et payer " + fcfa(total) });
+  go.addEventListener("click", async () => {
+    msg.textContent = "";
+    go.disabled = true; go.textContent = "Création de la commande…";
+    try {
+      const d = await LO.boutique({
+        action: "create_order", items: LO.cart().map((i) => ({ slug: i.slug, qty: i.qty })),
+        name: $("#name").value, email: $("#email").value, phone: $("#phone").value, website: $("#website").value,
+      });
+      if (d.token) {
+        LO.saveCart([]);
+        location.href = "commande.html?o=" + encodeURIComponent(d.token) + "&pay=1";
+        return;
+      }
+      msg.textContent = d.error === "stock_insuffisant"
+        ? "Stock insuffisant pour « " + d.product + " » : il en reste " + d.left + ". Modifiez la quantité."
+        : ERR[d.error] || "Erreur, réessayez dans un instant.";
+    } catch (_) { msg.textContent = "Erreur de connexion, réessayez."; }
+    go.disabled = false; go.textContent = "Commander et payer " + fcfa(total);
+  });
+
+  view.replaceChildren(el("div", { class: "two" },
+    el("div", { class: "panel" }, ...lines),
+    el("div", { class: "panel" },
+      el("h2", { style: "margin:0 0 4px;font-size:18px", text: "Vos coordonnées" }),
+      el("p", { class: "note", text: "Après paiement, votre clé et vos liens s'affichent sur votre page de commande." }),
+      ...f("name", "Nom complet", "text", "name", "ex : Moussa Diop"),
+      ...f("email", "Email", "email", "email", "vous@exemple.com"),
+      ...f("phone", "Numéro WhatsApp", "tel", "tel", "ex : 77 123 45 67"),
+      el("input", { id: "website", class: "hp", tabindex: "-1", autocomplete: "off", "aria-hidden": "true" }),
+      el("div", { class: "tot", style: "margin-top:18px" }, el("span", { text: "Total" }), el("span", { text: fcfa(total) })),
+      go, msg,
+      el("p", { class: "note", style: "margin-top:12px", text: "🔒 Paiement sécurisé par PayDunya : Wave, Orange Money, Free Money ou carte." }))));
+}
+render();
+</script>
+</body>
+</html>
