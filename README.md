@@ -1,8 +1,6 @@
 # paydunya-ipn — paiement PayDunya pour licenceoff.com
 
-Ce dépôt contenait un premier essai (serveur Express qui marquait une commande Shopify payée).
-Il est recyclé pour la boutique licenceoff : la même idée (recevoir la notification PayDunya
-et valider la commande) tourne maintenant comme **fonction Supabase Edge**, sans serveur à héberger.
+Intégration PayDunya de la boutique licenceoff.
 
 ## Ce que fait `supabase/functions/paydunya`
 1. `create` : le client clique « Payer » sur sa page de commande, la fonction crée une facture
