@@ -19,17 +19,19 @@ const { el, $, fcfa } = LO;
 const params = new URLSearchParams(location.search);
 const token = params.get("o") || "";
 let autoPay = params.get("pay") === "1";
+const fromInstallEmail = params.get("installe") === "1";
 let timer = null, checked = 0;
 
 const STATUS = {
   pending: ["En attente de paiement", "t-wait"],
   paid: ["Payée — livraison en préparation", "t-info"],
   processing: ["Payée — en cours de traitement", "t-info"],
+  installing: ["Payée — installez le logiciel", "t-info"],
   delivered: ["Livrée ✔", "t-ok"],
   cancelled: ["Annulée", "t-ko"],
 };
 const ITEM = {
-  pending: ["En attente", "t-wait"], waiting_stock: ["En préparation", "t-info"], to_process: ["En cours de traitement", "t-info"],
+  pending: ["En attente", "t-wait"], waiting_stock: ["En préparation", "t-info"], to_process: ["En cours de traitement", "t-info"], awaiting_install: ["À installer", "t-info"],
   delivered: ["Livré", "t-ok"], cancelled: ["Annulé", "t-ko"],
 };
 const wa = (text, label = "Écrire sur WhatsApp") => el("a", { class: "btn light", href: "https://wa.me/" + WHATSAPP_NUMBER + "?text=" + encodeURIComponent(text), target: "_blank", rel: "noopener", text: label });
@@ -81,7 +83,22 @@ function itemBlock(i) {
       body.append(el("p", { class: "note", text: "Lien de téléchargement déjà utilisé ou expiré. Écrivez-nous pour en recevoir un nouveau." }));
     }
   }
-  if (i.status === "to_process") body.append(el("p", { class: "note", text: "Notre équipe traite cet article et vous contacte rapidement sur WhatsApp." }));
+  if (i.can_claim) {
+    const msg = el("p", { class: "msg" });
+    const b = el("button", { class: "btn orange block", style: "margin-top:12px", text: "✅ J'ai fini l'installation : recevoir ma clé" });
+    b.addEventListener("click", async () => {
+      if (!confirm("Confirmez-vous que l'installation est terminée ? Ce bouton ne fonctionne qu'une fois.")) return;
+      b.disabled = true; b.textContent = "Envoi de votre clé…";
+      try { await LO.boutique({ action: "claim", o: token, i: i.id }); } catch (_) {}
+      load();
+    });
+    const box = el("div", { class: "claim", style: "margin-top:12px;padding:12px;border-radius:12px;background:#E8F1FC" + (fromInstallEmail ? ";outline:3px solid #F5A21B" : "") },
+      el("p", { class: "note", style: "margin:0", text: "Étape 2 : une fois le logiciel installé, cliquez ci-dessous pour recevoir votre clé de licence (par email et sur cette page)." }), b, msg);
+    body.append(box);
+  } else if (i.claimed && i.status !== "delivered") {
+    body.append(el("p", { class: "note", text: i.status === "awaiting_install" || i.status === "to_process" || i.status === "waiting_stock"
+      ? "Demande de clé reçue ✔ Elle arrive très vite par email et sur cette page." : "" }));
+  } else if (i.status === "to_process") body.append(el("p", { class: "note", text: "Notre équipe traite cet article et vous contacte rapidement sur WhatsApp." }));
   return box;
 }
 
@@ -136,7 +153,8 @@ async function load() {
   parts.push(el("p", { class: "note", style: "margin-top:12px", text: "Gardez précieusement le lien de cette page : c'est ici que vous retrouvez vos clés et téléchargements." }));
   view.replaceChildren(...parts);
 
-  if ((o.status === "pending" && (o.has_paydunya || o.has_payment_ref)) || o.status === "paid" || o.status === "processing") timer = setTimeout(load, 15000);
+  if ((o.status === "pending" && (o.has_paydunya || o.has_payment_ref)) || o.status === "paid" || o.status === "processing" || (o.status === "installing" && o.items.some((i) => i.claimed))) timer = setTimeout(load, 15000);
+  if (fromInstallEmail) { const c = document.querySelector(".claim"); if (c) c.scrollIntoView({ behavior: "smooth", block: "center" }); }
 }
 load();
 </script>

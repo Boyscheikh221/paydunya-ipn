@@ -51,7 +51,7 @@
   th { font-size:12px; color:var(--gris); font-weight:700; background:#fafbfc; }
   .tag { display:inline-block; padding:2px 8px; border-radius:99px; font-size:12px; font-weight:700; color:#fff; white-space:nowrap; }
   .s-pending{background:var(--jaune)} .s-paid{background:var(--bleu)} .s-processing{background:#7c3aed} .s-delivered{background:var(--vert)} .s-cancelled{background:var(--gris)}
-  .s-waiting_stock{background:var(--bleu)} .s-to_process{background:#7c3aed}
+  .s-waiting_stock{background:var(--bleu)} .s-installing,.s-awaiting_install{background:#0e7490} .s-to_process{background:#7c3aed}
   .s-available{background:var(--vert)} .s-sent{background:var(--bleu)} .s-disabled{background:var(--gris)}
   .s-active{background:var(--vert)} .s-revoked{background:var(--rouge)} .s-used{background:var(--gris)} .s-expired{background:var(--jaune)}
   .s-on,.s-sale,.s-visible,.s-pub{background:var(--vert)} .s-off,.s-hidden,.s-draft{background:var(--gris)}
@@ -134,6 +134,7 @@
           <option value="">Toutes</option>
           <option value="pending">En attente de paiement</option>
           <option value="processing">À traiter (service ou livraison manuelle)</option>
+          <option value="installing">Le client installe (2 temps)</option>
           <option value="paid">Payées, en attente de stock</option>
           <option value="delivered">Livrées</option>
           <option value="cancelled">Annulées</option>
@@ -210,7 +211,11 @@
           <label class="check"><input type="checkbox" id="pFeatured"> Mettre en avant (accueil)</label>
           <div><label>Alerte stock bas sous</label><input id="pLow" type="number" min="0" value="5"></div>
           <div><label>Ordre d'affichage</label><input id="pSort" type="number" min="0" value="0"></div>
-          <div><label>Email envoyé au client</label><select id="pTpl"></select></div>
+          <div><label>Email de la clé (ou de livraison)</label><select id="pTpl"></select></div>
+        </div>
+        <div class="box" style="background:#f4f8ff;margin:10px 0 0;padding:12px">
+          <label class="check" style="margin:0"><input type="checkbox" id="pTwo"> Livraison en 2 temps : le client reçoit d'abord le logiciel, puis clique « J'ai fini l'installation » pour recevoir sa clé</label>
+          <div id="pTwoBox" class="grid" style="margin-top:8px"><div><label>Email d'installation (étape 1)</label><select id="pInstTpl"></select></div></div>
         </div>
         <div class="bar" style="margin-top:12px"><button id="pSave" class="green">Enregistrer le produit</button><button id="pReset" class="grey">Nouveau</button></div>
       </div>
@@ -266,11 +271,12 @@
     <!-- ===== FAQ ===== -->
     <section id="tab-emails" class="hidden">
       <h1>Modèles d'email</h1>
-      <p class="small">Chaque produit peut avoir son propre email de livraison (à choisir dans la fiche produit). Sans choix, c'est le modèle par défaut qui part. L'email part tout seul quand la commande est livrée.</p>
+      <p class="small">Chaque produit a ses emails (à choisir dans la fiche produit), sinon les modèles par défaut. Deux sortes : l'<b>email de la clé</b> (part quand la commande est livrée) et, pour les produits en 2 temps, l'<b>email d'installation</b> (part juste après le paiement, avec le lien de téléchargement et le bouton à usage unique {bouton_installation}).</p>
       <div class="box">
         <h2 id="tFormTitle">Nouveau modèle</h2>
         <input type="hidden" id="tId">
         <div class="grid">
+          <div><label>Sorte d'email</label><select id="tKind"><option value="key">Email de la clé / de livraison</option><option value="install">Email d'installation (étape 1, 2 temps)</option></select></div>
           <div><label>Nom du modèle (pour vous)</label><input id="tName" placeholder="ex : Windows 11"></div>
           <div><label>Objet de l'email</label><input id="tSubject" placeholder="Votre commande {commande} est prête — licenceoff"></div>
         </div>
@@ -295,7 +301,7 @@
           <iframe id="tPrev" title="Aperçu" sandbox="" style="width:100%;height:620px;border:1px solid var(--ligne);border-radius:10px;background:#fff"></iframe>
         </div>
       </div>
-      <div class="box"><div class="tablewrap"><table><thead><tr><th>Modèle</th><th>Objet</th><th>Produits</th><th></th></tr></thead><tbody id="tRows"></tbody></table></div></div>
+      <div class="box"><div class="tablewrap"><table><thead><tr><th>Modèle</th><th>Sorte</th><th>Objet</th><th>Produits</th><th></th></tr></thead><tbody id="tRows"></tbody></table></div></div>
     </section>
 
     <section id="tab-send" class="hidden">
@@ -379,8 +385,8 @@ try { pw = sessionStorage.getItem("lo_pw") || ""; } catch (_) {}
 let products = [], categories = [], templates = [], showKeys = false, settings = {};
 
 const ST = {
-  pending: "En attente", paid: "Payée, sans stock", processing: "À traiter", delivered: "Livrée", cancelled: "Annulée",
-  waiting_stock: "Attend du stock", to_process: "À traiter",
+  pending: "En attente", paid: "Payée, sans stock", processing: "À traiter", installing: "Installation en cours", delivered: "Livrée", cancelled: "Annulée",
+  waiting_stock: "Attend du stock", to_process: "À traiter", awaiting_install: "Le client installe",
   available: "Disponible", sent: "Envoyée", disabled: "Désactivée",
   active: "Actif", revoked: "Désactivé", used: "Utilisé", expired: "Expiré", on: "Activée", off: "Désactivée",
   sale: "En vente", hidden: "Caché", visible: "Visible", pub: "Publié", draft: "Brouillon",
@@ -396,7 +402,7 @@ const ERR = {
   commande_deja_payee: "Commande déjà payée, impossible de l'annuler.", cle_deja_envoyee: "Cette clé a déjà été envoyée.",
   not_delivered: "L'article n'est pas encore livré.", no_installer: "Ce produit n'a pas de fichier.", not_to_process: "Cet article n'est pas à traiter.",
   produit_sans_stock: "Ce produit n'utilise pas de stock (type logiciel ou service).", fichier_obligatoire: "Choisissez ou envoyez le fichier du logiciel.",
-  code_deja_utilise: "Ce nom est déjà utilisé, choisissez-en un autre.", nom_obligatoire: "Le nom est obligatoire.", panier_vide: "Ajoutez au moins un produit.", nom_invalide: "Nom du client trop court.", produit_introuvable: "Produit introuvable.",
+  code_deja_utilise: "Ce nom est déjà utilisé, choisissez-en un autre.", nom_obligatoire: "Le nom est obligatoire.", panier_vide: "Ajoutez au moins un produit.", pas_en_installation: "Cet article n'attend plus l'installation.", rien_a_envoyer: "Rien à envoyer pour cette commande.", nom_invalide: "Nom du client trop court.", produit_introuvable: "Produit introuvable.",
 };
 
 // ---------- outils ----------
@@ -467,7 +473,8 @@ async function loadRefs() {
   const stockProds = products.filter((x) => STOCK_TYPES.includes(x.delivery_type));
   const fill = (id, list, first) => { const s = $(id), keep = s.value; s.replaceChildren(); if (first) s.append(new Option(first, "")); for (const x of list) s.append(new Option(x.name, x.id)); if (keep) s.value = keep; };
   fill("kProd", stockProds); fill("kFilterProd", stockProds, "Tous les produits"); fill("pCat", categories, "— Sans catégorie —");
-  fill("pTpl", templates.filter((x) => !x.is_default), "Modèle par défaut");
+  fill("pTpl", templates.filter((x) => !x.is_default && x.kind !== "install"), "Modèle par défaut");
+  fill("pInstTpl", templates.filter((x) => !x.is_default && x.kind === "install"), "Modèle d'installation par défaut");
 }
 
 // ---------- tableau de bord ----------
@@ -476,7 +483,7 @@ async function loadDash() {
   settings = s.settings;
   $("autoWarn").classList.toggle("hidden", settings.auto_delivery !== false);
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  const paidSt = ["paid", "processing", "delivered"];
+  const paidSt = ["paid", "processing", "installing", "delivered"];
   const paid = d.orders.filter((o) => paidSt.includes(o.status) && o.paid_at);
   const sum = (arr) => arr.reduce((x, o) => x + (o.amount_fcfa || 0), 0);
   const pending = d.orders.filter((o) => o.status === "pending").length;
@@ -546,6 +553,8 @@ async function loadOrders() {
       const ls = (i.downloads || []).sort((a, b) => b.created_at.localeCompare(a.created_at));
       if (ls[0]) box.append(el("br"), el("span", "Lien : ", "small"), tag(linkState(ls[0])));
       const acts = el("div", null, "acts"); acts.style.marginTop = "4px";
+      if (i.claim_requested_at && i.status !== "delivered") box.append(el("br"), el("span", "📩 Le client a fini l'installation et demande sa clé", "small"));
+      if (i.status === "awaiting_install") acts.append(btn("🔑 Envoyer la clé maintenant", "green", async () => { if (confirm("Envoyer la clé sans attendre que le client confirme l'installation ?")) await run({ action: "item_send_key_now", id: i.id }, "Clé envoyée ✔", reload)(); }));
       if (i.status === "to_process" && i.delivery_type === "manual") acts.append(btn("✔ Marquer fait", "green", run({ action: "item_complete", id: i.id }, "Article marqué livré ✔", reload)));
       if (i.status === "delivered" && ["key_file", "file"].includes(i.delivery_type)) acts.append(btn("Nouveau lien", "grey", async () => { if (confirm("Créer un nouveau lien à usage unique ? L'ancien lien non utilisé sera désactivé.")) await run({ action: "item_new_link", id: i.id }, "Nouveau lien créé ✔", reload)(); }));
       if (acts.childNodes.length) box.append(acts);
@@ -565,8 +574,8 @@ async function loadOrders() {
       acts.append(btn("Copier le message client", "org", () => copy(clientMessage(o), "Message copié ✔")));
       if (o.phone) acts.append(btn("WhatsApp", "grey", () => window.open("https://wa.me/" + waNumber(o.phone) + "?text=" + encodeURIComponent(clientMessage(o)), "_blank", "noopener")));
     }
-    if (["delivered", "processing", "paid"].includes(o.status)) acts.append(btn(o.emailed_at ? "✉ Renvoyer l'email" : "✉ Envoyer l'email", "grey", async () => {
-      if (confirm("Envoyer l'email de livraison à " + o.email + " ?")) await run({ action: "order_email", id: o.id }, "Email envoyé ✔", reload)();
+    if (["delivered", "processing", "paid", "installing"].includes(o.status)) acts.append(btn(o.status === "installing" ? "✉ Renvoyer l'email d'installation" : o.emailed_at ? "✉ Renvoyer l'email" : "✉ Envoyer l'email", "grey", async () => {
+      if (confirm((o.status === "installing" ? "Renvoyer l'email d'installation à " : "Envoyer l'email de livraison à ") + o.email + " ?")) await run({ action: "order_email", id: o.id }, "Email envoyé ✔", reload)();
     }));
     acts.append(btn("Page client", "grey", () => copy(ORDER_PAGE + "?o=" + o.public_token, "Lien de la page client copié ✔")));
     tb.append(tr(
@@ -604,6 +613,8 @@ $("nSave").addEventListener("click", async () => {
 });
 
 // ---------- produits ----------
+function twoVis() { $("pTwoBox").classList.toggle("hidden", !$("pTwo").checked); }
+$("pTwo").addEventListener("change", twoVis); twoVis();
 async function loadFiles(selectName) {
   const { rows } = await api({ action: "files_list" });
   const s = $("pFile"), keep = selectName ?? s.value;
@@ -649,14 +660,14 @@ function editProduct(p) {
   $("pImgPrev").src = p.image_url || ""; $("pImgPrev").classList.toggle("hidden", !p.image_url); $("pImgMsg").textContent = "";
   $("pType").value = p.delivery_type; syncType(); loadFiles(p.installer_path || "").catch(() => {});
   $("pAuto").checked = p.auto_deliver !== false; $("pActive").checked = p.active; $("pFeatured").checked = p.featured;
-  $("pLow").value = p.low_stock_threshold; $("pSort").value = p.sort || 0; $("pTpl").value = p.email_template_id || "";
+  $("pLow").value = p.low_stock_threshold; $("pSort").value = p.sort || 0; $("pTpl").value = p.email_template_id || ""; $("pTwo").checked = !!p.two_step; $("pInstTpl").value = p.install_template_id || ""; twoVis();
   $("pForm").scrollIntoView({ behavior: "smooth" });
 }
 function resetProduct() {
   $("pFormTitle").textContent = "Nouveau produit";
   for (const id of ["pId", "pName", "pPrice", "pCompare", "pDesc", "pImg", "pFile"]) $(id).value = "";
   $("pCat").value = ""; $("pType").value = "key"; syncType(); $("pImgPrev").classList.add("hidden"); $("pImgMsg").textContent = "";
-  $("pAuto").checked = true; $("pActive").checked = true; $("pFeatured").checked = false; $("pLow").value = 5; $("pSort").value = 0; $("pTpl").value = "";
+  $("pAuto").checked = true; $("pActive").checked = true; $("pFeatured").checked = false; $("pLow").value = 5; $("pSort").value = 0; $("pTpl").value = ""; $("pTwo").checked = false; $("pInstTpl").value = ""; twoVis();
 }
 $("pReset").addEventListener("click", resetProduct);
 $("pSave").addEventListener("click", async () => {
@@ -664,7 +675,7 @@ $("pSave").addEventListener("click", async () => {
     await api({ action: "product_save", id: $("pId").value || undefined, name: $("pName").value, category_id: $("pCat").value,
       price_fcfa: $("pPrice").value, compare_price_fcfa: $("pCompare").value, description: $("pDesc").value, image_url: $("pImg").value,
       delivery_type: $("pType").value, installer_path: $("pFile").value, auto_deliver: $("pAuto").checked, active: $("pActive").checked,
-      featured: $("pFeatured").checked, low_stock_threshold: $("pLow").value, sort: $("pSort").value, email_template_id: $("pTpl").value });
+      featured: $("pFeatured").checked, low_stock_threshold: $("pLow").value, sort: $("pSort").value, email_template_id: $("pTpl").value, two_step: $("pTwo").checked, install_template_id: $("pInstTpl").value });
     toast("Produit enregistré ✔"); resetProduct(); await loadProducts();
   } catch (e) { toast(errMsg(e)); }
 });
@@ -737,45 +748,48 @@ $("bSave").addEventListener("click", async () => {
 });
 
 // ---------- modèles d'email ----------
-const TPL_VARS = ["{prenom}", "{nom}", "{commande}", "{total}", "{produits}", "{cles}", "{bouton}", "{lien_commande}", "{whatsapp}"];
+const TPL_VARS = ["{prenom}", "{nom}", "{commande}", "{total}", "{produits}", "{cles}", "{bouton}", "{bouton_installation}", "{lien_commande}", "{whatsapp}"];
 $("tVars").replaceChildren(...TPL_VARS.map((v) => { const b = el("button", v, "grey"); b.type = "button"; b.style.cssText = "padding:2px 8px;margin:2px;font-size:12px";
   b.addEventListener("click", () => { const t = $("tBody"), i = t.selectionStart ?? t.value.length; t.value = t.value.slice(0, i) + v + t.value.slice(t.selectionEnd ?? i); t.focus(); }); return b; }));
 async function loadTemplates() {
   await loadRefs();
   $("tRows").replaceChildren(...templates.map((t) => {
-    const used = products.filter((p) => p.email_template_id === t.id || (t.is_default && !p.email_template_id)).map((p) => p.name);
-    return tr(td(el("strong", t.name), t.is_default ? el("span", " (par défaut)", "small") : null), td(el("span", t.subject, "small")),
+    const inst = t.kind === "install";
+    const used = products.filter((p) => inst ? p.two_step && (p.install_template_id === t.id || (t.is_default && !p.install_template_id))
+      : (p.email_template_id === t.id || (t.is_default && !p.email_template_id))).map((p) => p.name);
+    return tr(td(el("strong", t.name), t.is_default ? el("span", " (par défaut)", "small") : null), td(el("span", inst ? "Installation" : "Clé / livraison", "small")), td(el("span", t.subject, "small")),
       td(el("span", used.length ? used.join(", ") : "—", "small")),
       td(btn("Modifier", "grey", () => editTemplate(t)), " ", t.is_default ? null : btn("Supprimer", "red", async () => {
         if (confirm("Supprimer le modèle « " + t.name + " » ? Ses produits recevront le modèle par défaut.")) { await api({ action: "template_delete", id: t.id }); toast("Modèle supprimé"); await loadTemplates(); } })));
   }));
 }
 function editTemplate(t) {
-  $("tFormTitle").textContent = "Modifier : " + t.name; $("tId").value = t.id; $("tName").value = t.name; $("tSubject").value = t.subject; $("tBody").value = t.body; $("tDefault").checked = t.is_default;
+  $("tFormTitle").textContent = "Modifier : " + t.name; $("tId").value = t.id; $("tName").value = t.name; $("tSubject").value = t.subject; $("tBody").value = t.body; $("tDefault").checked = t.is_default; $("tKind").value = t.kind || "key";
   $("tPrevBox").classList.add("hidden"); window.scrollTo(0, 0);
 }
-const resetTpl = () => { $("tFormTitle").textContent = "Nouveau modèle"; for (const id of ["tId", "tName", "tSubject", "tBody"]) $(id).value = ""; $("tDefault").checked = false; $("tPrevBox").classList.add("hidden"); };
+const resetTpl = () => { $("tFormTitle").textContent = "Nouveau modèle"; for (const id of ["tId", "tName", "tSubject", "tBody"]) $(id).value = ""; $("tDefault").checked = false; $("tKind").value = "key"; $("tPrevBox").classList.add("hidden"); };
 $("tReset").addEventListener("click", resetTpl);
 $("tSave").addEventListener("click", async () => {
-  try { await api({ action: "template_save", id: $("tId").value || undefined, name: $("tName").value, subject: $("tSubject").value, body: $("tBody").value, is_default: $("tDefault").checked });
+  try { await api({ action: "template_save", id: $("tId").value || undefined, name: $("tName").value, subject: $("tSubject").value, body: $("tBody").value, is_default: $("tDefault").checked, kind: $("tKind").value });
     toast("Modèle enregistré ✔"); resetTpl(); await loadTemplates(); } catch (e) { toast(errMsg(e)); }
 });
 $("tPreview").addEventListener("click", async () => {
-  try { const m = await api({ action: "template_preview", subject: $("tSubject").value, body: $("tBody").value });
+  try { const m = await api({ action: "template_preview", subject: $("tSubject").value, body: $("tBody").value, kind: $("tKind").value });
     $("tPrevSubject").textContent = "Objet : " + m.subject; $("tPrev").srcdoc = m.html; $("tPrevBox").classList.remove("hidden"); } catch (e) { toast(errMsg(e)); }
 });
 $("tTest").addEventListener("click", async () => {
   if (!$("tTo").value.trim()) return $("tTo").focus();
-  try { await api({ action: "template_test", to: $("tTo").value, subject: $("tSubject").value, body: $("tBody").value }); toast("Email de test envoyé à " + $("tTo").value + " ✔"); } catch (e) { toast(errMsg(e)); }
+  try { await api({ action: "template_test", to: $("tTo").value, subject: $("tSubject").value, body: $("tBody").value, kind: $("tKind").value }); toast("Email de test envoyé à " + $("tTo").value + " ✔"); } catch (e) { toast(errMsg(e)); }
 });
 
 // ---------- envoi manuel ----------
-const tplNameOf = (p) => { const t = templates.find((x) => p && p.email_template_id ? x.id === p.email_template_id : x.is_default); return t ? t.name : "modèle par défaut"; };
+const tplNameOf = (p) => { const t = templates.find((x) => p && p.email_template_id ? x.id === p.email_template_id : x.is_default && x.kind !== "install"); return t ? t.name : "modèle par défaut"; };
+const instNameOf = (p) => { const t = templates.find((x) => p && p.install_template_id ? x.id === p.install_template_id : x.is_default && x.kind === "install"); return t ? t.name : "modèle d'installation par défaut"; };
 function fillProdSelect(id, info) {
   const s = $(id), keep = s.value;
   s.replaceChildren(...products.map((p) => new Option(p.name + " — " + fcfa(p.price_fcfa), p.id)));
   if (keep && products.some((p) => p.id === keep)) s.value = keep;
-  const show = () => { const p = products.find((x) => x.id === s.value); $(info).textContent = p ? "Modèle d'email utilisé : « " + tplNameOf(p) + " »" + (STOCK_TYPES.includes(p.delivery_type) ? "" : " · ce produit n'a pas de clé en stock (" + TYPES[p.delivery_type] + ")") : ""; };
+  const show = () => { const p = products.find((x) => x.id === s.value); $(info).textContent = p ? (p.two_step && info === "mTplInfo" ? "Produit en 2 temps : d'abord « " + instNameOf(p) + " » (logiciel + bouton), puis « " + tplNameOf(p) + " » avec la clé quand le client a fini l'installation" : "Modèle d'email utilisé : « " + tplNameOf(p) + " »") + (STOCK_TYPES.includes(p.delivery_type) ? "" : " · ce produit n'a pas de clé en stock (" + TYPES[p.delivery_type] + ")") : ""; };
   s.onchange = show; show();
 }
 async function loadSend() { await loadRefs(); fillProdSelect("mProd", "mTplInfo"); fillProdSelect("sProd", "sTplInfo"); }
@@ -792,7 +806,8 @@ $("mSend").addEventListener("click", async () => {
     if (d.result && d.result.reason === "out_of_stock") parts.push(el("span", "⚠️ Plus de clé en stock pour ce produit : ajoutez-en dans l'onglet Stock, la commande partira toute seule (email compris)."));
     else {
       if (d.keys && d.keys.length) { parts.push("Clé(s) envoyée(s) :", el("br")); for (const k of d.keys) parts.push(el("span", k, "mono"), el("br")); }
-      parts.push(d.email ? (d.email.sent ? "✔ Email envoyé à " + d.order.email : "⚠️ Email non envoyé : " + (ERR[d.email.reason] || d.email.reason)) : "Email non envoyé (case décochée).");
+      if (d.result && d.result.reason === "awaiting_install") parts.push("Produit en 2 temps : la clé partira quand le client cliquera « J'ai fini l'installation ».", el("br"));
+      parts.push(d.email ? (d.email.sent ? "✔ " + (d.email.kind === "install" ? "Email d'installation" : "Email") + " envoyé à " + d.order.email : "⚠️ Email non envoyé : " + (ERR[d.email.reason] || d.email.reason)) : "Email non envoyé (case décochée).");
     }
     r.replaceChildren(...parts);
     for (const id of ["mEmail", "mName", "mPhone", "mAmount", "mRef"]) $(id).value = ""; $("mQty").value = "1";
