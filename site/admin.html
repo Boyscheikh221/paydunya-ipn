@@ -98,6 +98,7 @@
     <button data-tab="keys">🔑 Stock</button>
     <button data-tab="blog">📝 Blog</button>
     <button data-tab="emails">✉️ Emails</button>
+    <button data-tab="send">📤 Envoi manuel</button>
     <button data-tab="faq">❓ FAQ</button>
     <button data-tab="links">🔗 Liens</button>
     <button data-tab="settings">⚙️ Réglages</button>
@@ -296,6 +297,40 @@
       <div class="box"><div class="tablewrap"><table><thead><tr><th>Modèle</th><th>Objet</th><th>Produits</th><th></th></tr></thead><tbody id="tRows"></tbody></table></div></div>
     </section>
 
+    <section id="tab-send" class="hidden">
+      <h1>Envoi manuel (ventes WhatsApp)</h1>
+      <p class="small">Choisissez le produit et l'adresse : l'email part avec le modèle de ce produit (réglé dans Produits), ou le modèle par défaut.</p>
+      <div class="box">
+        <h2>🔑 Envoyer une clé de licence</h2>
+        <p class="small">Prend une clé dans le stock (elle ne servira plus jamais), l'envoie par email et enregistre la vente dans Commandes.</p>
+        <div class="grid">
+          <div><label>Produit</label><select id="mProd"></select></div>
+          <div><label>Quantité</label><input id="mQty" type="number" min="1" max="20" value="1"></div>
+          <div><label>Email du client</label><input id="mEmail" type="email" placeholder="client@gmail.com"></div>
+          <div><label>Nom du client</label><input id="mName" placeholder="facultatif"></div>
+          <div><label>WhatsApp</label><input id="mPhone" placeholder="facultatif"></div>
+          <div><label>Montant reçu (vide = prix du produit, 0 = offert)</label><input id="mAmount" type="number" min="0"></div>
+          <div><label>Paiement</label><select id="mMethod"><option value="wave">Wave</option><option value="orange_money">Orange Money</option><option value="free_money">Free Money</option><option value="especes">Espèces</option><option value="autre">Autre</option></select></div>
+          <div><label>N° de transaction</label><input id="mRef" placeholder="facultatif"></div>
+        </div>
+        <label class="check"><input type="checkbox" id="mMail" checked> Envoyer l'email au client</label>
+        <div class="small" id="mTplInfo" style="margin:4px 0"></div>
+        <div class="bar" style="margin-top:8px"><button id="mSend" class="green">Envoyer la clé</button></div>
+        <div id="mResult" class="hidden" style="margin-top:12px;padding:12px;border-radius:10px;background:var(--ciel,#E8F1FC)"></div>
+      </div>
+      <div class="box">
+        <h2>✉️ Envoyer seulement l'email d'un produit</h2>
+        <p class="small">Sans clé et sans commande : utile pour renvoyer les explications d'installation à un client.</p>
+        <div class="grid">
+          <div><label>Produit</label><select id="sProd"></select></div>
+          <div><label>Email</label><input id="sEmail" type="email" placeholder="client@gmail.com"></div>
+          <div><label>Nom du client</label><input id="sName" placeholder="facultatif"></div>
+        </div>
+        <div class="small" id="sTplInfo" style="margin:4px 0"></div>
+        <div class="bar" style="margin-top:8px"><button id="sSend" class="org">Envoyer l'email</button></div>
+      </div>
+    </section>
+
     <section id="tab-faq" class="hidden">
       <h1>FAQ (questions fréquentes)</h1>
       <div class="box">
@@ -360,7 +395,7 @@ const ERR = {
   commande_deja_payee: "Commande déjà payée, impossible de l'annuler.", cle_deja_envoyee: "Cette clé a déjà été envoyée.",
   not_delivered: "L'article n'est pas encore livré.", no_installer: "Ce produit n'a pas de fichier.", not_to_process: "Cet article n'est pas à traiter.",
   produit_sans_stock: "Ce produit n'utilise pas de stock (type logiciel ou service).", fichier_obligatoire: "Choisissez ou envoyez le fichier du logiciel.",
-  code_deja_utilise: "Ce nom est déjà utilisé, choisissez-en un autre.", nom_obligatoire: "Le nom est obligatoire.", panier_vide: "Ajoutez au moins un produit.",
+  code_deja_utilise: "Ce nom est déjà utilisé, choisissez-en un autre.", nom_obligatoire: "Le nom est obligatoire.", panier_vide: "Ajoutez au moins un produit.", nom_invalide: "Nom du client trop court.", produit_introuvable: "Produit introuvable.",
 };
 
 // ---------- outils ----------
@@ -417,7 +452,7 @@ async function uploadImage(input, hidden, preview, msg) {
 }
 
 // ---------- navigation ----------
-const loaders = { dash: loadDash, orders: loadOrders, products: loadProducts, keys: loadKeys, blog: loadBlog, emails: loadTemplates, faq: loadFaq, links: loadLinks, settings: loadSettings };
+const loaders = { dash: loadDash, orders: loadOrders, products: loadProducts, keys: loadKeys, blog: loadBlog, emails: loadTemplates, send: loadSend, faq: loadFaq, links: loadLinks, settings: loadSettings };
 document.querySelectorAll("nav [data-tab]").forEach((b) => b.addEventListener("click", () => openTab(b.dataset.tab)));
 function openTab(t) {
   document.querySelectorAll("nav [data-tab]").forEach((b) => b.classList.toggle("on", b.dataset.tab === t));
@@ -730,6 +765,42 @@ $("tPreview").addEventListener("click", async () => {
 $("tTest").addEventListener("click", async () => {
   if (!$("tTo").value.trim()) return $("tTo").focus();
   try { await api({ action: "template_test", to: $("tTo").value, subject: $("tSubject").value, body: $("tBody").value }); toast("Email de test envoyé à " + $("tTo").value + " ✔"); } catch (e) { toast(errMsg(e)); }
+});
+
+// ---------- envoi manuel ----------
+const tplNameOf = (p) => { const t = templates.find((x) => p && p.email_template_id ? x.id === p.email_template_id : x.is_default); return t ? t.name : "modèle par défaut"; };
+function fillProdSelect(id, info) {
+  const s = $(id), keep = s.value;
+  s.replaceChildren(...products.map((p) => new Option(p.name + " — " + fcfa(p.price_fcfa), p.id)));
+  if (keep && products.some((p) => p.id === keep)) s.value = keep;
+  const show = () => { const p = products.find((x) => x.id === s.value); $(info).textContent = p ? "Modèle d'email utilisé : « " + tplNameOf(p) + " »" + (STOCK_TYPES.includes(p.delivery_type) ? "" : " · ce produit n'a pas de clé en stock (" + TYPES[p.delivery_type] + ")") : ""; };
+  s.onchange = show; show();
+}
+async function loadSend() { await loadRefs(); fillProdSelect("mProd", "mTplInfo"); fillProdSelect("sProd", "sTplInfo"); }
+$("mSend").addEventListener("click", async () => {
+  const p = products.find((x) => x.id === $("mProd").value);
+  if (!$("mEmail").value.trim()) return $("mEmail").focus();
+  if (!confirm("Envoyer " + $("mQty").value + " × " + (p ? p.name : "") + " à " + $("mEmail").value + " ?")) return;
+  const b = $("mSend"); b.disabled = true;
+  try {
+    const d = await api({ action: "manual_send", product_id: $("mProd").value, qty: Number($("mQty").value) || 1, email: $("mEmail").value, name: $("mName").value,
+      phone: $("mPhone").value, amount_fcfa: $("mAmount").value, payment_method: $("mMethod").value, payment_ref: $("mRef").value, send_email: $("mMail").checked });
+    const r = $("mResult"); r.classList.remove("hidden");
+    const parts = [el("strong", "Commande " + d.order.ref + " enregistrée."), el("br")];
+    if (d.result && d.result.reason === "out_of_stock") parts.push(el("span", "⚠️ Plus de clé en stock pour ce produit : ajoutez-en dans l'onglet Stock, la commande partira toute seule (email compris)."));
+    else {
+      if (d.keys && d.keys.length) { parts.push("Clé(s) envoyée(s) :", el("br")); for (const k of d.keys) parts.push(el("span", k, "mono"), el("br")); }
+      parts.push(d.email ? (d.email.sent ? "✔ Email envoyé à " + d.order.email : "⚠️ Email non envoyé : " + (ERR[d.email.reason] || d.email.reason)) : "Email non envoyé (case décochée).");
+    }
+    r.replaceChildren(...parts);
+    for (const id of ["mEmail", "mName", "mPhone", "mAmount", "mRef"]) $(id).value = ""; $("mQty").value = "1";
+    await loadRefs(); fillProdSelect("mProd", "mTplInfo");
+  } catch (e) { toast(errMsg(e)); } finally { b.disabled = false; }
+});
+$("sSend").addEventListener("click", async () => {
+  if (!$("sEmail").value.trim()) return $("sEmail").focus();
+  try { await api({ action: "template_send", product_id: $("sProd").value, to: $("sEmail").value, name: $("sName").value });
+    toast("Email envoyé à " + $("sEmail").value + " ✔"); $("sEmail").value = ""; $("sName").value = ""; } catch (e) { toast(errMsg(e)); }
 });
 
 // ---------- FAQ ----------

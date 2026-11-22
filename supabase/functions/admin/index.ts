@@ -165,7 +165,7 @@ async function resendSend(to: string, mail: { subject: string; html: string; tex
 
 // Envoie l'email de livraison UNE fois (force = renvoi manuel depuis l'admin).
 // Si la commande contient des produits avec des modèles différents : un email par modèle.
-async function sendDeliveryEmail(orderId: string, force = false): Promise<{ sent: boolean; count?: number; reason?: string }> {
+async function sendDeliveryEmail(orderId: string, force = false, templateId?: string): Promise<{ sent: boolean; count?: number; reason?: string }> {
   if (!(Deno.env.get("RESEND_API_KEY") ?? "").trim()) return { sent: false, reason: "resend_non_configure" };
   const { data: o } = await db.from("orders")
     .select("id, ref, public_token, customer_name, email, amount_fcfa, status, emailed_at, order_items(id, product_name, delivery_type, quantity, status, created_at, license_keys(key_value), products(email_template_id))")
@@ -184,7 +184,7 @@ async function sendDeliveryEmail(orderId: string, force = false): Promise<{ sent
   const def: Tpl = (tpls ?? []).find((t) => t.is_default) ?? BUILTIN_TPL;
   const groups = new Map<string, { tpl: Tpl; items: Item[] }>();
   for (const i of items) {
-    const t: Tpl = byId[i.products?.email_template_id] ?? def;
+    const t: Tpl = (templateId && byId[templateId]) || byId[i.products?.email_template_id] || def;
     const k = t.id ?? "builtin";
     if (!groups.has(k)) groups.set(k, { tpl: t, items: [] });
     groups.get(k)!.items.push(i);
@@ -202,6 +202,39 @@ async function sendDeliveryEmail(orderId: string, force = false): Promise<{ sent
   }
   if (force) await db.from("orders").update({ emailed_at: new Date().toISOString() }).eq("id", o.id);
   return { sent: true, count: sent };
+}
+
+// Vente faite par WhatsApp / en direct : crée la commande (plusieurs articles possibles)
+// deno-lint-ignore no-explicit-any
+async function createAdminOrder(body: any): Promise<Response | { o: any }> {
+  const name = str(body.name, 100);
+  const email = str(body.email, 200).toLowerCase();
+  if (name.length < 2) return json({ error: "nom_invalide" }, 400);
+  if (!email.includes("@")) return json({ error: "email_invalide" }, 400);
+  const lines = (Array.isArray(body.items) ? body.items : []).slice(0, 20)
+    .map((i: { product_id: string; qty: number }) => ({ id: str(i.product_id, 40), qty: clamp(Math.floor(Number(i.qty) || 1), 1, 20) }))
+    .filter((i: { id: string }) => i.id);
+  if (!lines.length) return json({ error: "panier_vide" }, 400);
+  const { data: prods } = await db.from("products").select("id, name, price_fcfa, delivery_type").in("id", lines.map((l: { id: string }) => l.id));
+  if (!prods?.length) return json({ error: "produit_introuvable" }, 400);
+  const byId = Object.fromEntries(prods.map((p) => [p.id, p]));
+  const items = lines.filter((l: { id: string }) => byId[l.id]);
+  const computed = items.reduce((s: number, l: { id: string; qty: number }) => s + byId[l.id].price_fcfa * l.qty, 0);
+  const amount = body.amount_fcfa !== "" && body.amount_fcfa != null && Number.isFinite(Number(body.amount_fcfa))
+    ? clamp(Number(body.amount_fcfa), 0, 100_000_000) : computed;
+  const { data: o, error } = await db.from("orders").insert({
+    ref: newRef(), public_token: newToken(24), customer_name: name, email,
+    phone: str(body.phone, 30).replace(/[^\d+]/g, "") || null, amount_fcfa: amount,
+    payment_method: str(body.payment_method, 30) || null, payment_ref: str(body.payment_ref, 100) || null,
+    note: str(body.note, 300) || null, source: "admin",
+  }).select().single();
+  if (error) return json({ error: error.message }, 500);
+  const { error: e2 } = await db.from("order_items").insert(items.map((l: { id: string; qty: number }) => ({
+    order_id: o.id, product_id: l.id, product_name: byId[l.id].name, delivery_type: byId[l.id].delivery_type,
+    unit_price: byId[l.id].price_fcfa, quantity: l.qty,
+  })));
+  if (e2) { await db.from("orders").delete().eq("id", o.id); return json({ error: e2.message }, 500); }
+  return { o };
 }
 
 // Livre une commande : clés / identifiants du stock + liens à usage unique + services à traiter
@@ -281,35 +314,44 @@ Deno.serve(async (req) => {
       }
 
       case "order_create": { // vente faite par WhatsApp / en direct (plusieurs articles possibles)
-        const name = str(body.name, 100);
-        const email = str(body.email, 200).toLowerCase();
-        if (name.length < 2) return json({ error: "nom_invalide" }, 400);
-        if (!email.includes("@")) return json({ error: "email_invalide" }, 400);
-        const lines = (Array.isArray(body.items) ? body.items : []).slice(0, 20)
-          .map((i: { product_id: string; qty: number }) => ({ id: str(i.product_id, 40), qty: clamp(Math.floor(Number(i.qty) || 1), 1, 20) }))
-          .filter((i: { id: string }) => i.id);
-        if (!lines.length) return json({ error: "panier_vide" }, 400);
-        const { data: prods } = await db.from("products").select("id, name, price_fcfa, delivery_type").in("id", lines.map((l: { id: string }) => l.id));
-        if (!prods?.length) return json({ error: "produit_introuvable" }, 400);
-        const byId = Object.fromEntries(prods.map((p) => [p.id, p]));
-        const items = lines.filter((l: { id: string }) => byId[l.id]);
-        const computed = items.reduce((s: number, l: { id: string; qty: number }) => s + byId[l.id].price_fcfa * l.qty, 0);
-        const amount = body.amount_fcfa !== "" && body.amount_fcfa != null && Number.isFinite(Number(body.amount_fcfa))
-          ? clamp(Number(body.amount_fcfa), 0, 100_000_000) : computed;
-        const { data: o, error } = await db.from("orders").insert({
-          ref: newRef(), public_token: newToken(24), customer_name: name, email,
-          phone: str(body.phone, 30).replace(/[^\d+]/g, "") || null, amount_fcfa: amount,
-          payment_method: str(body.payment_method, 30) || null, payment_ref: str(body.payment_ref, 100) || null,
-          note: str(body.note, 300) || null, source: "admin",
-        }).select().single();
-        if (error) return json({ error: error.message }, 500);
-        const { error: e2 } = await db.from("order_items").insert(items.map((l: { id: string; qty: number }) => ({
-          order_id: o.id, product_id: l.id, product_name: byId[l.id].name, delivery_type: byId[l.id].delivery_type,
-          unit_price: byId[l.id].price_fcfa, quantity: l.qty,
-        })));
-        if (e2) { await db.from("orders").delete().eq("id", o.id); return json({ error: e2.message }, 500); }
-        const result = body.deliver === true ? await deliver(o.id) : null;
-        return json({ order: o, result });
+        const c = await createAdminOrder(body);
+        if (c instanceof Response) return c;
+        const result = body.deliver === true ? await deliver(c.o.id) : null;
+        return json({ order: c.o, result });
+      }
+
+      case "manual_send": { // vente WhatsApp : clé(s) du stock + email au modèle du produit, enregistrée comme commande
+        const c = await createAdminOrder({ ...body, name: str(body.name, 100) || "Client WhatsApp", items: [{ product_id: body.product_id, qty: body.qty }] });
+        if (c instanceof Response) return c;
+        await db.from("orders").update({ emailed_at: new Date().toISOString() }).eq("id", c.o.id); // l'email part juste après
+        const result = await deliver(c.o.id, true);
+        const { data: its } = await db.from("order_items").select("product_name, status, license_keys(key_value)").eq("order_id", c.o.id);
+        const keys = (its ?? []).flatMap((i: any) => (i.license_keys ?? []).map((k: any) => k.key_value));
+        if (result?.reason === "out_of_stock" || body.send_email === false) {
+          await db.from("orders").update({ emailed_at: null }).eq("id", c.o.id);
+          return json({ order: c.o, result, keys, email: null });
+        }
+        const email = await sendDeliveryEmail(c.o.id, true);
+        return json({ order: c.o, result, keys, email });
+      }
+
+      case "template_send": { // envoyer un modèle seul à une adresse (sans clé ni commande)
+        const to = str(body.to, 200).toLowerCase();
+        if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/.test(to)) return json({ error: "email_invalide" }, 400);
+        const { data: prod } = body.product_id ? await db.from("products").select("name, price_fcfa, email_template_id").eq("id", str(body.product_id, 40)).maybeSingle() : { data: null };
+        const { data: t } = prod?.email_template_id ? await db.from("email_templates").select("id, subject, body").eq("id", prod.email_template_id).maybeSingle()
+          : await db.from("email_templates").select("id, subject, body").eq("is_default", true).maybeSingle();
+        const tpl: Tpl = t ?? BUILTIN_TPL; // le modèle du produit, sinon le modèle par défaut
+        const { site, wa } = siteCtx();
+        const pname = prod?.name ?? str(body.product_name, 120);
+        const mail = renderEmail(tpl, {
+          o: { ref: str(body.ref, 40) || "—", customer_name: str(body.name, 100) || "", amount_fcfa: Number(body.amount_fcfa) || prod?.price_fcfa || 0 },
+          items: pname ? [{ product_name: pname, delivery_type: "manual", quantity: 1, status: "delivered", license_keys: [] }] : [],
+          link: site, wa,
+        });
+        const r = await resendSend(to, mail);
+        if (!r.ok) return json({ error: r.reason }, 400);
+        return json({ ok: true });
       }
 
       case "order_validate": { // "J'ai reçu le paiement" → livraison automatique

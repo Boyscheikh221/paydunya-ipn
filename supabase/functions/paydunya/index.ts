@@ -160,7 +160,7 @@ async function resendSend(to: string, mail: { subject: string; html: string; tex
 
 // Envoie l'email de livraison UNE fois (force = renvoi manuel depuis l'admin).
 // Si la commande contient des produits avec des modèles différents : un email par modèle.
-async function sendDeliveryEmail(orderId: string, force = false): Promise<{ sent: boolean; count?: number; reason?: string }> {
+async function sendDeliveryEmail(orderId: string, force = false, templateId?: string): Promise<{ sent: boolean; count?: number; reason?: string }> {
   if (!(Deno.env.get("RESEND_API_KEY") ?? "").trim()) return { sent: false, reason: "resend_non_configure" };
   const { data: o } = await db.from("orders")
     .select("id, ref, public_token, customer_name, email, amount_fcfa, status, emailed_at, order_items(id, product_name, delivery_type, quantity, status, created_at, license_keys(key_value), products(email_template_id))")
@@ -179,7 +179,7 @@ async function sendDeliveryEmail(orderId: string, force = false): Promise<{ sent
   const def: Tpl = (tpls ?? []).find((t) => t.is_default) ?? BUILTIN_TPL;
   const groups = new Map<string, { tpl: Tpl; items: Item[] }>();
   for (const i of items) {
-    const t: Tpl = byId[i.products?.email_template_id] ?? def;
+    const t: Tpl = (templateId && byId[templateId]) || byId[i.products?.email_template_id] || def;
     const k = t.id ?? "builtin";
     if (!groups.has(k)) groups.set(k, { tpl: t, items: [] });
     groups.get(k)!.items.push(i);
