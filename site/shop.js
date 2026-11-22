@@ -54,7 +54,7 @@ const LO = (() => {
     wa: '<path d="M21 11.5a8.4 8.4 0 0 1-12.6 7.3L3 20l1.3-5A8.4 8.4 0 1 1 21 11.5z"/>',
   };
   function header(active) {
-    const top = el("div", { class: "top", text: "Licences officielles • Livraison immédiate après paiement • Paiement Wave, Orange Money, carte" });
+    const top = el("div", { class: "top", text: "Licences & solutions numériques • Livraison immédiate • Wave, Orange Money, carte" });
     const nav = el("nav", { class: "main" },
       el("a", { href: "index.html", class: active === "home" ? "on" : null, text: "Accueil" }),
       el("a", { href: "index.html#catalogue", class: active === "shop" ? "on" : null, text: "Boutique" }),
@@ -78,10 +78,13 @@ const LO = (() => {
   function footer() {
     const year = new Date().getFullYear();
     document.body.append(
+      el("div", { class: "strip" }, el("div", { class: "wrap" },
+        el("span", { text: "Au Sénégal 🇸🇳" }), el("span", { text: "Des licences authentiques" }), el("span", { text: "Votre satisfaction, notre priorité" }))),
       el("footer", { class: "site" }, el("div", { class: "wrap" },
         el("div", { class: "cols" },
           el("div", {}, el("div", { class: "logo" }, el("span", { class: "a", text: "licence" }), el("span", { class: "b", text: "off" })),
-            el("p", { text: "Licences et logiciels authentiques, livrés en quelques minutes. Basé à Dakar." })),
+            el("p", { text: "Licences & solutions numériques. Licences et logiciels authentiques, livrés en quelques minutes. Basé à Dakar." }),
+            el("p", { class: "tag-line", text: "Vos logiciels, notre engagement !" })),
           el("div", {}, el("b", { text: "Boutique" }), el("a", { href: "index.html#catalogue", text: "Tous les produits" }), el("a", { href: "panier.html", text: "Mon panier" }), el("a", { href: "blog.html", text: "Blog" }), el("a", { href: "faq.html", text: "Questions fréquentes" })),
           el("div", {}, el("b", { text: "Aide" }), el("a", { href: "https://wa.me/" + WHATSAPP_NUMBER, target: "_blank", rel: "noopener", text: "WhatsApp : +" + WHATSAPP_NUMBER }),
             el("span", { text: "Paiement sécurisé via PayDunya" })),
