@@ -554,7 +554,25 @@ Deno.serve(async (req) => {
 // ================= Messages reçus (Cloudflare Email Routing → Worker → ici) =================
 // Le Worker envoie l'email brut. Un email n'est jamais une preuve d'identité : on le traite comme
 // un simple message (taille limitée, nombre limité par heure, texte seulement, aucun lien exécuté).
+// Comparaison à temps constant (le secret ne se devine pas caractère par caractère)
+function safeEqual(a: string, b: string): boolean {
+  const enc = new TextEncoder();
+  const x = enc.encode(a), y = enc.encode(b);
+  let diff = x.length ^ y.length;
+  for (let i = 0; i < Math.max(x.length, y.length); i++) diff |= (x[i] ?? 0) ^ (y[i] ?? 0);
+  return diff === 0;
+}
 async function inbound(req: Request): Promise<Response> {
+  // Sécurité : seul le Worker Cloudflare connaît ce secret (settings.inbound_secret, fichier 40-securite.sql).
+  // Sans lui, n'importe qui pourrait déposer de faux messages « de clients » dans l'admin.
+  const { data: is } = await db.from("settings").select("value").eq("key", "inbound_secret").maybeSingle();
+  const want = String(is?.value ?? "");
+  const got = String(req.headers.get("x-inbound-secret") ?? "");
+  if (!want || !safeEqual(got, want)) {
+    await logEvent("warn", "messages", "Email reçu refusé : secret du Worker Cloudflare absent ou faux (voir INBOUND_SECRET)");
+    // 503 : le Worker renvoie l'email à l'expéditeur au lieu de le perdre en silence
+    return json({ error: "non_autorise" }, 503);
+  }
   const buf = new Uint8Array(await req.arrayBuffer());
   if (!buf.length || buf.length > 5 * 1048576) return json({ error: "taille" }, 413);
   const { count } = await db.from("inbox_messages").select("id", { count: "exact", head: true }).eq("direction", "in")
@@ -743,6 +761,13 @@ async function handle(req: Request): Promise<Response> {
     case "account_login": {
       const email = str(body.email, 200).toLowerCase();
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json({ error: "email_invalide" }, 400);
+      // anti-abus pour tout le site : au plus 60 liens de connexion par heure (protège le quota d'emails Resend)
+      const { count: all } = await db.from("customer_sessions").select("token_hash", { count: "exact", head: true })
+        .eq("kind", "login").gte("created_at", new Date(Date.now() - 3600_000).toISOString());
+      if ((all ?? 0) >= 60) {
+        await logEvent("warn", "connexion", "Plus de 60 demandes de lien de connexion en une heure : les suivantes sont refusées pour l'instant");
+        return json({ error: "trop_de_demandes" }, 429);
+      }
       // anti-abus : 5 liens par email et par heure
       const { data: c0 } = await db.from("customers").select("id").eq("email", email).maybeSingle();
       let cid = c0?.id as string | undefined;
@@ -887,6 +912,9 @@ async function handle(req: Request): Promise<Response> {
     case "parrain_login": {
       const email = str(body.email, 200).toLowerCase();
       const { data: pr } = await db.from("parrains").select("id, name, email, status").eq("email", email).maybeSingle();
+      const { count: allp } = await db.from("parrain_sessions").select("token_hash", { count: "exact", head: true })
+        .eq("kind", "login").gte("created_at", new Date(Date.now() - 3600_000).toISOString());
+      if ((allp ?? 0) >= 30) return json({ error: "trop_de_demandes" }, 429);
       if (pr && pr.status === "active") {
         const t = newToken(32);
         await db.from("parrain_sessions").insert({ token_hash: await sha256(t), parrain_id: pr.id, kind: "login", expires_at: new Date(Date.now() + 30 * 60_000).toISOString() });
