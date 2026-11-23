@@ -116,7 +116,9 @@ const buttonHtml = (link: string) => `<p style="text-align:center;margin:22px 0"
 
 function vars(c: Ctx) {
   const parts = String(c.o.customer_name ?? "").trim().split(/\s+/);
-  return { prenom: parts[0] || "", nom: String(c.o.customer_name ?? ""), commande: String(c.o.ref), total: fcfaTxt(c.o.amount_fcfa), lien_commande: c.link, lien_installation: c.install ?? c.link, whatsapp: "https://wa.me/" + c.wa };
+  return { prenom: parts[0] || "", nom: String(c.o.customer_name ?? ""), commande: String(c.o.ref), total: fcfaTxt(c.o.amount_fcfa), lien_commande: c.link, lien_installation: c.install ?? c.link, whatsapp: "https://wa.me/" + c.wa,
+    version: (c.items.map((i) => String(i.product_name ?? "").match(/\b(20(?:07|10|13|16|19|21|24|25|26)|365)\b/)).find(Boolean) ?? [""])[0],
+    produit: c.items.map((i) => String(i.product_name ?? "")).filter(Boolean).join(", ") };
 }
 // Texte simple → HTML : paragraphes, **gras**, listes « - », [lien](url), et les blocs {produits} {cles} {bouton}
 function renderBody(body: string, c: Ctx) {
@@ -127,7 +129,7 @@ function renderBody(body: string, c: Ctx) {
   if (!b.includes("{bouton}") && !b.includes("{lien_commande}")) b += "\n\n{bouton}";
   if (c.install && !b.includes("{bouton_installation}") && !b.includes("{lien_installation}")) b += "\n\n{bouton_installation}";
   if (!c.install) b = b.replace(/\{bouton_installation\}/g, "");
-  const sub = (s: string) => s.replace(/\{(prenom|nom|commande|total|lien_commande|lien_installation|whatsapp)\}/g, (_, k) => v[k]);
+  const sub = (s: string) => s.replace(/\{(prenom|nom|commande|total|lien_commande|lien_installation|whatsapp|version|produit)\}/g, (_, k) => v[k]).replace(/ {2,}/g, " ");
   // HTML
   const blocks = b.replace(/\r/g, "").split(/\n{2,}/).map((para) => {
     const t = para.trim();
@@ -154,9 +156,10 @@ function wrapHtml(inner: string) {
   return `<!doctype html><html lang="fr"><body style="margin:0;background:${C};font-family:Nunito,Segoe UI,Arial,sans-serif;color:${N}">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${C};padding:24px 12px"><tr><td align="center">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#fff;border-radius:16px;overflow:hidden">
-<tr><td style="background:${B};padding:22px 24px">
-  <div style="font-size:28px;font-weight:900;letter-spacing:-1px;color:#fff">licence<span style="color:${O}">off</span></div>
-  <div style="color:#dbe6fb;font-size:14px">Licences &amp; solutions numériques</div></td></tr>
+<tr><td style="background:${B};padding:18px 24px"><table role="presentation" cellpadding="0" cellspacing="0"><tr>
+  <td style="padding-right:14px;vertical-align:middle"><img src="https://www.licenceoff.com/img/profil-192.png" width="72" height="72" alt="licenceoff" style="display:block;border:0;border-radius:50%;width:72px;height:72px"></td>
+  <td style="vertical-align:middle"><div style="font-size:28px;font-weight:900;letter-spacing:-1px;color:#fff">licence<span style="color:${O}">off</span></div>
+  <div style="color:#dbe6fb;font-size:14px">Licences &amp; solutions numériques</div></td></tr></table></td></tr>
 <tr><td style="padding:24px;font-size:15px">${inner}</td></tr>
 <tr><td style="background:${N};color:#d6e0f5;padding:14px 24px;font-size:13px;text-align:center">
   Au Sénégal 🇸🇳 · Des licences authentiques · Votre satisfaction, notre priorité<br>
@@ -166,7 +169,7 @@ function wrapHtml(inner: string) {
 function renderEmail(tpl: Tpl, c: Ctx) {
   const { html, text } = renderBody(tpl.body, c);
   const v = vars(c) as Record<string, string>;
-  const subject = String(tpl.subject || BUILTIN_TPL.subject).replace(/\{(prenom|nom|commande|total)\}/g, (_, k) => v[k]).slice(0, 200);
+  const subject = String(tpl.subject || BUILTIN_TPL.subject).replace(/\{(prenom|nom|commande|total|version|produit)\}/g, (_, k) => v[k]).replace(/ {2,}/g, " ").trim().slice(0, 200);
   return { subject, html: wrapHtml(html), text: text + "\n\nlicenceoff — Vos logiciels, notre engagement !" };
 }
 function siteCtx() {
