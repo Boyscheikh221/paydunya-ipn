@@ -504,6 +504,21 @@ async function productFeed(kind: string) {
     { headers: { ...headers, "Content-Type": "application/xml; charset=utf-8" } });
 }
 
+// Flux RSS du blog (pour Facebook / IFTTT / lecteurs RSS) : …/functions/v1/boutique?blog_rss=1
+async function blogRss() {
+  const site = (Deno.env.get("SITE_URL") ?? "https://www.licenceoff.com").trim().replace(/\/$/, "");
+  const { data: posts } = await db.from("posts").select("title, slug, excerpt, cover_url, published_at").eq("published", true).order("published_at", { ascending: false }).limit(30);
+  const x = (s: string) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const items = (posts ?? []).map((p) => {
+    const link = `${site}/blog/${encodeURIComponent(p.slug)}`;
+    return `<item><title>${x(p.title)}</title><link>${x(link)}</link><guid isPermaLink="true">${x(link)}</guid>` +
+      (p.published_at ? `<pubDate>${new Date(p.published_at).toUTCString()}</pubDate>` : "") +
+      `<description>${x(p.excerpt ?? "")}</description>` + (p.cover_url ? `<enclosure url="${x(p.cover_url)}" type="image/jpeg" length="0"/>` : "") + `</item>`;
+  }).join("\n");
+  return new Response(`<?xml version="1.0" encoding="UTF-8"?>\n<rss version="2.0">\n<channel>\n<title>Blog licenceoff.com</title>\n<link>${site}/blog</link>\n<description>Conseils, guides et nouveautés : licences Windows, Office et solutions PC au Sénégal.</description>\n<language>fr</language>\n${items}\n</channel>\n</rss>\n`,
+    { headers: { ...cors, "Content-Type": "application/rss+xml; charset=utf-8", "Cache-Control": "public, max-age=600" } });
+}
+
 async function sitemap() {
   const site = (Deno.env.get("SITE_URL") ?? "https://www.licenceoff.com").trim().replace(/\/$/, "");
   const [{ data: cats }, { data: prods }, { data: posts }, { data: pages }] = await Promise.all([
@@ -603,6 +618,7 @@ async function inbound(req: Request): Promise<Response> {
 async function handle(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method === "GET" && new URL(req.url).searchParams.has("sitemap")) return sitemap();
+  if (req.method === "GET" && new URL(req.url).searchParams.has("blog_rss")) return blogRss();
   if (req.method === "GET" && new URL(req.url).searchParams.has("feed")) return productFeed(String(new URL(req.url).searchParams.get("feed")));
   if (req.method === "POST" && new URL(req.url).searchParams.has("inbound")) return inbound(req);
   if (req.method !== "POST") return json({ error: "method" }, 405);

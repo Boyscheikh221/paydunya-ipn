@@ -396,6 +396,32 @@ async function createAdminOrder(body: any): Promise<Response | { o: any }> {
   return { o };
 }
 
+// ---------- Page Facebook (secrets FB_PAGE_ID + FB_PAGE_TOKEN, ajoutés par Cheikh dans Supabase) ----------
+function fbReady() { return !!(Deno.env.get("FB_PAGE_ID") ?? "").trim() && !!(Deno.env.get("FB_PAGE_TOKEN") ?? "").trim(); }
+// deno-lint-ignore no-explicit-any
+async function postToFacebook(p: any): Promise<{ ok: boolean; reason?: string; id?: string }> {
+  const page = (Deno.env.get("FB_PAGE_ID") ?? "").trim(), token = (Deno.env.get("FB_PAGE_TOKEN") ?? "").trim();
+  if (!page || !token) return { ok: false, reason: "fb_non_configure" };
+  const link = siteCtx().site + "/blog/" + encodeURIComponent(p.slug);
+  const intro = String(p.excerpt || String(p.content || "").replace(/!\[[^\]]*\]\([^)]*\)/g, "").replace(/[#*>\[\]]/g, "").replace(/\(https?:[^)]*\)/g, "").replace(/\s+/g, " ").trim().slice(0, 300));
+  const message = p.title + (intro ? "\n\n" + intro : "") + "\n\n👉 Lire l'article : " + link;
+  // avec une image : publication photo (l'image s'affiche en grand) ; sinon : lien
+  const params = p.cover_url ? { url: p.cover_url, caption: message, access_token: token } : { message, link, access_token: token };
+  const r = await fetch(`https://graph.facebook.com/v21.0/${encodeURIComponent(page)}/${p.cover_url ? "photos" : "feed"}`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(params),
+  }).catch(() => null);
+  // deno-lint-ignore no-explicit-any
+  const d: any = r ? await r.json().catch(() => ({})) : {};
+  if (!r || !r.ok || !(d.post_id || d.id)) {
+    await logEvent("error", "facebook", "Publication Facebook refusée : « " + p.title + " »", { statut_http: r?.status ?? null, erreur: d?.error?.message ?? "pas de réponse", code: d?.error?.code ?? null });
+    return { ok: false, reason: "fb_erreur" };
+  }
+  const id = String(d.post_id || d.id);
+  await db.from("posts").update({ fb_post_id: id, fb_posted_at: new Date().toISOString() }).eq("id", p.id);
+  await logEvent("info", "facebook", "Article publié sur Facebook : « " + p.title + " »");
+  return { ok: true, id };
+}
+
 // Clé verrouillée : email « votre clé vous attend » (la clé n'y figure pas), bouton vers la page de commande
 async function sendLockedEmail(orderId: string): Promise<{ sent: boolean; kind: string; reason?: string }> {
   const { data: o } = await db.from("orders").select("ref, public_token, customer_name, email, amount_fcfa, order_items(product_name, quantity)").eq("id", orderId).maybeSingle();
@@ -1372,7 +1398,15 @@ ${q.valid_until ? `<p style="margin:0 0 12px">Ce devis est valable jusqu'au ${es
       case "posts_list": {
         const { data, error } = await db.from("posts").select("*").order("created_at", { ascending: false }).limit(300);
         if (error) return json({ error: error.message }, 500);
-        return json({ rows: data });
+        return json({ rows: data, fb_ready: fbReady() });
+      }
+      case "post_facebook": { // publier (ou republier) un article déjà en ligne sur la page Facebook
+        const { data: p } = await db.from("posts").select("*").eq("id", str(body.id, 40)).maybeSingle();
+        if (!p || !p.published) return json({ error: "not_found" }, 404);
+        if (p.fb_post_id && body.force !== true) return json({ error: "deja_sur_facebook" }, 400);
+        const r = await postToFacebook(p);
+        if (!r.ok) return json({ error: r.reason }, 400);
+        return json({ ok: true });
       }
       case "post_save": {
         const published = body.published === true;
@@ -1382,14 +1416,18 @@ ${q.valid_until ? `<p style="margin:0 0 12px">Ce devis est valable jusqu'au ${es
           cover_url: str(body.cover_url, 500) || null, published, updated_at: new Date().toISOString(),
         };
         if (!row.title || !row.slug) return json({ error: "titre_obligatoire" }, 400);
+        let firstPublish = false;
         if (published) {
           const { data: old } = body.id ? await db.from("posts").select("published_at").eq("id", body.id).maybeSingle() : { data: null };
+          firstPublish = !old?.published_at;
           row.published_at = old?.published_at ?? new Date().toISOString();
         }
         const r = body.id ? await db.from("posts").update(row).eq("id", body.id).select().single()
           : await db.from("posts").insert(row).select().single();
         if (r.error) return json({ error: r.error.message.includes("duplicate") ? "code_deja_utilise" : r.error.message }, 400);
-        return json({ row: r.data });
+        // comme WordPress : à la première publication, l'article part aussi sur la page Facebook
+        const facebook = published && body.facebook === true && fbReady() && !r.data.fb_post_id && firstPublish ? await postToFacebook(r.data) : null;
+        return json({ row: r.data, facebook });
       }
       // ================= Pages libres =================
       case "pages_list": {

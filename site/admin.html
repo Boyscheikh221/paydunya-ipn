@@ -117,6 +117,14 @@
     nav .bottom { margin:0; border:0; padding:0; }
     main { padding:12px; }
   }
+  .edbar { display:flex; flex-wrap:wrap; gap:4px; align-items:center; background:#f3f6fb; border:1px solid #dbe3ef; border-bottom:0; border-radius:10px 10px 0 0; padding:6px; margin-top:4px; }
+  .edbar button { background:#fff; color:#0F2A6B; border:1px solid #dbe3ef; border-radius:7px; padding:6px 10px; font-size:13px; font-weight:600; cursor:pointer; }
+  .edbar button:hover { background:#E8F1FC; } .edbar button.hl { background:#F5A21B; color:#fff; border-color:#F5A21B; } .edbar button.hl2 { margin-left:auto; }
+  #bContent { border-top-left-radius:0; border-top-right-radius:0; margin-top:0; }
+  #bContent.drop { outline:3px dashed #F5A21B; }
+  .bpreview { border:1px solid #dbe3ef; border-radius:10px; padding:16px 20px; background:#fff; font-size:16px; line-height:1.7; max-height:520px; overflow:auto; }
+  .bpreview img { max-width:100%; border-radius:10px; } .bpreview figure { margin:16px 0; } .bpreview figcaption { text-align:center; color:#6b7690; font-size:13px; }
+  .bpreview blockquote { margin:12px 0; padding:8px 14px; border-left:4px solid #F5A21B; background:#fbf7ee; } .bpreview .video { background:#000; color:#fff; padding:30px; text-align:center; border-radius:10px; }
 </style>
 <link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="64x64" href="/img/profil-64.png"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
 </head>
@@ -349,8 +357,27 @@
         <label>Image de couverture</label>
         <div class="bar" style="margin:0"><img id="bImgPrev" class="preview hidden" alt=""><input id="bImgFile" type="file" accept="image/*"><input type="hidden" id="bImg"><span id="bImgMsg" class="small"></span></div>
         <label>Texte de l'article</label>
-        <textarea id="bContent" style="min-height:260px" placeholder="Écrivez normalement. Astuces :&#10;## Un titre de partie&#10;- un point de liste&#10;**texte en gras**&#10;[texte du lien](https://www.licenceoff.com)"></textarea>
+        <div class="edbar" id="bTools">
+          <button type="button" data-md="h2" title="Titre de partie">Titre</button>
+          <button type="button" data-md="h3" title="Sous-titre">Sous-titre</button>
+          <button type="button" data-md="b" title="Gras"><b>G</b></button>
+          <button type="button" data-md="i" title="Italique"><i>I</i></button>
+          <button type="button" data-md="ul" title="Liste à puces">• Liste</button>
+          <button type="button" data-md="ol" title="Liste numérotée">1. Liste</button>
+          <button type="button" data-md="q" title="Citation / encadré">❝ Citation</button>
+          <button type="button" data-md="link" title="Lien">🔗 Lien</button>
+          <button type="button" data-md="img" title="Insérer une image" class="hl">🖼️ Image</button>
+          <button type="button" data-md="yt" title="Vidéo YouTube">▶ Vidéo</button>
+          <button type="button" data-md="hr" title="Séparateur">―</button>
+          <button type="button" id="bPrevBtn" class="hl2">👁 Aperçu</button>
+          <input id="bInlineFile" type="file" accept="image/*" multiple hidden>
+          <span id="bEdMsg" class="small"></span>
+        </div>
+        <textarea id="bContent" style="min-height:320px" placeholder="Écrivez votre article. Utilisez les boutons au-dessus pour la mise en forme. Pour ajouter une image : bouton 🖼️ Image, ou glissez-déposez / collez une image directement ici."></textarea>
+        <div id="bPreview" class="bpreview hidden"></div>
         <label class="check"><input type="checkbox" id="bPub"> Publié (visible sur le site)</label>
+        <label class="check" id="bFbRow"><input type="checkbox" id="bFb" checked> 📣 Publier aussi sur la page Facebook (à la première publication)</label>
+        <div class="small" id="bFbInfo"></div>
         <div class="bar"><button id="bSave" class="green">Enregistrer</button><button id="bReset" class="grey">Nouvel article</button></div>
       </div>
       <div class="box"><table class="small"><thead><tr><th>Article</th><th>Statut</th><th>Date</th><th></th></tr></thead><tbody id="bRows"></tbody></table></div>
@@ -658,6 +685,7 @@ const ERR = {
   to_process: "Commande payée. Certains articles sont à traiter par vous (voir « À traiter »).",
   modele_incomplet: "Remplissez le nom, l'objet et le texte du modèle.", modele_par_defaut: "Choisissez d'abord un autre modèle par défaut.", email_invalide: "Adresse email invalide.",
   resend_non_configure: "Email pas encore configuré (clé Resend manquante dans Supabase).", envoi_echoue: "L'email n'a pas pu partir. Vérifiez le domaine dans Resend.",
+  fb_non_configure: "page Facebook pas encore connectée", fb_erreur: "Facebook a refusé la publication (voir le Journal)", deja_sur_facebook: "Déjà publié sur Facebook.",
   commande_deja_payee: "Commande déjà payée, impossible de l'annuler.", pas_de_facture: "Cette commande n'a pas de facture (pas encore payée, ou offerte).", deja_annulee: "Cette commande est déjà annulée.", cle_deja_envoyee: "Cette clé a déjà été envoyée.",
   not_delivered: "L'article n'est pas encore livré.", no_installer: "Ce produit n'a pas de fichier.", not_to_process: "Cet article n'est pas à traiter.",
   produit_sans_stock: "Ce produit n'utilise pas de stock (type logiciel ou service).", fichier_obligatoire: "Choisissez ou envoyez le fichier du logiciel.",
@@ -1395,11 +1423,15 @@ $("qSave").addEventListener("click", async () => {
 
 // ---------- blog ----------
 async function loadBlog() {
-  const { rows } = await api({ action: "posts_list" });
-  $("bRows").replaceChildren(...rows.map((p) => tr(td(el("strong", p.title), el("br"), el("span", p.slug, "small mono")), td(tag(p.published ? "pub" : "draft")),
+  const { rows, fb_ready } = await api({ action: "posts_list" });
+  $("bFb").disabled = !fb_ready; $("bFb").checked = !!fb_ready;
+  $("bFbInfo").textContent = fb_ready ? "Page Facebook connectée ✔ : l'article y sera publié avec son image et son lien." : "Page Facebook pas encore connectée (voir le guide envoyé par Claude). En attendant, utilisez le bouton « Partager » de chaque article.";
+  $("bRows").replaceChildren(...rows.map((p) => tr(td(el("strong", p.title), el("br"), el("span", p.slug, "small mono"), p.fb_post_id ? el("div", "📣 publié sur Facebook", "small") : null), td(tag(p.published ? "pub" : "draft")),
     td(dt(p.published_at || p.created_at)),
     td(btn("Modifier", "grey", () => editPost(p)), " ",
       p.published ? btn("Voir", "grey", () => window.open(SITE + "/blog/" + encodeURIComponent(p.slug), "_blank", "noopener")) : null, " ",
+      p.published && fb_ready && !p.fb_post_id ? btn("📣 Publier sur Facebook", "org", async () => { if (!confirm("Publier « " + p.title + " » sur votre page Facebook ?")) return; try { await api({ action: "post_facebook", id: p.id }); toast("Publié sur Facebook ✔"); loadBlog(); } catch (e) { toast(errMsg(e)); } }) : null,
+      p.published && !fb_ready ? btn("Partager", "grey", () => window.open("https://www.facebook.com/sharer/sharer.php?u=" + encodeURIComponent(SITE + "/blog/" + p.slug), "_blank", "noopener,width=640,height=560")) : null, " ",
       btn("Supprimer", "red", async () => { if (confirm("Supprimer l'article « " + p.title + " » ?")) { await api({ action: "post_delete", id: p.id }); toast("Article supprimé"); await loadBlog(); } })))));
   if (!rows.length) $("bRows").append(tr(td("Aucun article pour le moment.")));
 }
@@ -1408,12 +1440,104 @@ function editPost(p) {
   $("bContent").value = p.content || ""; $("bImg").value = p.cover_url || ""; $("bImgPrev").src = p.cover_url || ""; $("bImgPrev").classList.toggle("hidden", !p.cover_url);
   $("bPub").checked = p.published; window.scrollTo(0, 0);
 }
-function resetPost() { $("bTitleH").textContent = "Nouvel article"; for (const id of ["bId", "bTitle", "bExcerpt", "bContent", "bImg"]) $(id).value = ""; $("bImgPrev").classList.add("hidden"); $("bPub").checked = false; $("bImgMsg").textContent = ""; }
+function resetPost() { $("bPreview").classList.add("hidden"); $("bContent").classList.remove("hidden"); $("bPrevBtn").textContent = "👁 Aperçu"; $("bEdMsg").textContent = ""; $("bTitleH").textContent = "Nouvel article"; for (const id of ["bId", "bTitle", "bExcerpt", "bContent", "bImg"]) $(id).value = ""; $("bImgPrev").classList.add("hidden"); $("bPub").checked = false; $("bImgMsg").textContent = ""; }
 $("bReset").addEventListener("click", resetPost);
+
+// ---------- éditeur d'article : boutons de mise en forme, images, aperçu ----------
+function edWrap(pre, post, ph) {
+  const t = $("bContent"), a = t.selectionStart, b = t.selectionEnd, sel = t.value.slice(a, b) || ph;
+  t.setRangeText(pre + sel + post, a, b, "end"); t.focus();
+  if (sel === ph) { t.selectionStart = a + pre.length; t.selectionEnd = a + pre.length + sel.length; }
+}
+function edLines(prefix, ph) {
+  const t = $("bContent"); let a = t.selectionStart, b = t.selectionEnd;
+  a = t.value.lastIndexOf("\n", a - 1) + 1;
+  const txt = t.value.slice(a, b) || ph;
+  const out = txt.split("\n").map((l, k) => (typeof prefix === "function" ? prefix(k) : prefix) + l.replace(/^(#{2,3} |[-*] |\d+[.)] |> )/, "")).join("\n");
+  t.setRangeText(out, a, Math.max(a, b), "end"); t.focus();
+}
+function edBlock(text) { // bloc sur sa propre ligne (image, vidéo, séparateur)
+  const t = $("bContent"), a = t.selectionStart, before = t.value.slice(0, a), after = t.value.slice(a);
+  const pre = before && !before.endsWith("\n\n") ? (before.endsWith("\n") ? "\n" : "\n\n") : "";
+  const post = after.startsWith("\n") ? "\n" : "\n\n";
+  t.setRangeText(pre + text + post, a, a, "end"); t.focus();
+}
+async function edUpload(files) {
+  for (const f of [...files].filter((x) => /^image\//.test(x.type))) {
+    if (f.size > 5 * 1048576) { toast("« " + f.name + " » est trop lourde (max 5 Mo)"); continue; }
+    try {
+      const { url, public_url } = await api({ action: "image_upload_url", filename: f.name || "image.png" });
+      await putFile(url, f, (p) => ($("bEdMsg").textContent = "Envoi de l'image… " + p + " %"));
+      const alt = (prompt("Légende de l'image (facultatif, aide aussi Google) :", "") || "").replace(/[\[\]]/g, "");
+      edBlock("![" + alt + "](" + public_url + ")");
+      $("bEdMsg").textContent = "Image ajoutée ✔";
+      if (!$("bImg").value) { $("bImg").value = public_url; $("bImgPrev").src = public_url; $("bImgPrev").classList.remove("hidden"); $("bImgMsg").textContent = "Utilisée aussi comme couverture (modifiable)"; }
+    } catch (e) { $("bEdMsg").textContent = errMsg(e); }
+  }
+  if (!$("bPreview").classList.contains("hidden")) renderPreview();
+}
+$("bTools").addEventListener("click", (e) => {
+  const k = e.target.closest("[data-md]")?.dataset.md; if (!k) return;
+  if (k === "h2") edLines("## ", "Titre de la partie");
+  else if (k === "h3") edLines("### ", "Sous-titre");
+  else if (k === "b") edWrap("**", "**", "texte en gras");
+  else if (k === "i") edWrap("*", "*", "texte en italique");
+  else if (k === "ul") edLines("- ", "élément de la liste");
+  else if (k === "ol") edLines((n) => (n + 1) + ". ", "première étape");
+  else if (k === "q") edLines("> ", "Un conseil ou une remarque importante");
+  else if (k === "hr") edBlock("---");
+  else if (k === "img") $("bInlineFile").click();
+  else if (k === "link") {
+    const u = prompt("Adresse du lien (ex. https://www.licenceoff.com/produit/...) :", "https://"); if (!u || u === "https://") return;
+    edWrap("[", "](" + u.trim() + ")", "texte du lien");
+  } else if (k === "yt") {
+    const u = prompt("Lien de la vidéo YouTube :", ""); if (u && /youtu/.test(u)) edBlock(u.trim());
+  }
+});
+$("bInlineFile").addEventListener("change", (e) => { edUpload(e.target.files); e.target.value = ""; });
+$("bContent").addEventListener("dragover", (e) => { if ([...e.dataTransfer.items].some((i) => i.kind === "file")) { e.preventDefault(); $("bContent").classList.add("drop"); } });
+$("bContent").addEventListener("dragleave", () => $("bContent").classList.remove("drop"));
+$("bContent").addEventListener("drop", (e) => { $("bContent").classList.remove("drop"); if (e.dataTransfer.files.length) { e.preventDefault(); edUpload(e.dataTransfer.files); } });
+$("bContent").addEventListener("paste", (e) => { const fs = [...(e.clipboardData?.files || [])]; if (fs.length) { e.preventDefault(); edUpload(fs); } });
+// aperçu : même rendu que sur le site (texte sûr, pas de HTML)
+function renderPreview() {
+  const box = $("bPreview"); box.replaceChildren();
+  const mk = (t, txt) => { const e = document.createElement(t); if (txt != null) e.textContent = txt; return e; };
+  const inline = (txt) => {
+    const f = document.createDocumentFragment(); const re = /\*\*(.+?)\*\*|\*(.+?)\*|\[([^\]]+)\]\(([^\s)]+)\)/g; let last = 0, m;
+    while ((m = re.exec(txt))) { if (m.index > last) f.append(txt.slice(last, m.index)); if (m[1]) f.append(mk("strong", m[1])); else if (m[2]) f.append(mk("em", m[2])); else { const a = mk("a", m[3]); a.href = m[4]; a.target = "_blank"; f.append(a); } last = re.lastIndex; }
+    if (last < txt.length) f.append(txt.slice(last)); return f;
+  };
+  if ($("bTitle").value) box.append(mk("h1", $("bTitle").value));
+  if ($("bImg").value) { const i = mk("img"); i.src = $("bImg").value; box.append(i); }
+  let list = null, tag = "";
+  for (const raw of $("bContent").value.split(/\r?\n/)) {
+    const line = raw.trim(); const ul = /^[-*] /.test(line), ol = /^\d+[.)] /.test(line);
+    if (ul || ol) { const t = ul ? "ul" : "ol"; if (!list || tag !== t) { list = mk(t); tag = t; box.append(list); } const li = mk("li"); li.append(inline(line.replace(/^([-*]|\d+[.)]) /, ""))); list.append(li); continue; }
+    list = null; if (!line) continue;
+    const img = line.match(/^!\[([^\]]*)\]\(([^\s)]+)\)$/);
+    if (img) { const fg = mk("figure"), i = mk("img"); i.src = img[2]; fg.append(i); if (img[1]) fg.append(mk("figcaption", img[1])); box.append(fg); continue; }
+    if (/^https?:\/\/(www\.)?(youtube\.com|youtu\.be)\//.test(line)) { box.append(Object.assign(mk("div", "▶ Vidéo YouTube (affichée sur le site)"), { className: "video" })); continue; }
+    let e;
+    if (line === "---") e = mk("hr");
+    else if (line.startsWith("> ")) { e = mk("blockquote"); e.append(inline(line.slice(2))); }
+    else if (line.startsWith("### ")) { e = mk("h3"); e.append(inline(line.slice(4))); }
+    else if (line.startsWith("## ")) { e = mk("h2"); e.append(inline(line.slice(3))); }
+    else { e = mk("p"); e.append(inline(line)); }
+    box.append(e);
+  }
+}
+$("bPrevBtn").addEventListener("click", () => {
+  const on = $("bPreview").classList.toggle("hidden") === false;
+  $("bPrevBtn").textContent = on ? "✏️ Modifier" : "👁 Aperçu";
+  $("bContent").classList.toggle("hidden", on);
+  if (on) renderPreview();
+});
 $("bImgFile").addEventListener("change", () => uploadImage($("bImgFile"), $("bImg"), $("bImgPrev"), $("bImgMsg")));
 $("bSave").addEventListener("click", async () => {
-  try { await api({ action: "post_save", id: $("bId").value || undefined, title: $("bTitle").value, excerpt: $("bExcerpt").value, content: $("bContent").value, cover_url: $("bImg").value, published: $("bPub").checked });
-    toast($("bPub").checked ? "Article publié ✔" : "Brouillon enregistré ✔"); resetPost(); await loadBlog(); }
+  try { const d = await api({ action: "post_save", id: $("bId").value || undefined, title: $("bTitle").value, excerpt: $("bExcerpt").value, content: $("bContent").value, cover_url: $("bImg").value, published: $("bPub").checked, facebook: $("bFb").checked });
+    toast(($("bPub").checked ? "Article publié ✔" : "Brouillon enregistré ✔") + (d.facebook ? (d.facebook.ok ? " · publié sur Facebook ✔" : " · Facebook : " + (ERR[d.facebook.reason] || d.facebook.reason)) : ""));
+    resetPost(); await loadBlog(); }
   catch (e) { toast(errMsg(e)); }
 });
 

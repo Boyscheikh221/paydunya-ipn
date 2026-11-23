@@ -193,26 +193,45 @@ const LO = (() => {
   // ---------- texte d'article (petit Markdown sûr) ----------
   function richText(src) {
     const frag = document.createDocumentFragment();
+    const okUrl = (u) => /^(https?:\/\/|\/)/.test(u);
     const inline = (txt) => {
       const span = document.createDocumentFragment();
-      const re = /\*\*(.+?)\*\*|\[([^\]]+)\]\((https?:\/\/[^\s)]+|\/[^\s)]*|[a-z0-9-]+\.html[^\s)]*)\)/g;
+      const re = /\*\*(.+?)\*\*|\*(.+?)\*|\[([^\]]+)\]\((https?:\/\/[^\s)]+|\/[^\s)]*|[a-z0-9-]+\.html[^\s)]*)\)/g;
       let last = 0, m;
       while ((m = re.exec(txt))) {
         if (m.index > last) span.append(txt.slice(last, m.index));
         if (m[1]) span.append(el("strong", { text: m[1] }));
-        else span.append(el("a", { href: m[3], text: m[2], rel: "noopener" }));
+        else if (m[2]) span.append(el("em", { text: m[2] }));
+        else { const ext = /^https?:/.test(m[4]) && !/licenceoff\.com/.test(m[4]); span.append(el("a", ext ? { href: m[4], text: m[3], rel: "noopener", target: "_blank" } : { href: m[4], text: m[3] })); }
         last = re.lastIndex;
       }
       if (last < txt.length) span.append(txt.slice(last));
       return span;
     };
-    let list = null;
+    const yt = (u) => { const m = u.match(/^https?:\/\/(?:www\.)?(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([\w-]{11})/); return m ? m[1] : null; };
+    let list = null, listTag = "";
     for (const raw of String(src || "").split(/\r?\n/)) {
       const line = raw.trim();
-      if (/^[-*] /.test(line)) { if (!list) { list = el("ul"); frag.append(list); } list.append(el("li", {}, inline(line.slice(2)))); continue; }
+      const ul = /^[-*] /.test(line), ol = /^\d+[.)] /.test(line);
+      if (ul || ol) {
+        const t = ul ? "ul" : "ol";
+        if (!list || listTag !== t) { list = el(t); listTag = t; frag.append(list); }
+        list.append(el("li", {}, inline(line.replace(/^([-*]|\d+[.)]) /, ""))));
+        continue;
+      }
       list = null;
       if (!line) continue;
-      if (line.startsWith("### ")) frag.append(el("h3", {}, inline(line.slice(4))));
+      const img = line.match(/^!\[([^\]]*)\]\(([^\s)]+)\)$/);
+      if (img && okUrl(img[2])) {
+        const fig = el("figure", { class: "img" }, el("img", { src: img[2], alt: img[1] || "", loading: "lazy" }));
+        if (img[1]) fig.append(el("figcaption", { text: img[1] }));
+        frag.append(fig); continue;
+      }
+      const v = yt(line);
+      if (v) { frag.append(el("div", { class: "video" }, el("iframe", { src: "https://www.youtube-nocookie.com/embed/" + v, title: "Vidéo", loading: "lazy", allow: "accelerometer; encrypted-media; picture-in-picture", allowfullscreen: "" }))); continue; }
+      if (line === "---") frag.append(el("hr"));
+      else if (line.startsWith("> ")) frag.append(el("blockquote", {}, inline(line.slice(2))));
+      else if (line.startsWith("### ")) frag.append(el("h3", {}, inline(line.slice(4))));
       else if (line.startsWith("## ")) frag.append(el("h2", {}, inline(line.slice(3))));
       else frag.append(el("p", {}, inline(line)));
     }
