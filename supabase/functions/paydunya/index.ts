@@ -184,7 +184,7 @@ function renderEmail(tpl: Tpl, c: Ctx) {
   const subj = ref && ref !== "—" && !subject.includes(ref) ? (subject + " — commande " + ref).slice(0, 200) : subject;
   return {
     subject: subj, html: wrapHtml(html, ref && ref !== "—" ? ref : undefined, inv),
-    text: text + (ref && ref !== "—" ? "\n\nCet email concerne votre commande " + ref + " sur licenceoff.com." : "") + (inv ? "\nVotre facture : " + inv : "") + "\nUne question ? Répondez simplement à cet email.\nPour recevoir nos prochains emails sans problème, ajoutez commandes@licenceoff.com à vos contacts. Si cet email est arrivé dans « Promotions » ou « Spam », déplacez-le dans « Principal ».\nlicenceoff — www.licenceoff.com",
+    text: text + (ref && ref !== "—" ? "\n\nCet email concerne votre commande " + ref + " sur licenceoff.com." : "") + (inv ? "\nVotre facture : " + inv : "") + "\nUne question ? Répondez simplement à cet email.\nPour recevoir nos prochains emails sans problème, ajoutez commandes@licenceoff.com à vos contacts. Si cet email est arrivé dans « Promotions » ou « Spam », déplacez-le dans « Principal ».\nlicenceoff.com — Dakar, Sénégal",
     headers: ref && ref !== "—" ? { "X-Entity-Ref-ID": ref } : undefined,
   };
 }

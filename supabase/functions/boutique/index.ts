@@ -184,7 +184,7 @@ function renderEmail(tpl: Tpl, c: Ctx) {
   const subj = ref && ref !== "—" && !subject.includes(ref) ? (subject + " — commande " + ref).slice(0, 200) : subject;
   return {
     subject: subj, html: wrapHtml(html, ref && ref !== "—" ? ref : undefined, inv),
-    text: text + (ref && ref !== "—" ? "\n\nCet email concerne votre commande " + ref + " sur licenceoff.com." : "") + (inv ? "\nVotre facture : " + inv : "") + "\nUne question ? Répondez simplement à cet email.\nPour recevoir nos prochains emails sans problème, ajoutez commandes@licenceoff.com à vos contacts. Si cet email est arrivé dans « Promotions » ou « Spam », déplacez-le dans « Principal ».\nlicenceoff — www.licenceoff.com",
+    text: text + (ref && ref !== "—" ? "\n\nCet email concerne votre commande " + ref + " sur licenceoff.com." : "") + (inv ? "\nVotre facture : " + inv : "") + "\nUne question ? Répondez simplement à cet email.\nPour recevoir nos prochains emails sans problème, ajoutez commandes@licenceoff.com à vos contacts. Si cet email est arrivé dans « Promotions » ou « Spam », déplacez-le dans « Principal ».\nlicenceoff.com — Dakar, Sénégal",
     headers: ref && ref !== "—" ? { "X-Entity-Ref-ID": ref } : undefined,
   };
 }
@@ -1111,7 +1111,7 @@ async function handle(req: Request): Promise<Response> {
       }
       if (!oTok) return json({ error: "not_found" }, 404);
       const { data: o } = await db.from("orders")
-        .select("ref, invoice_no, invoice_at, status, amount_fcfa, vat_rate, customer_name, email, phone, billing_company, billing_address, shipping_address, shipping_fee_fcfa, discount_fcfa, payment_method, payment_ref, paid_at, created_at, order_items(product_name, quantity, unit_price, created_at)")
+        .select("ref, invoice_no, invoice_at, status, amount_fcfa, vat_rate, customer_name, email, phone, billing_company, billing_address, shipping_address, shipping_fee_fcfa, discount_fcfa, payment_method, payment_ref, paid_at, created_at, fees_fcfa, order_items(product_name, quantity, unit_price, created_at)")
         .eq("public_token", oTok).maybeSingle();
       if (!o || !o.invoice_no) return json({ error: "pas_de_facture" }, 404);
       // deno-lint-ignore no-explicit-any
@@ -1119,6 +1119,7 @@ async function handle(req: Request): Promise<Response> {
         .sort((a, b) => a.created_at.localeCompare(b.created_at))
         .map((i) => ({ name: i.product_name, qty: i.quantity, unit_price: i.unit_price }));
       if (o.shipping_fee_fcfa > 0) lines.push({ name: "Livraison", qty: 1, unit_price: o.shipping_fee_fcfa });
+      if (o.fees_fcfa > 0) lines.push({ name: "Frais de transaction", qty: 1, unit_price: o.fees_fcfa });
       if (o.discount_fcfa > 0) lines.push({ name: "Remise (code parrain)", qty: 1, unit_price: -o.discount_fcfa });
       const diff = o.amount_fcfa - lines.reduce((t, l) => t + l.qty * l.unit_price, 0);
       if (diff !== 0) lines.push({ name: diff < 0 ? "Remise" : "Ajustement", qty: 1, unit_price: diff });

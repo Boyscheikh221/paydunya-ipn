@@ -190,7 +190,7 @@ function renderEmail(tpl: Tpl, c: Ctx) {
   const subj = ref && ref !== "—" && !subject.includes(ref) ? (subject + " — commande " + ref).slice(0, 200) : subject;
   return {
     subject: subj, html: wrapHtml(html, ref && ref !== "—" ? ref : undefined, inv),
-    text: text + (ref && ref !== "—" ? "\n\nCet email concerne votre commande " + ref + " sur licenceoff.com." : "") + (inv ? "\nVotre facture : " + inv : "") + "\nUne question ? Répondez simplement à cet email.\nPour recevoir nos prochains emails sans problème, ajoutez commandes@licenceoff.com à vos contacts. Si cet email est arrivé dans « Promotions » ou « Spam », déplacez-le dans « Principal ».\nlicenceoff — www.licenceoff.com",
+    text: text + (ref && ref !== "—" ? "\n\nCet email concerne votre commande " + ref + " sur licenceoff.com." : "") + (inv ? "\nVotre facture : " + inv : "") + "\nUne question ? Répondez simplement à cet email.\nPour recevoir nos prochains emails sans problème, ajoutez commandes@licenceoff.com à vos contacts. Si cet email est arrivé dans « Promotions » ou « Spam », déplacez-le dans « Principal ».\nlicenceoff.com — Dakar, Sénégal",
     headers: ref && ref !== "—" ? { "X-Entity-Ref-ID": ref } : undefined,
   };
 }
@@ -369,11 +369,13 @@ async function createAdminOrder(body: any): Promise<Response | { o: any }> {
   const computed = items.reduce((s: number, l: { id: string; qty: number }) => s + byId[l.id].price_fcfa * l.qty, 0);
   const amount = body.amount_fcfa !== "" && body.amount_fcfa != null && Number.isFinite(Number(body.amount_fcfa))
     ? clamp(Number(body.amount_fcfa), 0, 100_000_000) : computed;
+  // frais de transaction payés par le client (Wave, OM…) : ajoutés au total, ligne à part sur la facture
+  const fees = Number.isFinite(Number(body.fees_fcfa)) ? clamp(Math.round(Number(body.fees_fcfa) || 0), 0, 1_000_000) : 0;
   const ref = newRef();
   const MANUAL_CHANNELS = ["wa_manuel", "fb_manuel", "tel_manuel", "autre_manuel"];
   const { data: o, error } = await db.from("orders").insert({
     ref, public_token: newToken(24), customer_name: name, email,
-    phone: str(body.phone, 30).replace(/[^\d+]/g, "") || null, amount_fcfa: amount,
+    phone: str(body.phone, 30).replace(/[^\d+]/g, "") || null, amount_fcfa: amount + fees, fees_fcfa: fees,
     // n° de transaction : celui de Wave/OM s'il est donné, sinon un numéro automatique
     payment_method: str(body.payment_method, 30) || null, payment_ref: str(body.payment_ref, 100) || ("TX-" + ref.slice(3)),
     note: str(body.note, 300) || null, source: "admin",
@@ -674,7 +676,7 @@ Deno.serve(async (req) => {
         const headers: Record<string, string> = {};
         if (lastIn?.message_id) { headers["In-Reply-To"] = lastIn.message_id; headers["References"] = lastIn.message_id; }
         const paras = text.split(/\n{2,}/).map((p) => `<p style="margin:0 0 12px;line-height:1.6">${esc(p).replace(/\n/g, "<br>")}</p>`).join("");
-        const r = await resendSend(email, { subject, html: wrapHtml(paras), text: text + "\n\nlicenceoff — Vos logiciels, notre engagement !", headers },
+        const r = await resendSend(email, { subject, html: wrapHtml(paras), text: text + "\n\nlicenceoff.com — Vos logiciels, notre engagement !", headers },
           "contact@licenceoff.com", "licenceoff.com <contact@licenceoff.com>");
         if (!r.ok) return json({ error: r.reason }, 502);
         const { data: cust } = await db.from("customers").select("id").eq("email", email).maybeSingle();
@@ -775,6 +777,34 @@ Deno.serve(async (req) => {
 
       case "order_deliver_now": { // livraison automatique désactivée : l'admin livre lui-même (clés du stock + liens)
         return json({ result: await deliver(body.id, true) });
+      }
+
+      case "client_lookup": { // envoi manuel : nom et téléphone d'un client déjà connu, à partir de son email
+        const email = str(body.email, 200).toLowerCase().trim();
+        if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/.test(email)) return json({ found: false });
+        const [{ data: c }, { data: o }] = await Promise.all([
+          db.from("customers").select("name, phone").eq("email", email).maybeSingle(),
+          db.from("orders").select("customer_name, phone, billing_company, billing_address").eq("email", email).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+        ]);
+        const name = c?.name || o?.customer_name || "", phone = c?.phone || o?.phone || "";
+        return json({ found: !!(name || phone), name, phone, company: o?.billing_company ?? "", address: o?.billing_address ?? "" });
+      }
+
+      case "order_invoice_send": { // envoyer la facture au client par email
+        const { data: o } = await db.from("orders").select("ref, public_token, invoice_no, customer_name, email, amount_fcfa, status").eq("id", str(body.id, 40)).maybeSingle();
+        if (!o) return json({ error: "not_found" }, 404);
+        if (!o.invoice_no) return json({ error: "pas_de_facture" }, 400);
+        const url = siteCtx().site + "/facture.html?o=" + encodeURIComponent(o.public_token);
+        const first = String(o.customer_name || "").trim().split(/\s+/)[0] || "";
+        const html = `<p style="margin:0 0 12px">Bonjour ${esc(first)},</p>
+<p style="margin:0 0 12px">Voici la facture <b>${esc(o.invoice_no)}</b> de votre commande ${esc(o.ref)} (${esc(fcfaTxt(o.amount_fcfa))}).</p>
+<p style="margin:0 0 16px">Vous pouvez l'afficher, l'imprimer ou l'enregistrer en PDF avec le bouton « Télécharger en PDF / Imprimer ».</p>
+<p style="margin:0 0 16px"><a href="${esc(url)}" style="display:inline-block;background:${EM.B};color:#ffffff;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:8px">Voir la facture</a></p>
+<p style="margin:0">Merci pour votre confiance.</p>`;
+        const text = "Bonjour " + first + ",\n\nVoici la facture " + o.invoice_no + " de votre commande " + o.ref + " (" + fcfaTxt(o.amount_fcfa) + ").\nVoir et télécharger la facture : " + url + "\n\nMerci pour votre confiance.\nlicenceoff.com — Dakar, Sénégal";
+        const r = await resendSend(o.email, { subject: "Votre facture " + o.invoice_no + " — commande " + o.ref + " — licenceoff.com", html: wrapHtml(html, o.ref), text, headers: { "X-Entity-Ref-ID": o.ref } });
+        if (!r.ok) return json({ error: r.reason }, 400);
+        return json({ ok: true, to: o.email });
       }
 
       case "order_cancel": { // n'importe quel état ; restock = remettre les clés envoyées dans le stock

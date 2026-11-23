@@ -209,7 +209,8 @@
           <div><label>Nom du client</label><input id="nName"></div>
           <div><label>Email</label><input id="nEmail" type="email"></div>
           <div><label>WhatsApp</label><input id="nPhone"></div>
-          <div><label>Montant total (vide = calculé)</label><input id="nAmount" type="number" min="0"></div>
+          <div><label>Montant des produits (vide = calculé)</label><input id="nAmount" type="number" min="0"></div>
+          <div><label>Frais de transaction payés par le client</label><input id="nFees" type="number" min="0" placeholder="0"></div>
           <div><label>Paiement</label><select id="nMethod"><option value="wave">Wave</option><option value="orange_money">Orange Money</option><option value="free_money">Free Money</option><option value="especes">Espèces</option><option value="autre">Autre</option></select></div>
           <div><label>N° de transaction</label><input id="nRef" placeholder="vide = numéro automatique"></div>
           <div><label>Le client vous a contacté par</label><select id="nChannel"><option value="wa_manuel">WhatsApp</option><option value="fb_manuel">Facebook / Messenger</option><option value="tel_manuel">Téléphone / en personne</option><option value="autre_manuel">Autre</option></select></div>
@@ -455,7 +456,8 @@
           <div><label>Email du client</label><input id="mEmail" type="email" placeholder="client@gmail.com"></div>
           <div><label>Nom du client</label><input id="mName" placeholder="facultatif"></div>
           <div><label>WhatsApp</label><input id="mPhone" placeholder="facultatif"></div>
-          <div><label>💰 Prix de vente au client (FCFA, total)</label><input id="mAmount" type="number" min="0" placeholder="prix du produit"><div class="small">Le prix auquel vous avez vendu : il compte dans vos ventes et la comptabilité. Vide = prix du site, 0 = offert.</div></div>
+          <div><label>💰 Prix de vente au client (FCFA, sans les frais)</label><input id="mAmount" type="number" min="0" placeholder="prix du produit"><div class="small">Le prix auquel vous avez vendu : il compte dans vos ventes et la comptabilité. Vide = prix du site, 0 = offert.</div></div>
+          <div><label>Frais de transaction payés par le client (FCFA)</label><input id="mFees" type="number" min="0" placeholder="0"><div class="small">Ajoutés au total, sur une ligne à part de la facture.</div></div>
           <div><label>Paiement</label><select id="mMethod"><option value="wave">Wave</option><option value="orange_money">Orange Money</option><option value="free_money">Free Money</option><option value="especes">Espèces</option><option value="autre">Autre</option></select></div>
           <div><label>N° de transaction</label><input id="mRef" placeholder="vide = numéro automatique"></div>
           <div><label>Le client vous a contacté par</label><select id="mChannel"><option value="wa_manuel">WhatsApp</option><option value="fb_manuel">Facebook / Messenger</option><option value="tel_manuel">Téléphone / en personne</option><option value="autre_manuel">Autre</option></select></div>
@@ -655,7 +657,7 @@ const ERR = {
   to_process: "Commande payée. Certains articles sont à traiter par vous (voir « À traiter »).",
   modele_incomplet: "Remplissez le nom, l'objet et le texte du modèle.", modele_par_defaut: "Choisissez d'abord un autre modèle par défaut.", email_invalide: "Adresse email invalide.",
   resend_non_configure: "Email pas encore configuré (clé Resend manquante dans Supabase).", envoi_echoue: "L'email n'a pas pu partir. Vérifiez le domaine dans Resend.",
-  commande_deja_payee: "Commande déjà payée, impossible de l'annuler.", deja_annulee: "Cette commande est déjà annulée.", cle_deja_envoyee: "Cette clé a déjà été envoyée.",
+  commande_deja_payee: "Commande déjà payée, impossible de l'annuler.", pas_de_facture: "Cette commande n'a pas de facture (pas encore payée, ou offerte).", deja_annulee: "Cette commande est déjà annulée.", cle_deja_envoyee: "Cette clé a déjà été envoyée.",
   not_delivered: "L'article n'est pas encore livré.", no_installer: "Ce produit n'a pas de fichier.", not_to_process: "Cet article n'est pas à traiter.",
   produit_sans_stock: "Ce produit n'utilise pas de stock (type logiciel ou service).", fichier_obligatoire: "Choisissez ou envoyez le fichier du logiciel.",
   code_deja_utilise: "Ce nom est déjà utilisé, choisissez-en un autre.", nom_obligatoire: "Le nom est obligatoire.", panier_vide: "Ajoutez au moins un produit.", parent_invalide: "Une sous-catégorie doit être rangée dans une catégorie principale (un seul niveau).", email_deja_utilise: "Cet email est déjà celui d'un autre parrain.", deja_traite: "Ce versement a déjà été traité.", pas_en_installation: "Cet article n'attend plus l'installation.", rien_a_envoyer: "Rien à envoyer pour cette commande.", nom_invalide: "Nom du client trop court.", produit_introuvable: "Produit introuvable.",
@@ -993,6 +995,26 @@ function clientMessage(o) {
     "", "Le lien de téléchargement ne fonctionne qu'une seule fois.", "", "licenceoff.com — merci de votre confiance");
   return lines.join("\n");
 }
+// email d'un client déjà connu → nom et téléphone remplis tout seuls (sans écraser ce qui est déjà tapé)
+function autoFillClient(emailId, nameId, phoneId) {
+  const go = async () => {
+    const email = $(emailId).value.trim();
+    if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(email)) return;
+    try {
+      const c = await api({ action: "client_lookup", email });
+      if (!c.found) return;
+      let n = 0;
+      if (c.name && !$(nameId).value.trim()) { $(nameId).value = c.name; n++; }
+      if (c.phone && !$(phoneId).value.trim()) { $(phoneId).value = c.phone; n++; }
+      if (n) toast("Client connu : " + (c.name || email) + " ✔");
+    } catch (_) {}
+  };
+  $(emailId).addEventListener("change", go);
+  $(emailId).addEventListener("blur", go);
+}
+autoFillClient("mEmail", "mName", "mPhone");
+autoFillClient("nEmail", "nName", "nPhone");
+
 async function renewLink(o, i, reload) {
   if (!confirm("Renouveler le lien de téléchargement de « " + i.product_name + " » pour " + o.customer_name + " ?\n\nLe client garde le même lien que dans son email : il marchera de nouveau une fois. Aucune nouvelle commande n'est créée.")) return;
   try { await api({ action: "item_new_link", id: i.id }); } catch (e) { toast(errMsg(e)); return; }
@@ -1066,6 +1088,9 @@ async function loadOrders() {
     }));
     acts.append(btn("Page client", "grey", () => copy(ORDER_PAGE + "?o=" + o.public_token, "Lien de la page client copié ✔")));
     if (o.invoice_no) acts.append(btn("🧾 Facture", "grey", () => window.open(SITE + "/facture?o=" + encodeURIComponent(o.public_token), "_blank", "noopener")));
+    if (o.invoice_no && o.status !== "cancelled") acts.append(btn("✉ Envoyer la facture", "grey", async () => {
+      if (confirm("Envoyer la facture " + o.invoice_no + " à " + o.email + " ?")) await run({ action: "order_invoice_send", id: o.id }, "Facture envoyée à " + o.email + " ✔", reload)();
+    }));
     if (o.status !== "cancelled") acts.append(btn("✖ Annuler la commande", "red", () => cancelOrder(o, items, reload)));
     tb.append(tr(
       td(el("strong", o.ref), el("br"), el("span", dt(o.created_at), "small"), el("br"), el("span", o.source === "admin" ? "vente manuelle" : "site", "small"), el("br"), el("span", "Origine : " + chLabel(o.channel) + (o.campaign ? " · " + o.campaign : ""), "small"), o.invoice_no ? el("br") : null, o.invoice_no ? el("span", "Facture " + o.invoice_no, "small") : null),
@@ -1096,9 +1121,9 @@ $("nSave").addEventListener("click", async () => {
   try {
     const items = [...$("nLines").children].map((r) => ({ product_id: r.querySelector("select").value, qty: Number(r.querySelector("input").value) }));
     const d = await api({ action: "order_create", items, name: $("nName").value, email: $("nEmail").value, phone: $("nPhone").value,
-      amount_fcfa: $("nAmount").value, payment_method: $("nMethod").value, payment_ref: $("nRef").value, channel: $("nChannel").value, deliver: $("nDeliver").value === "yes" });
+      amount_fcfa: $("nAmount").value, fees_fcfa: $("nFees").value, payment_method: $("nMethod").value, payment_ref: $("nRef").value, channel: $("nChannel").value, deliver: $("nDeliver").value === "yes" });
     toast(d.result && d.result.reason !== "delivered" ? (ERR[d.result.reason] || d.result.reason) : d.result ? "Vente enregistrée et livrée ✔" : "Vente enregistrée ✔");
-    for (const id of ["nName", "nEmail", "nPhone", "nAmount", "nRef"]) $(id).value = "";
+    for (const id of ["nName", "nEmail", "nPhone", "nAmount", "nFees", "nRef"]) $(id).value = "";
     $("nLines").replaceChildren(); $("oNew").classList.add("hidden"); $("oStatus").value = "";
     await loadOrders();
   } catch (e) { toast(errMsg(e)); }
@@ -1469,7 +1494,7 @@ $("mSend").addEventListener("click", async () => {
   const b = $("mSend"); b.disabled = true;
   try {
     const d = await api({ action: "manual_send", product_id: $("mProd").value, qty: Number($("mQty").value) || 1, email: $("mEmail").value, name: $("mName").value,
-      phone: $("mPhone").value, amount_fcfa: $("mAmount").value, payment_method: $("mMethod").value, payment_ref: $("mRef").value, channel: $("mChannel").value, mode: $("mMode").value, send_email: $("mMail").checked });
+      phone: $("mPhone").value, amount_fcfa: $("mAmount").value, fees_fcfa: $("mFees").value, payment_method: $("mMethod").value, payment_ref: $("mRef").value, channel: $("mChannel").value, mode: $("mMode").value, send_email: $("mMail").checked });
     const r = $("mResult"); r.classList.remove("hidden");
     const parts = [el("strong", "Commande " + d.order.ref + " enregistrée."), el("br")];
     if (d.result && d.result.reason === "out_of_stock") parts.push(el("span", "⚠️ Plus de clé en stock pour ce produit : ajoutez-en dans l'onglet Stock, la commande partira toute seule (email compris)."));
@@ -1487,7 +1512,7 @@ $("mSend").addEventListener("click", async () => {
       parts.push(d.email ? (d.email.sent ? "✔ " + (d.email.kind === "install" ? "Email d'installation" : "Email") + " envoyé à " + d.order.email : "⚠️ Email non envoyé : " + (ERR[d.email.reason] || d.email.reason)) : "Email non envoyé (case décochée).");
     }
     r.replaceChildren(...parts);
-    for (const id of ["mEmail", "mName", "mPhone", "mAmount", "mRef"]) $(id).value = ""; $("mQty").value = "1";
+    for (const id of ["mEmail", "mName", "mPhone", "mAmount", "mFees", "mRef"]) $(id).value = ""; $("mQty").value = "1";
     await loadRefs(); fillProdSelect("mProd", "mTplInfo");
   } catch (e) { toast(errMsg(e)); } finally { b.disabled = false; }
 });
