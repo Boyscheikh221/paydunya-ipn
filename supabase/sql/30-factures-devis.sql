@@ -89,3 +89,7 @@ on conflict (key) do nothing;
 
 select (select count(*) from public.orders where invoice_no is not null) as factures,
        (select max(invoice_no) from public.orders) as dernier_numero;
+
+-- accès pour les fonctions du site (clé service)
+grant select, insert, update, delete on public.quotes to service_role;
+grant select, insert, update on public.doc_counters to service_role;
