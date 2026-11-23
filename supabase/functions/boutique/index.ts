@@ -1151,7 +1151,7 @@ async function handle(req: Request): Promise<Response> {
         const { data: ks } = await db.from("license_keys").select("order_item_id, key_value").in("order_item_id", ids).order("sent_at");
         for (const k of ks ?? []) (keysByItem[k.order_item_id] ??= []).push(k.key_value);
         const { data: ls } = await db.from("downloads")
-          .select("order_item_id, token, status, download_count, max_downloads, expires_at, created_at")
+          .select("order_item_id, token, status, download_count, max_downloads, expires_at, created_at, last_download_at")
           .in("order_item_id", ids).eq("status", "active").order("created_at", { ascending: false });
         for (const l of ls ?? []) if (!linkByItem[l.order_item_id]) linkByItem[l.order_item_id] = l;
       }
@@ -1165,7 +1165,9 @@ async function handle(req: Request): Promise<Response> {
           let download = null;
           if (["delivered", "awaiting_install"].includes(i.status) && i.products?.installer_path && ["key_file", "file"].includes(i.delivery_type)) {
             let state = "none";
-            if (link) state = link.download_count >= link.max_downloads ? "used" : new Date(link.expires_at) < new Date() ? "expired" : "ready";
+            // délai de grâce de 30 min après le premier clic (voir consume_download)
+            const grace = link?.last_download_at && Date.now() - new Date(link.last_download_at).getTime() < 30 * 60_000;
+            if (link) state = new Date(link.expires_at) < new Date() ? "expired" : link.download_count >= link.max_downloads && !grace ? "used" : "ready";
             download = { state, token: state === "ready" ? link.token : null };
           }
           return {

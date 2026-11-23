@@ -70,7 +70,7 @@ async function handle(req: Request): Promise<Response> {
 
   const { data: row } = await db
     .from("downloads")
-    .select("status, expires_at, download_count, max_downloads, products(name, installer_path)")
+    .select("status, expires_at, download_count, max_downloads, last_download_at, products(name, installer_path)")
     .eq("token", token)
     .maybeSingle();
 
@@ -86,7 +86,8 @@ async function handle(req: Request): Promise<Response> {
     else if (row.status === "revoked") reason = "revoked";
     else if (row.status === "pending") reason = "pending";
     else if (new Date(row.expires_at) < new Date()) reason = "expired";
-    else if (row.download_count >= row.max_downloads) reason = "limit";
+    // délai de grâce : 30 min après le premier clic, le client peut recliquer (téléchargement bloqué ou interrompu)
+    else if (row.download_count >= row.max_downloads && !(row.last_download_at && Date.now() - new Date(row.last_download_at).getTime() < 30 * 60_000)) reason = "limit";
     return json({ ok: reason === "ok", reason, product: row ? productName : undefined });
   }
 
@@ -103,7 +104,7 @@ async function handle(req: Request): Promise<Response> {
   // Adresse du fichier valable 60 secondes seulement
   const { data: signed, error: e2 } = await db.storage
     .from(BUCKET)
-    .createSignedUrl(file, 60, { download: file.split("/").pop() });
+    .createSignedUrl(file, 600, { download: file.split("/").pop() });
 
   if (e2 || !signed?.signedUrl) {
     await db.rpc("refund_download", { p_token: token });
