@@ -164,7 +164,9 @@ function wrapHtml(inner: string, ref?: string) {
   <td style="vertical-align:middle;font-size:20px;font-weight:800;color:${B}">licence<span style="color:${O}">off</span></td></tr></table></td></tr>
 <tr><td style="padding:20px 0;font-size:15px;line-height:1.5">${inner}</td></tr>
 <tr><td style="border-top:1px solid #e3e8f0;padding:12px 0;color:#6b7690;font-size:12px">
-  ${why}Une question ? Répondez simplement à cet email.<br>licenceoff — Dakar, Sénégal · www.licenceoff.com</td></tr>
+  ${why}Une question ? Répondez simplement à cet email.<br>
+  Pour recevoir nos prochains emails sans problème, ajoutez commandes@licenceoff.com à vos contacts. Si cet email est arrivé dans « Promotions » ou « Spam », déplacez-le dans « Principal ».<br>
+  licenceoff — Dakar, Sénégal · www.licenceoff.com</td></tr>
 </table></td></tr></table></body></html>`;
 }
 function renderEmail(tpl: Tpl, c: Ctx) {
@@ -175,7 +177,7 @@ function renderEmail(tpl: Tpl, c: Ctx) {
   const subj = ref && ref !== "—" && !subject.includes(ref) ? (subject + " — commande " + ref).slice(0, 200) : subject;
   return {
     subject: subj, html: wrapHtml(html, ref && ref !== "—" ? ref : undefined),
-    text: text + (ref && ref !== "—" ? "\n\nCet email concerne votre commande " + ref + " sur licenceoff.com." : "") + "\nUne question ? Répondez simplement à cet email.\nlicenceoff — www.licenceoff.com",
+    text: text + (ref && ref !== "—" ? "\n\nCet email concerne votre commande " + ref + " sur licenceoff.com." : "") + "\nUne question ? Répondez simplement à cet email.\nPour recevoir nos prochains emails sans problème, ajoutez commandes@licenceoff.com à vos contacts. Si cet email est arrivé dans « Promotions » ou « Spam », déplacez-le dans « Principal ».\nlicenceoff — www.licenceoff.com",
     headers: ref && ref !== "—" ? { "X-Entity-Ref-ID": ref } : undefined,
   };
 }
@@ -333,11 +335,30 @@ async function sendOrderEmails(orderId: string, reason?: string) {
 }
 
 // Nombre d'unités disponibles par produit (seulement pour les produits à stock)
+// Unités de stock par produit : clés à usage unique + activations restantes des clés multi-postes.
+// Une clé réutilisable sans limite rend le produit « illimité » (unlimited).
+async function keyUnits(ids: string[]) {
+  const out: Record<string, { units: number; unlimited: boolean }> = {};
+  if (!ids.length) return out;
+  const { data } = await db.from("license_keys").select("id, product_id, reusable, max_uses")
+    .in("product_id", ids).eq("status", "available").is("source_key_id", null).limit(20000);
+  const multi = (data ?? []).filter((k) => k.reusable && k.max_uses);
+  const used: Record<string, number> = {};
+  if (multi.length) {
+    const { data: cp } = await db.from("license_keys").select("source_key_id").in("source_key_id", multi.map((k) => k.id)).limit(100000);
+    for (const c of cp ?? []) used[c.source_key_id] = (used[c.source_key_id] ?? 0) + 1;
+  }
+  for (const k of data ?? []) {
+    const o = out[k.product_id] ??= { units: 0, unlimited: false };
+    if (!k.reusable) o.units += 1;
+    else if (k.max_uses) o.units += Math.max(0, k.max_uses - (used[k.id] ?? 0));
+    else o.unlimited = true;
+  }
+  return out;
+}
 async function stockCounts(ids: string[]) {
   const out: Record<string, number> = {};
-  if (!ids.length) return out;
-  const { data } = await db.from("license_keys").select("product_id").in("product_id", ids).eq("status", "available").limit(10000);
-  for (const r of data ?? []) out[r.product_id] = (out[r.product_id] ?? 0) + 1;
+  for (const [id, u] of Object.entries(await keyUnits(ids))) out[id] = u.unlimited ? 9999 : u.units;
   return out;
 }
 // deno-lint-ignore no-explicit-any

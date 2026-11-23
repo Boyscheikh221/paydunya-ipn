@@ -170,7 +170,9 @@ function wrapHtml(inner: string, ref?: string) {
   <td style="vertical-align:middle;font-size:20px;font-weight:800;color:${B}">licence<span style="color:${O}">off</span></td></tr></table></td></tr>
 <tr><td style="padding:20px 0;font-size:15px;line-height:1.5">${inner}</td></tr>
 <tr><td style="border-top:1px solid #e3e8f0;padding:12px 0;color:#6b7690;font-size:12px">
-  ${why}Une question ? Répondez simplement à cet email.<br>licenceoff — Dakar, Sénégal · www.licenceoff.com</td></tr>
+  ${why}Une question ? Répondez simplement à cet email.<br>
+  Pour recevoir nos prochains emails sans problème, ajoutez commandes@licenceoff.com à vos contacts. Si cet email est arrivé dans « Promotions » ou « Spam », déplacez-le dans « Principal ».<br>
+  licenceoff — Dakar, Sénégal · www.licenceoff.com</td></tr>
 </table></td></tr></table></body></html>`;
 }
 function renderEmail(tpl: Tpl, c: Ctx) {
@@ -181,7 +183,7 @@ function renderEmail(tpl: Tpl, c: Ctx) {
   const subj = ref && ref !== "—" && !subject.includes(ref) ? (subject + " — commande " + ref).slice(0, 200) : subject;
   return {
     subject: subj, html: wrapHtml(html, ref && ref !== "—" ? ref : undefined),
-    text: text + (ref && ref !== "—" ? "\n\nCet email concerne votre commande " + ref + " sur licenceoff.com." : "") + "\nUne question ? Répondez simplement à cet email.\nlicenceoff — www.licenceoff.com",
+    text: text + (ref && ref !== "—" ? "\n\nCet email concerne votre commande " + ref + " sur licenceoff.com." : "") + "\nUne question ? Répondez simplement à cet email.\nPour recevoir nos prochains emails sans problème, ajoutez commandes@licenceoff.com à vos contacts. Si cet email est arrivé dans « Promotions » ou « Spam », déplacez-le dans « Principal ».\nlicenceoff — www.licenceoff.com",
     headers: ref && ref !== "—" ? { "X-Entity-Ref-ID": ref } : undefined,
   };
 }
@@ -390,6 +392,27 @@ async function deliver(orderId: string, force = false, emails = true) {
 }
 
 // Livre les commandes payées qui attendaient du stock pour ce produit (les plus anciennes d'abord)
+// Unités de stock par produit : clés à usage unique + activations restantes des clés multi-postes.
+// Une clé réutilisable sans limite rend le produit « illimité » (unlimited).
+async function keyUnits(ids: string[]) {
+  const out: Record<string, { units: number; unlimited: boolean }> = {};
+  if (!ids.length) return out;
+  const { data } = await db.from("license_keys").select("id, product_id, reusable, max_uses")
+    .in("product_id", ids).eq("status", "available").is("source_key_id", null).limit(20000);
+  const multi = (data ?? []).filter((k) => k.reusable && k.max_uses);
+  const used: Record<string, number> = {};
+  if (multi.length) {
+    const { data: cp } = await db.from("license_keys").select("source_key_id").in("source_key_id", multi.map((k) => k.id)).limit(100000);
+    for (const c of cp ?? []) used[c.source_key_id] = (used[c.source_key_id] ?? 0) + 1;
+  }
+  for (const k of data ?? []) {
+    const o = out[k.product_id] ??= { units: 0, unlimited: false };
+    if (!k.reusable) o.units += 1;
+    else if (k.max_uses) o.units += Math.max(0, k.max_uses - (used[k.id] ?? 0));
+    else o.unlimited = true;
+  }
+  return out;
+}
 async function deliverWaiting(productId: string) {
   const { data } = await db.from("order_items").select("order_id, orders!inner(paid_at, status)")
     .eq("product_id", productId).eq("status", "waiting_stock").limit(200);
@@ -434,14 +457,12 @@ async function buildNotifications(): Promise<Notif[]> {
   }
   // stock bas : clés (non réutilisables) et produits physiques
   const stockProds = (prods ?? []).filter((p) => p.active && STOCK_TYPES.includes(p.delivery_type));
-  const { data: keys } = stockProds.length
-    ? await db.from("license_keys").select("product_id, reusable").eq("status", "available").in("product_id", stockProds.map((p) => p.id)).limit(20000)
-    : { data: [] as { product_id: string; reusable: boolean }[] };
+  const units = await keyUnits(stockProds.map((p) => p.id));
   const low: string[] = [];
   for (const p of stockProds) {
-    const ks = (keys ?? []).filter((k) => k.product_id === p.id);
-    if (ks.some((k) => k.reusable)) continue;
-    if (ks.length <= (p.low_stock_threshold ?? 0)) low.push(p.name + " (" + ks.length + ")");
+    const u = units[p.id] ?? { units: 0, unlimited: false };
+    if (u.unlimited) continue;
+    if (u.units <= (p.low_stock_threshold ?? 0)) low.push(p.name + " (" + u.units + ")");
   }
   for (const p of (prods ?? []).filter((p) => p.active && p.delivery_type === "physical" && p.stock_qty != null)) {
     if (p.stock_qty <= (p.low_stock_threshold ?? 0)) low.push(p.name + " (" + p.stock_qty + " en stock)");
@@ -552,13 +573,14 @@ Deno.serve(async (req) => {
       case "dashboard": {
         const { data: prods } = await db.from("products").select("id, name, active, delivery_type, low_stock_threshold").order("name");
         const stockProds = (prods ?? []).filter((p) => STOCK_TYPES.includes(p.delivery_type));
-        const { data: keys } = await db.from("license_keys").select("product_id, status, reusable")
+        const { data: keys } = await db.from("license_keys").select("product_id, status")
           .in("product_id", stockProds.map((p) => p.id)).limit(20000);
+        const units = await keyUnits(stockProds.map((p) => p.id));
         const stock = stockProds.map((p) => ({
           id: p.id, name: p.name, active: p.active, threshold: p.low_stock_threshold,
-          available: (keys ?? []).filter((k) => k.product_id === p.id && k.status === "available").length,
+          available: units[p.id]?.units ?? 0, // clés à usage unique + activations restantes des clés multi-postes
           sent: (keys ?? []).filter((k) => k.product_id === p.id && k.status === "sent").length,
-          reusable: (keys ?? []).some((k) => k.product_id === p.id && k.status === "available" && k.reusable),
+          reusable: !!units[p.id]?.unlimited,
         }));
         const since = new Date(Date.now() - 31 * DAY).toISOString();
         const { data: recent } = await db.from("orders")
@@ -794,13 +816,22 @@ Deno.serve(async (req) => {
         if (body.status) q = q.eq("status", str(body.status, 20));
         const { data, error } = await q;
         if (error) return json({ error: error.message }, 500);
-        return json({ rows: data });
+        // clés réutilisables / multi-postes : nombre d'envois déjà faits
+        const src = (data ?? []).filter((k) => k.reusable && !k.source_key_id).map((k) => k.id);
+        const used: Record<string, number> = {};
+        if (src.length) {
+          const { data: cp } = await db.from("license_keys").select("source_key_id").in("source_key_id", src).limit(100000);
+          for (const c of cp ?? []) used[c.source_key_id] = (used[c.source_key_id] ?? 0) + 1;
+        }
+        return json({ rows: (data ?? []).map((k) => src.includes(k.id) ? { ...k, uses: used[k.id] ?? 0 } : k) });
       }
 
       case "keys_import": {
         const { data: p } = await db.from("products").select("id, delivery_type").eq("id", body.product_id).maybeSingle();
         if (!p) return json({ error: "produit_introuvable" }, 400);
         if (!STOCK_TYPES.includes(p.delivery_type)) return json({ error: "produit_sans_stock" }, 400);
+        // clé multi-postes : nombre d'activations (ex. 5 ou 10 appareils) ; vide = usage unique ou illimitée
+        const maxUses = Number(body.max_uses) >= 1 ? clamp(Math.floor(Number(body.max_uses)), 1, 100000) : null;
         const lines = String(body.text ?? "").split(/[\r\n]+/).map((l) => l.trim()).filter((l) => l.length >= 3 && l.length <= 500);
         const unique = [...new Set(lines)];
         if (!unique.length) return json({ error: "aucune_cle" }, 400);
@@ -810,7 +841,7 @@ Deno.serve(async (req) => {
         const known = new Set((have ?? []).map((k) => k.key_value));
         const fresh = unique.filter((k) => !known.has(k));
         const { data, error } = fresh.length
-          ? await db.from("license_keys").insert(fresh.map((k) => ({ product_id: p.id, key_value: k, reusable: body.reusable === true }))).select("id")
+          ? await db.from("license_keys").insert(fresh.map((k) => ({ product_id: p.id, key_value: k, reusable: body.reusable === true || maxUses != null, max_uses: maxUses }))).select("id")
           : { data: [], error: null };
         if (error) return json({ error: error.message }, 500);
         const added = data?.length ?? 0;
@@ -829,11 +860,12 @@ Deno.serve(async (req) => {
       }
 
       case "key_set_reusable": { // usage unique <-> réutilisable (clé encore en stock)
-        const { data, error } = await db.from("license_keys").update({ reusable: body.reusable === true })
-          .eq("id", body.id).neq("status", "sent").select("product_id");
+        const mu = Number(body.max_uses) >= 1 ? clamp(Math.floor(Number(body.max_uses)), 1, 100000) : null;
+        const { data, error } = await db.from("license_keys").update({ reusable: body.reusable === true || mu != null, max_uses: mu })
+          .eq("id", body.id).neq("status", "sent").is("source_key_id", null).select("product_id");
         if (error) return json({ error: error.message }, 500);
         if (!data?.length) return json({ error: "cle_deja_envoyee" }, 400);
-        const delivered = body.reusable === true ? await deliverWaiting(data[0].product_id) : 0;
+        const delivered = body.reusable === true || mu != null ? await deliverWaiting(data[0].product_id) : 0;
         return json({ ok: true, delivered });
       }
 

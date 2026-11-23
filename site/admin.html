@@ -274,7 +274,8 @@
         <div id="pKeysBox" class="box hidden" style="margin:12px 0 0;background:#fafbfc">
           <label>Ajouter des licences au stock (une par ligne) · <span id="pKeysInfo" class="small"></span></label>
           <textarea id="pKeys" rows="4" placeholder="XXXXX-XXXXX-XXXXX-XXXXX-XXXXX"></textarea>
-          <label class="check" style="margin:6px 0 0"><input type="checkbox" id="pKeysReuse"> Sérialiseur réutilisable (la même clé peut être envoyée à plusieurs clients). Décoché = chaque clé n'est envoyée qu'une fois.</label>
+          <div class="grid" style="margin-top:6px"><div><label>Type de clé</label><select id="pKeysKind"><option value="single">Usage unique : 1 clé = 1 client</option><option value="multi">Multi-postes : 1 clé pour plusieurs appareils (5, 10…)</option><option value="unlimited">Réutilisable sans limite (sérialiseur)</option></select></div>
+          <div id="pKeysUsesBox" class="hidden"><label>Nombre d'appareils / d'activations par clé</label><input id="pKeysUses" type="number" min="1" max="100000" placeholder="ex. 5"><div class="small">La clé part à ce nombre de clients, puis elle est épuisée.</div></div></div>
         </div>
         <div class="grid">
           <label class="check" id="pAutoLbl"><input type="checkbox" id="pAuto" checked> Livraison automatique après paiement</label>
@@ -320,9 +321,10 @@
         <div class="grid"><div><label>Produit</label><select id="kProd"></select></div></div>
         <label>Collez une clé (ou un identifiant) par ligne</label>
         <textarea id="kText" class="mono" placeholder="XXXXX-XXXXX-XXXXX-XXXXX-XXXXX&#10;YYYYY-YYYYY-YYYYY-YYYYY-YYYYY"></textarea>
-        <label class="check"><input type="checkbox" id="kReuse"> Réutilisable (sérialiseur envoyé à chaque commande, jamais épuisé)</label>
+        <div class="grid" style="margin-top:6px"><div><label>Type de clé</label><select id="kKind"><option value="single">Usage unique : 1 clé = 1 client</option><option value="multi">Multi-postes : 1 clé pour plusieurs appareils (5, 10…)</option><option value="unlimited">Réutilisable sans limite (sérialiseur)</option></select></div>
+          <div id="kUsesBox" class="hidden"><label>Nombre d'appareils / d'activations par clé</label><input id="kUses" type="number" min="1" max="100000" placeholder="ex. 5"><div class="small">La clé part à ce nombre de clients, puis elle est épuisée.</div></div></div>
         <div class="bar" style="margin-top:10px"><button id="kImport" class="green">Ajouter au stock</button><span id="kMsg" class="small"></span></div>
-        <p class="small">Les doublons sont ignorés. Une clé à usage unique envoyée ne repart jamais. Une clé réutilisable reste en stock et repart à chaque commande (les clés à usage unique du même produit passent d'abord). Les commandes payées qui attendaient du stock sont livrées automatiquement.</p>
+        <p class="small">Les doublons sont ignorés. Une clé à usage unique envoyée ne repart jamais. Une clé multi-postes repart jusqu'à son nombre d'appareils puis s'épuise. Une clé réutilisable sans limite repart à chaque commande. Ordre d'envoi : usage unique, puis multi-postes, puis sans limite. Les commandes payées qui attendaient du stock sont livrées automatiquement.</p>
       </div>
       <div class="box">
         <div class="bar">
@@ -1061,7 +1063,7 @@ function seoPrev() {
 for (const id of ["pSeoT", "pSeoD", "pName", "pDesc"]) $(id).addEventListener("input", seoPrev);
 function keysInfo(p) {
   const s = p ? stock.find((x) => x.id === p.id) : null;
-  $("pKeysInfo").textContent = s ? (s.available ?? 0) + " en stock" + (s.reusable ? " (dont un sérialiseur réutilisable)" : "") : "";
+  $("pKeysInfo").textContent = s ? (s.available ?? 0) + " envoi(s) possible(s) en stock" + (s.reusable ? " + un sérialiseur réutilisable sans limite" : "") : "";
 }
 $("pType").addEventListener("change", syncType);
 $("pImgFile").addEventListener("change", () => uploadImage($("pImgFile"), $("pImg"), $("pImgPrev"), $("pImgMsg")));
@@ -1102,7 +1104,7 @@ function editProduct(p) {
   const ext = /^https:\/\//i.test(p.installer_path || "");
   $("pPhysical").checked = p.delivery_type === "physical"; $("pQty").value = p.stock_qty ?? ""; $("pWeight").value = p.weight_g ?? ""; $("pSku").value = p.sku || "";
   $("pSeoT").value = p.seo_title || ""; $("pSeoD").value = p.seo_description || ""; seoPrev();
-  $("pType").value = p.delivery_type === "physical" ? "key" : p.delivery_type; $("pLink").value = ext ? p.installer_path : ""; $("pKeys").value = ""; $("pKeysReuse").checked = false; keysInfo(p);
+  $("pType").value = p.delivery_type === "physical" ? "key" : p.delivery_type; $("pLink").value = ext ? p.installer_path : ""; $("pKeys").value = ""; resetKind("pKeys"); keysInfo(p);
   syncType(); loadFiles(ext ? "" : p.installer_path || "").catch(() => {});
   $("pAuto").checked = p.auto_deliver !== false; $("pActive").value = p.active ? "1" : "0"; $("pFeatured").checked = p.featured;
   $("pLow").value = p.low_stock_threshold; $("pSort").value = p.sort || 0; $("pTpl").value = p.email_template_id || ""; $("pTwo").checked = !!p.two_step; $("pInstTpl").value = p.install_template_id || ""; twoVis();
@@ -1111,7 +1113,7 @@ function editProduct(p) {
 function resetProduct() {
   $("pFormTitle").textContent = "Nouveau produit";
   for (const id of ["pId", "pName", "pPrice", "pCompare", "pWholesale", "pDesc", "pImg", "pFile"]) $(id).value = "";
-  $("pCat").value = ""; $("pType").value = "key"; $("pPhysical").checked = false; $("pQty").value = ""; $("pWeight").value = ""; $("pSku").value = ""; $("pSeoT").value = ""; $("pSeoD").value = ""; seoPrev(); $("pLink").value = ""; $("pKeys").value = ""; $("pKeysReuse").checked = false; keysInfo(null); syncType(); $("pImgPrev").classList.add("hidden"); $("pImgMsg").textContent = "";
+  $("pCat").value = ""; $("pType").value = "key"; $("pPhysical").checked = false; $("pQty").value = ""; $("pWeight").value = ""; $("pSku").value = ""; $("pSeoT").value = ""; $("pSeoD").value = ""; seoPrev(); $("pLink").value = ""; $("pKeys").value = ""; resetKind("pKeys"); keysInfo(null); syncType(); $("pImgPrev").classList.add("hidden"); $("pImgMsg").textContent = "";
   $("pAuto").checked = true; $("pActive").value = "1"; $("pFeatured").checked = false; $("pLow").value = 5; $("pSort").value = 0; $("pTpl").value = ""; $("pTwo").checked = false; $("pInstTpl").value = ""; twoVis();
 }
 $("pReset").addEventListener("click", resetProduct);
@@ -1129,8 +1131,12 @@ async function saveProduct(publish) {
       featured: $("pFeatured").checked, low_stock_threshold: $("pLow").value, sort: $("pSort").value, email_template_id: $("pTpl").value, two_step: $("pTwo").checked, install_template_id: $("pInstTpl").value });
     let msg = "Produit enregistré ✔";
     if (!phys && STOCK_TYPES.includes($("pType").value) && $("pKeys").value.trim()) {
-      const k = await api({ action: "keys_import", product_id: saved.row.id, text: $("pKeys").value, reusable: $("pKeysReuse").checked });
-      msg += " · " + (k.added ?? 0) + " licence(s) ajoutée(s)" + (k.duplicates ? ", " + k.duplicates + " déjà en stock" : "");
+      const kp = kindPayload("pKeys");
+      if (kp.error) msg += " · licences NON ajoutées : " + kp.error;
+      else {
+        const k = await api({ action: "keys_import", product_id: saved.row.id, text: $("pKeys").value, ...kp });
+        msg += " · " + (k.added ?? 0) + " licence(s) ajoutée(s)" + (k.duplicates ? ", " + k.duplicates + " déjà en stock" : "");
+      }
     }
     if (publish) msg = "Produit enregistré et publié ✔ : visible sur le site" + msg.slice("Produit enregistré ✔".length);
     toast(msg); resetProduct(); await loadProducts();
@@ -1157,6 +1163,18 @@ $("cSave").addEventListener("click", async () => {
 });
 
 // ---------- stock ----------
+// type de clé : usage unique / multi-postes (N appareils) / réutilisable sans limite
+function kindPayload(p) {
+  const k = $(p + "Kind").value;
+  if (k === "multi") {
+    const n = Math.floor(Number($(p + "Uses").value));
+    if (!(n >= 1)) return { error: "Indiquez le nombre d'appareils de la clé multi-postes." };
+    return { reusable: true, max_uses: n };
+  }
+  return { reusable: k === "unlimited" };
+}
+function resetKind(p) { $(p + "Kind").value = "single"; $(p + "Uses").value = ""; $(p + "UsesBox").classList.add("hidden"); }
+for (const p of ["k", "pKeys"]) $(p + "Kind").addEventListener("change", () => $(p + "UsesBox").classList.toggle("hidden", $(p + "Kind").value !== "multi"));
 async function loadKeys() {
   await loadRefs();
   const names = Object.fromEntries(products.map((p) => [p.id, p.name]));
@@ -1164,12 +1182,22 @@ async function loadKeys() {
   const reload = () => loadKeys();
   $("kRows").replaceChildren(...rows.map((k) => {
     const acts = el("div", null, "acts");
-    if (k.status === "available" && !k.source_key_id) acts.append(btn(k.reusable ? "Passer en usage unique" : "Rendre réutilisable", "grey", run({ action: "key_set_reusable", id: k.id, reusable: !k.reusable }, k.reusable ? "Usage unique" : "Réutilisable", reload)));
+    if (k.status === "available" && !k.source_key_id) acts.append(btn("Type de clé…", "grey", async () => {
+      const cur = !k.reusable ? "1" : k.max_uses ? String(k.max_uses) : "0";
+      const v = prompt("Combien d'appareils cette clé peut-elle activer ?\n1 = usage unique · 5, 10… = multi-postes · 0 = sans limite", cur);
+      if (v === null) return;
+      const n = Math.floor(Number(v));
+      if (!(n >= 0)) return toast("Nombre invalide");
+      await run({ action: "key_set_reusable", id: k.id, reusable: n !== 1, max_uses: n > 1 ? n : null }, "Type de clé enregistré", reload)();
+    }));
     if (k.status === "available") acts.append(btn("Désactiver", "grey", run({ action: "key_set_status", id: k.id, status: "disabled" }, "Désactivée", reload)));
     if (k.status === "disabled") acts.append(btn("Réactiver", "green", run({ action: "key_set_status", id: k.id, status: "available" }, "Réactivée", reload)));
     if (k.status !== "sent") acts.append(btn("Supprimer", "red", async () => { if (confirm("Supprimer du stock ?")) await run({ action: "key_delete", id: k.id }, "Supprimée", reload)(); }));
     const who = k.order_items?.orders ? k.order_items.orders.ref + " · " + k.order_items.orders.customer_name : "—";
-    return tr(td(el("span", mask(k.key_value), "mono")), td(names[k.product_id] || ""), td(tag(k.status), k.reusable ? el("span", " ♻ réutilisable", "small") : null), td(dt(k.added_at)), td(who), td(acts));
+    return tr(td(el("span", mask(k.key_value), "mono")), td(names[k.product_id] || ""), td(k.reusable && k.max_uses && k.status === "sent" && !k.source_key_id ? el("span", "épuisée", "tag") : tag(k.status),
+      k.source_key_id ? el("span", " copie d'une clé multi-postes / réutilisable", "small")
+      : k.reusable && k.max_uses ? el("span", " 🖥 multi-postes : " + (k.uses ?? 0) + " / " + k.max_uses + " utilisé(s)", "small")
+      : k.reusable ? el("span", " ♻ réutilisable" + (k.uses ? " (" + k.uses + " envoi(s))" : ""), "small") : null), td(dt(k.added_at)), td(who), td(acts));
   }));
   if (!rows.length) $("kRows").append(tr(td("Aucun élément.")));
 }
@@ -1180,8 +1208,9 @@ $("kShow").addEventListener("click", () => { showKeys = !showKeys; $("kShow").te
 $("kImport").addEventListener("click", async () => {
   if (!$("kProd").value) { $("kMsg").textContent = "Créez d'abord un produit de type clé ou identifiants."; return; }
   try {
-    const d = await api({ action: "keys_import", product_id: $("kProd").value, text: $("kText").value, reusable: $("kReuse").checked });
-    $("kText").value = ""; $("kReuse").checked = false;
+    const kp = kindPayload("k"); if (kp.error) { $("kMsg").textContent = kp.error; return; }
+    const d = await api({ action: "keys_import", product_id: $("kProd").value, text: $("kText").value, ...kp });
+    $("kText").value = ""; resetKind("k");
     $("kMsg").textContent = d.added + " ajouté(s), " + d.duplicates + " doublon(s) ignoré(s)" + (d.delivered ? ", " + d.delivered + " commande(s) en attente livrée(s)" : "") + ".";
     await loadKeys();
   } catch (e) { $("kMsg").textContent = e.message === "aucune_cle" ? "Aucune clé trouvée dans le texte." : errMsg(e); }
