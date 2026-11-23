@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Produit — licenceoff</title>
-<link rel="stylesheet" href="/shop.css?v=14">
+<title>Produit — licenceoff.com</title>
+<link rel="stylesheet" href="/shop.css?v=15">
 <link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="64x64" href="/img/profil-64.png"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
 <meta property="og:image" content="https://www.licenceoff.com/img/partage.jpg">
 </head>
@@ -12,7 +12,7 @@
 <main class="wrap">
   <div id="view"><div class="product"><div class="skeleton"></div><div class="skeleton"></div></div></div>
 </main>
-<script src="/shop.js?v=14"></script>
+<script src="/shop.js?v=15"></script>
 <script>
 LO.page("shop");
 const { el, $, fcfa } = LO;
@@ -22,7 +22,7 @@ function show(p) {
   const par = p.category_parent;
   const catPath = p.category ? LO.url.category(p.category, par ? par.slug : null) : null;
   // titre et description Google : ceux de l'admin s'ils existent, sinon le nom et le début de la description
-  LO.seo({ title: p.seo_title || p.name + " — licenceoff", description: (p.seo_description || p.description || p.name).replace(/\s+/g, " ").slice(0, 160), path: LO.url.product(p.slug), image: p.image_url || null });
+  LO.seo({ title: p.seo_title || p.name + " — licenceoff.com", description: (p.seo_description || p.description || p.name).replace(/\s+/g, " ").slice(0, 160), path: LO.url.product(p.slug), image: p.image_url || null });
   const rt = p.rating;
   LO.jsonLd({ "@context": "https://schema.org", "@type": "Product", name: p.name, description: p.seo_description || p.description || p.name, image: p.image_url || undefined, sku: p.sku || undefined,
     aggregateRating: rt ? { "@type": "AggregateRating", ratingValue: rt.avg, reviewCount: rt.count, bestRating: 5, worstRating: 1 } : undefined,
@@ -30,7 +30,7 @@ function show(p) {
     url: LO.SITE + LO.url.product(p.slug), category: p.category_name || undefined,
     // prix et disponibilité réels ; les avis ne viennent que d'acheteurs vérifiés, validés dans l'admin
     offers: { "@type": "Offer", price: p.price_fcfa, priceCurrency: "XOF", availability: "https://schema.org/" + (p.in_stock ? "InStock" : "OutOfStock"),
-      itemCondition: "https://schema.org/NewCondition", url: LO.SITE + LO.url.product(p.slug), seller: { "@type": "Organization", name: "licenceoff", url: LO.SITE } } });
+      itemCondition: "https://schema.org/NewCondition", url: LO.SITE + LO.url.product(p.slug), seller: { "@type": "Organization", name: "licenceoff.com", url: LO.SITE } } });
   const off = p.compare_price_fcfa && p.compare_price_fcfa > p.price_fcfa ? Math.round(100 - p.price_fcfa * 100 / p.compare_price_fcfa) : 0;
   const qtyIn = el("input", { type: "number", min: "1", max: String(p.max_qty || 20), value: "1", "aria-label": "Quantité" });
   const clampQ = () => { qtyIn.value = Math.max(1, Math.min(p.max_qty || 20, Math.floor(Number(qtyIn.value) || 1))); };
@@ -88,7 +88,7 @@ function reviewsEl(p) {
     ...list.map((v) => el("div", { class: "review" },
       el("div", { class: "rating-line", style: "margin:0" }, starsEl(v.rating), el("b", { text: v.name }), el("span", { class: "note", text: new Date(v.date).toLocaleDateString("fr-FR") })),
       v.comment ? el("p", { style: "margin:6px 0 0", text: v.comment }) : null,
-      v.reply ? el("div", { class: "reply" }, el("b", { text: "Réponse de licenceoff : " }), v.reply) : null)));
+      v.reply ? el("div", { class: "reply" }, el("b", { text: "Réponse de licenceoff.com : " }), v.reply) : null)));
 }
 
 if (!slug) location.replace(LO.url.shop);

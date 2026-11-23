@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>Mon panier — licenceoff</title>
-<link rel="stylesheet" href="/shop.css?v=14">
+<title>Mon panier — licenceoff.com</title>
+<link rel="stylesheet" href="/shop.css?v=15">
 <link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="64x64" href="/img/profil-64.png"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
 <meta property="og:image" content="https://www.licenceoff.com/img/partage.jpg">
 </head>
@@ -14,7 +14,7 @@
   <h1 style="margin:24px 0 0">Mon panier</h1>
   <div id="view"></div>
 </main>
-<script src="/shop.js?v=14"></script>
+<script src="/shop.js?v=15"></script>
 <script>
 LO.page("shop");
 const { el, $, fcfa } = LO;
@@ -153,7 +153,7 @@ function render() {
       ...f("phone", "Numéro WhatsApp", "tel", "tel", "ex : 77 123 45 67"),
       el("input", { id: "website", class: "hp", tabindex: "-1", autocomplete: "off", "aria-hidden": "true" }),
       el("label", { class: "note", style: "display:flex;gap:8px;align-items:flex-start;margin-top:10px;cursor:pointer" },
-        el("input", { id: "mkt", type: "checkbox", style: "margin-top:3px" }), "Je souhaite recevoir les offres et nouveautés licenceoff par email (désinscription en un clic)."),
+        el("input", { id: "mkt", type: "checkbox", style: "margin-top:3px" }), "Je souhaite recevoir les offres et nouveautés licenceoff.com par email (désinscription en un clic)."),
       hasPhysical() ? shipBox(update) : null,
       codeBox(),
       listTotal > total ? el("div", { class: "note", style: "margin-top:12px;display:flex;justify-content:space-between" }, el("span", { text: "Remise parrain (" + quote.code + ")" }), el("span", { text: "− " + fcfa(listTotal - total) })) : null,

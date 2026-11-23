@@ -18,6 +18,7 @@ header.site { background: var(--blanc); border-bottom: 1px solid var(--ligne); p
 header.site .wrap { display: flex; align-items: center; gap: 16px; height: 64px; }
 .logo { font-size: 27px; font-weight: 900; letter-spacing: -1px; line-height: 1; white-space: nowrap; }
 .logo .a { color: var(--bleu); } .logo .b { color: var(--orange); }
+.logo .c { color: var(--bleu); font-size: .55em; font-weight: 800; letter-spacing: 0; margin-left: 1px; }
 nav.main { display: flex; gap: 4px; margin-left: 8px; }
 nav.main a { color: var(--nuit); font-weight: 600; font-size: 15px; padding: 8px 12px; border-radius: 8px; }
 nav.main a:hover, nav.main a.on { background: var(--ciel); color: var(--bleu); }
@@ -156,7 +157,7 @@ article.post .content h3 { font-size: 19px; margin: 22px 0 6px; }
 footer.site { background: var(--nuit); color: #d6e0f5; padding: 32px 0 20px; font-size: 14px; }
 footer.site .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; }
 footer.site a { color: #d6e0f5; display: block; padding: 2px 0; }
-footer.site .logo .a { color: #fff; }
+footer.site .logo .a, footer.site .logo .c { color: #fff; }
 footer.site .tag-line { color: var(--orange); font-weight: 800; font-style: italic; }
 footer.site .copy { border-top: 1px solid rgba(255,255,255,.12); margin-top: 22px; padding-top: 14px; font-size: 13px; opacity: .8; }
 .wa-float { position: fixed; right: 16px; bottom: 16px; width: 54px; height: 54px; border-radius: 50%; background: #25D366; display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 18px rgba(0,0,0,.2); z-index: 30; }

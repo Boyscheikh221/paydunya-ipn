@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
-<title>licenceoff — Administration</title>
+<title>licenceoff.com — Administration</title>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;700;800;900&display=swap">
 <style>
@@ -14,10 +14,10 @@
   body { margin:0; font-family:"Nunito",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; background:var(--fond); color:var(--nuit); font-size:14px; }
   .hidden { display:none !important; }
   .login { max-width:360px; margin:12vh auto; background:#fff; border-radius:14px; padding:24px; box-shadow:0 6px 24px rgba(16,42,67,.10); }
-  .logo { font-size:24px; font-weight:900; letter-spacing:-.5px; } .logo .a{color:var(--bleu)} .logo .b{color:var(--orange)}
+  .logo { font-size:24px; font-weight:900; letter-spacing:-.5px; } .logo .a{color:var(--bleu)} .logo .b{color:var(--orange)} .logo .c{color:var(--bleu);font-size:.55em;font-weight:800;letter-spacing:0}
   .layout { display:flex; min-height:100vh; }
   nav { width:220px; background:var(--nuit); color:#fff; padding:18px 12px; flex-shrink:0; position:sticky; top:0; height:100vh; overflow-y:auto; }
-  nav .logo { color:#fff; padding:0 8px 18px; display:block; text-decoration:none; } nav .logo .a{color:#fff}
+  nav .logo { color:#fff; padding:0 8px 18px; display:block; text-decoration:none; } nav .logo .a, nav .logo .c{color:#fff}
   nav button { display:flex; align-items:center; gap:8px; width:100%; background:transparent; color:#cbd5e1; text-align:left; padding:10px; border-radius:8px; font-size:14px; margin-bottom:2px; }
   nav button.on { background:rgba(255,255,255,.12); color:#fff; }
   nav .badge { margin-left:auto; background:var(--orange); color:#fff; border-radius:99px; padding:0 7px; font-size:12px; }
@@ -123,7 +123,7 @@
 <body>
 
 <div id="login" class="login">
-  <div class="logo"><span class="a">licence</span><span class="b">off</span></div>
+  <div class="logo"><span class="a">licence</span><span class="b">off</span><span class="c">.com</span></div>
   <p class="small">Administration de la boutique</p>
   <label for="pw">Mot de passe admin</label>
   <input id="pw" type="password" autocomplete="current-password" class="full">
@@ -133,7 +133,7 @@
 
 <div id="app" class="layout hidden">
   <nav>
-    <a class="logo" href="/" target="_blank" rel="noopener"><span class="a">licence</span><span class="b">off</span></a>
+    <a class="logo" href="/" target="_blank" rel="noopener"><span class="a">licence</span><span class="b">off</span><span class="c">.com</span></a>
     <button data-tab="dash" class="on">📊 Tableau de bord <span id="badgeTodo" class="badge hidden" title="Actions à faire"></span></button>
     <button data-tab="orders">🧾 Commandes <span id="badgePending" class="badge hidden"></span></button>
     <button data-tab="products">📦 Produits</button>
@@ -261,7 +261,7 @@
           </div>
         </div>
         <div id="pFileBox" class="box hidden" style="margin:12px 0 0;background:#fafbfc">
-          <label>Fichier du logiciel : envoyez-le ici, ou collez un lien de téléchargement. Le client reçoit toujours un lien licenceoff à usage unique.</label>
+          <label>Fichier du logiciel : envoyez-le ici, ou collez un lien de téléchargement. Le client reçoit toujours un lien licenceoff.com à usage unique.</label>
           <div class="bar">
             <select id="pFile" class="grow"></select>
             <span class="small">ou</span>
@@ -362,7 +362,7 @@
       <div class="box">
         <h2 id="gTitleH">Nouvelle page</h2>
         <input type="hidden" id="gId">
-        <div class="grid"><div><label>Titre</label><input id="gTitle" placeholder="ex : À propos de licenceoff"></div>
+        <div class="grid"><div><label>Titre</label><input id="gTitle" placeholder="ex : À propos de licenceoff.com"></div>
           <div><label>Adresse (vide = d'après le titre)</label><input id="gSlug" placeholder="ex : a-propos"></div>
           <div><label>Ordre dans le menu</label><input id="gSort" type="number" min="0" value="0"></div></div>
         <label>Image (facultatif)</label>
@@ -392,7 +392,7 @@
         <div class="grid">
           <div><label>Sorte d'email</label><select id="tKind"><option value="key">Email de la clé / de livraison</option><option value="install">Email d'installation (étape 1, 2 temps)</option></select></div>
           <div><label>Nom du modèle (pour vous)</label><input id="tName" placeholder="ex : Windows 11"></div>
-          <div><label>Objet de l'email</label><input id="tSubject" placeholder="Votre commande {commande} est prête — licenceoff"></div>
+          <div><label>Objet de l'email</label><input id="tSubject" placeholder="Votre commande {commande} est prête — licenceoff.com"></div>
         </div>
         <label>Texte de l'email</label>
         <textarea id="tBody" style="min-height:260px" placeholder="Bonjour {prenom}, ..."></textarea>
@@ -596,7 +596,7 @@
         <h2 style="margin:0 0 4px">Factures et devis</h2>
         <div class="small">Chaque commande payée reçoit automatiquement une facture numérotée (FA-2026-00001…), envoyée dans l'email du client et disponible sur sa page de commande. Ces informations sont imprimées en haut des factures et devis. Laissez vide ce que vous n'avez pas encore.</div>
         <div class="grid">
-          <div><label>Nom de l'entreprise (nom légal)</label><input id="sInvName" placeholder="licenceoff"></div>
+          <div><label>Nom de l'entreprise (nom légal)</label><input id="sInvName" placeholder="licenceoff.com"></div>
           <div><label>Adresse</label><input id="sInvAddr" placeholder="ex. Dakar, Sénégal"></div>
           <div><label>Téléphone</label><input id="sInvPhone" placeholder="ex. +221 77 786 07 77"></div>
           <div><label>Email</label><input id="sInvEmail" type="email" placeholder="contact@licenceoff.com"></div>
@@ -832,7 +832,7 @@ $("autoWarnLink").addEventListener("click", (e) => { e.preventDefault(); openTab
 function renderTodo(list) {
   const urgent = list.filter((x) => x.level === "urgent").length;
   const b = $("badgeTodo"); b.textContent = urgent; b.classList.toggle("hidden", !urgent);
-  document.title = (urgent ? "(" + urgent + ") " : "") + "licenceoff — Administration";
+  document.title = (urgent ? "(" + urgent + ") " : "") + "licenceoff.com — Administration";
   const msg = list.find((x) => x.kind === "messages");
   $("badgeMsg").textContent = msg ? msg.count : ""; $("badgeMsg").classList.toggle("hidden", !msg);
   document.querySelector('nav [data-tab="messages"]').classList.toggle("has-msg", !!msg);
@@ -990,7 +990,7 @@ function clientMessage(o) {
     for (const k of i.license_keys || []) lines.push("   " + k.key_value);
   }
   lines.push("", "Votre page de commande (clés + téléchargements) :", ORDER_PAGE + "?o=" + o.public_token,
-    "", "Le lien de téléchargement ne fonctionne qu'une seule fois.", "", "licenceoff — merci de votre confiance");
+    "", "Le lien de téléchargement ne fonctionne qu'une seule fois.", "", "licenceoff.com — merci de votre confiance");
   return lines.join("\n");
 }
 async function loadOrders() {
@@ -1096,7 +1096,7 @@ function syncType() {
 $("pPhysical").addEventListener("change", syncType);
 // aperçu Google : titre ~60 caractères, description ~155
 function seoPrev() {
-  const t = $("pSeoT").value.trim() || ($("pName").value.trim() ? $("pName").value.trim() + " — licenceoff" : "Titre du produit");
+  const t = $("pSeoT").value.trim() || ($("pName").value.trim() ? $("pName").value.trim() + " — licenceoff.com" : "Titre du produit");
   const d = ($("pSeoD").value.trim() || $("pDesc").value.trim() || "Description du produit").replace(/\s+/g, " ");
   $("pSeoPT").textContent = t.length > 60 ? t.slice(0, 59) + "…" : t;
   $("pSeoPD").textContent = d.length > 158 ? d.slice(0, 157) + "…" : d;

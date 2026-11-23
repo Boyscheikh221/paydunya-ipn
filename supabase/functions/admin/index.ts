@@ -87,13 +87,13 @@ const EM = { B: "#1E4FB8", N: "#0F2A6B", O: "#F5A21B", C: "#FBF7EE" };
 type Tpl = { id: string | null; subject: string; body: string };
 const BUILTIN_TPL: Tpl = {
   id: null,
-  subject: "Votre commande {commande} est prête — licenceoff",
+  subject: "Votre commande {commande} est prête — licenceoff.com",
   body: "Bonjour {prenom},\n\nMerci pour votre commande **{commande}** ({total}). Elle est prête !\n\n{produits}\n\n{cles}\n\n{bouton}\n\nGardez cet email : votre page de commande regroupe vos clés et vos téléchargements.\n\nBesoin d'aide pour installer ou activer ? [Écrivez-nous sur WhatsApp]({whatsapp}).",
 };
 
 const BUILTIN_INSTALL_TPL: Tpl = {
   id: null,
-  subject: "Commande {commande} : installez votre logiciel — licenceoff",
+  subject: "Commande {commande} : installez votre logiciel — licenceoff.com",
   body: "Bonjour {prenom},\n\nMerci pour votre commande **{commande}** ({total}). Votre paiement est bien reçu.\n\n**Étape 1 : téléchargez et installez le logiciel.** Le lien ne fonctionne qu'une seule fois.\n\n{bouton}\n\n**Étape 2 : recevez votre clé de licence.** Une fois l'installation terminée, cliquez sur ce bouton. Il ne fonctionne qu'une fois.\n\n{bouton_installation}\n\nUn souci ? [Écrivez-nous sur WhatsApp]({whatsapp}).",
 };
 
@@ -172,12 +172,12 @@ function wrapHtml(inner: string, ref?: string, invoiceUrl?: string) {
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px">
 <tr><td style="padding:0 0 12px;border-bottom:2px solid ${O}"><table role="presentation" cellpadding="0" cellspacing="0"><tr>
   <td style="padding-right:10px;vertical-align:middle"><img src="https://www.licenceoff.com/img/profil-64.png" width="40" height="40" alt="" style="display:block;border:0;width:40px;height:40px"></td>
-  <td style="vertical-align:middle;font-size:20px;font-weight:800;color:${B}">licence<span style="color:${O}">off</span></td></tr></table></td></tr>
+  <td style="vertical-align:middle;font-size:20px;font-weight:800;color:${B}">licence<span style="color:${O}">off</span><span style="font-size:14px;font-weight:700">.com</span></td></tr></table></td></tr>
 <tr><td style="padding:20px 0;font-size:15px;line-height:1.5">${inner}</td></tr>
 <tr><td style="border-top:1px solid #e3e8f0;padding:12px 0;color:#6b7690;font-size:12px">
   ${why}${invoiceUrl ? `Votre facture : <a href="${esc(invoiceUrl)}" style="color:${B}">voir et télécharger la facture</a><br>` : ""}Une question ? Répondez simplement à cet email.<br>
   Pour recevoir nos prochains emails sans problème, ajoutez commandes@licenceoff.com à vos contacts. Si cet email est arrivé dans « Promotions » ou « Spam », déplacez-le dans « Principal ».<br>
-  licenceoff — Dakar, Sénégal · www.licenceoff.com</td></tr>
+  licenceoff.com — Dakar, Sénégal</td></tr>
 </table></td></tr></table></body></html>`;
 }
 function renderEmail(tpl: Tpl, c: Ctx) {
@@ -207,7 +207,7 @@ async function resendSend(to: string, mail: { subject: string; html: string; tex
     method: "POST",
     headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" },
     body: JSON.stringify({
-      from: from ?? (Deno.env.get("RESEND_FROM") ?? "licenceoff <commandes@licenceoff.com>").trim(),
+      from: (from ?? (Deno.env.get("RESEND_FROM") ?? "licenceoff.com <commandes@licenceoff.com>")).trim().replace(/^"?licenceoff"?\s*</i, "licenceoff.com <"),
       // les réponses des clients arrivent dans l'admin (onglet Messages) via contact@licenceoff.com
       to: [to], reply_to: replyTo ?? ((Deno.env.get("RESEND_REPLY_TO") ?? "").trim() || "contact@licenceoff.com"),
       subject: mail.subject, html: mail.html, text: mail.text, headers: mail.headers,
@@ -521,17 +521,17 @@ async function buildReport() {
   const d = (iso: number) => new Date(iso).toLocaleDateString("fr-FR", { day: "numeric", month: "long" });
   const period = "du " + d(now - 7 * DAY) + " au " + d(now - DAY);
   const kpi = (l: string, v: string) => `<td style="padding:10px;background:#eff5ff;border-radius:10px;text-align:center"><div style="font-size:12px;color:#5b6b86">${esc(l)}</div><div style="font-size:20px;font-weight:900">${esc(v)}</div></td>`;
-  const html = `<h2 style="margin:0 0 4px">Votre semaine sur licenceoff</h2><p style="margin:0 0 16px;color:#5b6b86">${esc(period)}</p>
+  const html = `<h2 style="margin:0 0 4px">Votre semaine sur licenceoff.com</h2><p style="margin:0 0 16px;color:#5b6b86">${esc(period)}</p>
 <table role="presentation" width="100%" cellspacing="6" cellpadding="0"><tr>${kpi("Ventes", fcfaTxt(ca))}${kpi("Commandes payées", String(week.length))}</tr><tr>${kpi("Visiteurs", String(visitors))}${kpi("Nouveaux comptes clients", String(newCust ?? 0))}</tr></table>
 <p style="margin:12px 0">${evo === null ? "" : (evo >= 0 ? "📈 +" : "📉 ") + evo + " % par rapport à la semaine d'avant (" + esc(fcfaTxt(caPrev)) + "). "}${unpaid ? unpaid + " commande(s) créée(s) mais pas payée(s)." : ""}</p>
 <h3 style="margin:18px 0 6px">Produits les plus vendus</h3>${top.length ? "<ol style=\"margin:0;padding-left:20px\">" + top.map(([p, v]) => `<li><b>${esc(p)}</b> : ${v.q} vendu(s), ${esc(fcfaTxt(v.ca))}</li>`).join("") + "</ol>" : "<p style=\"margin:0\">Pas de vente cette semaine.</p>"}
 <h3 style="margin:18px 0 6px">À faire</h3>${notifs.length ? "<ul style=\"margin:0;padding-left:20px\">" + notifs.map((x) => `<li style="margin-bottom:4px">${x.level === "urgent" ? "🔴 " : "🔵 "}${esc(x.text)}</li>`).join("") + "</ul>" : "<p style=\"margin:0\">Rien à faire, tout est en ordre ✔</p>"}
 ${errs ? `<p style="margin:14px 0 0">⚠️ ${errs} erreur(s) cette semaine : voir l'onglet Journal de l'admin.</p>` : ""}
 <p style="text-align:center;margin:22px 0 0"><a href="${esc(siteCtx().site)}/admin" style="display:inline-block;background:${EM.O};color:#fff;font-weight:800;text-decoration:none;padding:12px 20px;border-radius:10px">Ouvrir l'admin</a></p>`;
-  const text = "Votre semaine sur licenceoff (" + period + ")\nVentes : " + fcfaTxt(ca) + " (" + week.length + " commandes payées)\nVisiteurs : " + visitors +
+  const text = "Votre semaine sur licenceoff.com (" + period + ")\nVentes : " + fcfaTxt(ca) + " (" + week.length + " commandes payées)\nVisiteurs : " + visitors +
     "\nNouveaux comptes : " + (newCust ?? 0) + "\n\nProduits les plus vendus :\n" + (top.map(([p, v]) => "- " + p + " : " + v.q + " vendu(s)").join("\n") || "- aucun") +
     "\n\nÀ faire :\n" + (notifs.map((x) => "- " + x.text).join("\n") || "- rien") + "\n\nAdmin : " + siteCtx().site + "/admin";
-  return { subject: "Rapport de la semaine : " + fcfaTxt(ca) + " de ventes — licenceoff", html: wrapHtml(html), text };
+  return { subject: "Rapport de la semaine : " + fcfaTxt(ca) + " de ventes — licenceoff.com", html: wrapHtml(html), text };
 }
 async function sendReport(trigger: string) {
   const { data: st } = await db.from("settings").select("value").eq("key", "admin_email").maybeSingle();
@@ -669,13 +669,13 @@ Deno.serve(async (req) => {
         if (!text) return json({ error: "message_vide" }, 400);
         const { data: lastIn } = await db.from("inbox_messages").select("subject, message_id, order_ref, customer_name").eq("customer_email", email).eq("direction", "in")
           .order("created_at", { ascending: false }).limit(1).maybeSingle();
-        let subject = str(body.subject, 200) || (lastIn?.subject ? (/^re\s*:/i.test(lastIn.subject) ? lastIn.subject : "Re: " + lastIn.subject) : "Message de licenceoff");
+        let subject = str(body.subject, 200) || (lastIn?.subject ? (/^re\s*:/i.test(lastIn.subject) ? lastIn.subject : "Re: " + lastIn.subject) : "Message de licenceoff.com");
         subject = subject.slice(0, 250);
         const headers: Record<string, string> = {};
         if (lastIn?.message_id) { headers["In-Reply-To"] = lastIn.message_id; headers["References"] = lastIn.message_id; }
         const paras = text.split(/\n{2,}/).map((p) => `<p style="margin:0 0 12px;line-height:1.6">${esc(p).replace(/\n/g, "<br>")}</p>`).join("");
         const r = await resendSend(email, { subject, html: wrapHtml(paras), text: text + "\n\nlicenceoff — Vos logiciels, notre engagement !", headers },
-          "contact@licenceoff.com", "licenceoff <contact@licenceoff.com>");
+          "contact@licenceoff.com", "licenceoff.com <contact@licenceoff.com>");
         if (!r.ok) return json({ error: r.reason }, 502);
         const { data: cust } = await db.from("customers").select("id").eq("email", email).maybeSingle();
         await db.from("inbox_messages").insert({ direction: "out", status: "read", customer_email: email, customer_name: lastIn?.customer_name ?? null, customer_id: cust?.id ?? null,
@@ -1248,7 +1248,7 @@ Deno.serve(async (req) => {
 ${q.valid_until ? `<p style="margin:0 0 12px">Ce devis est valable jusqu'au ${esc(new Date(q.valid_until).toLocaleDateString("fr-FR"))}.</p>` : ""}
 <p style="margin:0 0 12px">Pour l'accepter ou poser une question, répondez simplement à cet email.</p>`;
         const text = "Bonjour " + first + ",\n\nVotre devis " + q.quote_no + " (" + fcfaTxt(q.total_fcfa) + ") : " + url + "\n\nPour l'accepter ou poser une question, répondez à cet email.";
-        const r = await resendSend(q.email, { subject: "Votre devis " + q.quote_no + " — licenceoff", html: wrapHtml(html), text });
+        const r = await resendSend(q.email, { subject: "Votre devis " + q.quote_no + " — licenceoff.com", html: wrapHtml(html), text });
         if (!r.ok) return json({ error: r.reason }, 400);
         if (q.status === "draft") await db.from("quotes").update({ status: "sent", updated_at: new Date().toISOString() }).eq("id", q.id);
         return json({ ok: true });

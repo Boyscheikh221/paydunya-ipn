@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>Facture — licenceoff</title>
+<title>Facture — licenceoff.com</title>
 <link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="64x64" href="/img/profil-64.png"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
 <style>
   :root { --bleu:#1E4FB8; --nuit:#0F2A6B; --orange:#F5A21B; --gris:#6b7690; --ligne:#e3e8f0; }
@@ -64,7 +64,7 @@ const PAY = { wave: "Wave", orange_money: "Orange Money", free_money: "Free Mone
 function render(d) {
   const quote = d.kind === "quote";
   const label = quote ? "Devis" : "Facture";
-  document.title = label + " " + d.no + " — " + (d.seller.legal_name || "licenceoff");
+  document.title = label + " " + d.no + " — " + (d.seller.legal_name || "licenceoff.com");
   const s = d.seller, c = d.customer || {};
   const sellerLines = [s.address, s.phone ? "Tél. " + s.phone : (s.whatsapp ? "WhatsApp +" + s.whatsapp : ""), s.email || "contact@licenceoff.com", "www.licenceoff.com",
     s.ninea ? "NINEA : " + s.ninea : "", s.rc ? "RC : " + s.rc : ""].filter(Boolean);
@@ -76,7 +76,7 @@ function render(d) {
   ${d.cancelled ? '<div class="stamp">ANNULÉE</div>' : ""}
   <div class="head">
     <div>
-      <div class="brand"><img src="/img/profil-192.png" alt=""><div class="n">licence<span>off</span></div></div>
+      <div class="brand"><img src="/img/profil-192.png" alt=""><div class="n">licence<span>off</span><small>.com</small></div></div>
       <div class="seller"><b style="color:var(--nuit)">${esc(s.legal_name)}</b><br>${sellerLines.map(esc).join("<br>")}</div>
     </div>
     <div class="title">

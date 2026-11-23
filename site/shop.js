@@ -129,7 +129,7 @@ const LO = (() => {
     q.addEventListener("keydown", (e) => { if (e.key === "Enter") location.href = url.search(q.value.trim()); });
     const h = el("header", { class: "site" }, el("div", { class: "wrap" },
       burger,
-      el("a", { href: url.home, class: "logo" }, el("span", { class: "a", text: "licence" }), el("span", { class: "b", text: "off" })),
+      el("a", { href: url.home, class: "logo" }, el("span", { class: "a", text: "licence" }), el("span", { class: "b", text: "off" }), el("span", { class: "c", text: ".com" })),
       nav,
       el("div", { class: "search" }, icon(ICONS.search), q),
       el("a", { href: "/compte", class: "acct-btn", "aria-label": "Mon compte", title: acct() ? "Mon compte" : "Se connecter" }, icon(ICONS.user, 22)),
@@ -144,7 +144,7 @@ const LO = (() => {
         el("span", { text: "Au Sénégal 🇸🇳" }), el("span", { text: "Des licences authentiques" }), el("span", { text: "Votre satisfaction, notre priorité" }))),
       el("footer", { class: "site" }, el("div", { class: "wrap" },
         el("div", { class: "cols" },
-          el("div", {}, el("div", { class: "logo" }, el("span", { class: "a", text: "licence" }), el("span", { class: "b", text: "off" })),
+          el("div", {}, el("div", { class: "logo" }, el("span", { class: "a", text: "licence" }), el("span", { class: "b", text: "off" }), el("span", { class: "c", text: ".com" })),
             el("p", { text: "Licences & solutions numériques. Licences et logiciels authentiques, livrés en quelques minutes. Basé à Dakar." }),
             el("p", { class: "tag-line", text: "Vos logiciels, notre engagement !" })),
           el("div", {}, el("b", { text: "Boutique" }), el("a", { href: url.shop, text: "Tous les produits" }), el("a", { href: url.cart, text: "Mon panier" }), el("a", { href: url.blog, text: "Blog" }), el("a", { href: url.faq, text: "Questions fréquentes" }), el("a", { href: url.privacy, text: "Confidentialité et cookies" }),

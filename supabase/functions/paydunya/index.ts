@@ -82,13 +82,13 @@ const EM = { B: "#1E4FB8", N: "#0F2A6B", O: "#F5A21B", C: "#FBF7EE" };
 type Tpl = { id: string | null; subject: string; body: string };
 const BUILTIN_TPL: Tpl = {
   id: null,
-  subject: "Votre commande {commande} est prête — licenceoff",
+  subject: "Votre commande {commande} est prête — licenceoff.com",
   body: "Bonjour {prenom},\n\nMerci pour votre commande **{commande}** ({total}). Elle est prête !\n\n{produits}\n\n{cles}\n\n{bouton}\n\nGardez cet email : votre page de commande regroupe vos clés et vos téléchargements.\n\nBesoin d'aide pour installer ou activer ? [Écrivez-nous sur WhatsApp]({whatsapp}).",
 };
 
 const BUILTIN_INSTALL_TPL: Tpl = {
   id: null,
-  subject: "Commande {commande} : installez votre logiciel — licenceoff",
+  subject: "Commande {commande} : installez votre logiciel — licenceoff.com",
   body: "Bonjour {prenom},\n\nMerci pour votre commande **{commande}** ({total}). Votre paiement est bien reçu.\n\n**Étape 1 : téléchargez et installez le logiciel.** Le lien ne fonctionne qu'une seule fois.\n\n{bouton}\n\n**Étape 2 : recevez votre clé de licence.** Une fois l'installation terminée, cliquez sur ce bouton. Il ne fonctionne qu'une fois.\n\n{bouton_installation}\n\nUn souci ? [Écrivez-nous sur WhatsApp]({whatsapp}).",
 };
 
@@ -166,12 +166,12 @@ function wrapHtml(inner: string, ref?: string, invoiceUrl?: string) {
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px">
 <tr><td style="padding:0 0 12px;border-bottom:2px solid ${O}"><table role="presentation" cellpadding="0" cellspacing="0"><tr>
   <td style="padding-right:10px;vertical-align:middle"><img src="https://www.licenceoff.com/img/profil-64.png" width="40" height="40" alt="" style="display:block;border:0;width:40px;height:40px"></td>
-  <td style="vertical-align:middle;font-size:20px;font-weight:800;color:${B}">licence<span style="color:${O}">off</span></td></tr></table></td></tr>
+  <td style="vertical-align:middle;font-size:20px;font-weight:800;color:${B}">licence<span style="color:${O}">off</span><span style="font-size:14px;font-weight:700">.com</span></td></tr></table></td></tr>
 <tr><td style="padding:20px 0;font-size:15px;line-height:1.5">${inner}</td></tr>
 <tr><td style="border-top:1px solid #e3e8f0;padding:12px 0;color:#6b7690;font-size:12px">
   ${why}${invoiceUrl ? `Votre facture : <a href="${esc(invoiceUrl)}" style="color:${B}">voir et télécharger la facture</a><br>` : ""}Une question ? Répondez simplement à cet email.<br>
   Pour recevoir nos prochains emails sans problème, ajoutez commandes@licenceoff.com à vos contacts. Si cet email est arrivé dans « Promotions » ou « Spam », déplacez-le dans « Principal ».<br>
-  licenceoff — Dakar, Sénégal · www.licenceoff.com</td></tr>
+  licenceoff.com — Dakar, Sénégal</td></tr>
 </table></td></tr></table></body></html>`;
 }
 function renderEmail(tpl: Tpl, c: Ctx) {
@@ -201,7 +201,7 @@ async function resendSend(to: string, mail: { subject: string; html: string; tex
     method: "POST",
     headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" },
     body: JSON.stringify({
-      from: from ?? (Deno.env.get("RESEND_FROM") ?? "licenceoff <commandes@licenceoff.com>").trim(),
+      from: (from ?? (Deno.env.get("RESEND_FROM") ?? "licenceoff.com <commandes@licenceoff.com>")).trim().replace(/^"?licenceoff"?\s*</i, "licenceoff.com <"),
       // les réponses des clients arrivent dans l'admin (onglet Messages) via contact@licenceoff.com
       to: [to], reply_to: replyTo ?? ((Deno.env.get("RESEND_REPLY_TO") ?? "").trim() || "contact@licenceoff.com"),
       subject: mail.subject, html: mail.html, text: mail.text, headers: mail.headers,
@@ -439,7 +439,7 @@ async function handle(req: Request): Promise<Response> {
         headers: { ...k, "Content-Type": "application/json" },
         body: JSON.stringify({
           invoice: { total_amount: o.amount_fcfa, description: prodName + " — commande " + o.ref },
-          store: { name: "licenceoff", website_url: SITE },
+          store: { name: "licenceoff.com", website_url: SITE },
           actions: { return_url: back, cancel_url: back, callback_url: FN_URL },
           custom_data: { order_ref: o.ref },
         }),
