@@ -213,6 +213,8 @@ async function resendSend(to: string, mail: { subject: string; html: string; tex
     return { ok: false, reason: "envoi_echoue" };
   }
   await logEvent("info", "email", "Email envoyé à " + to + " : « " + mail.subject + " »");
+  // compteur des emails envoyés (gardé sans limite de durée)
+  try { await db.from("email_sends").insert({ to_email: to.toLowerCase(), subject: mail.subject.slice(0, 200) }); } catch (_) { /* le compteur ne bloque jamais l'envoi */ }
   return { ok: true };
 }
 
@@ -339,6 +341,17 @@ async function sendOrderEmails(orderId: string, reason?: string) {
   await sendInstallEmail(orderId).catch((e) => logEvent("error", "email", "Erreur pendant l'email d'installation", e));
   if (reason === "delivered") await sendDeliveryEmail(orderId).catch((e) => logEvent("error", "email", "Erreur pendant l'email de livraison", e));
   await notifyPayouts().catch((e) => logEvent("error", "parrainage", "Erreur pendant l'alerte de versement parrain", e));
+}
+
+// Consentement aux offres par email (newsletter) : on garde la date et l'origine
+async function setMarketing(email: string, optin: boolean, source: string) {
+  const e = String(email ?? "").trim().toLowerCase();
+  if (!e.includes("@")) return;
+  const now = new Date().toISOString();
+  const { data: cur } = await db.from("marketing_contacts").select("optin").eq("email", e).maybeSingle();
+  if (cur && cur.optin === optin) return;
+  if (!cur && !optin) return;
+  await db.from("marketing_contacts").upsert({ email: e, optin, source, updated_at: now, ...(optin ? { optin_at: now, unsub_at: null } : { unsub_at: now }) });
 }
 
 // Nombre d'unités disponibles par produit (seulement pour les produits à stock)
@@ -785,7 +798,8 @@ async function handle(req: Request): Promise<Response> {
       const suggestions = plist.filter((p) => !bought.has(p.id) && !favIds.includes(p.id))
         .map((p) => ({ p, sc: pScore(p) })).sort((a, b) => b.sc - a.sc).slice(0, 8).map((x) => publicProduct(x.p, counts, byId));
       return json({
-        me: { email: c.email, name: c.name ?? "", phone: c.phone ?? "", interests, created_at: c.created_at },
+        me: { email: c.email, name: c.name ?? "", phone: c.phone ?? "", interests, created_at: c.created_at,
+          marketing: !!(await db.from("marketing_contacts").select("optin").eq("email", String(c.email).toLowerCase()).maybeSingle()).data?.optin },
         // deno-lint-ignore no-explicit-any
         orders: (orders ?? []).map((o: any) => ({ ref: o.ref, token: o.public_token, invoice: !!o.invoice_no, date: o.created_at, status: o.status, amount: o.amount_fcfa,
           // deno-lint-ignore no-explicit-any
@@ -802,6 +816,7 @@ async function handle(req: Request): Promise<Response> {
       if (!c) return json({ error: "non_connecte" }, 401);
       const interests = (Array.isArray(body.interests) ? body.interests : []).slice(0, 30).map((x: unknown) => str(x, 80)).filter(Boolean);
       await db.from("customers").update({ name: str(body.name, 120) || null, phone: str(body.phone, 40) || null, interests }).eq("id", c.id);
+      if (typeof body.marketing === "boolean") await setMarketing(c.email, body.marketing, "compte");
       return json({ ok: true });
     }
     case "account_history_clear": {
@@ -1013,6 +1028,8 @@ async function handle(req: Request): Promise<Response> {
           unit_price: x.unit, quantity: x.q, list_price: x.p.price_fcfa, wholesale_price: x.wholesale,
         })));
         if (e2) { await db.from("orders").delete().eq("id", o.id); await logEvent("error", "boutique", "Une commande n'a pas pu être enregistrée (articles)", { erreur: e2.message, email }); return json({ error: "error" }, 500); }
+        // case « recevoir les offres par email » cochée par le client (jamais cochée d'office)
+        if (body.marketing === true) await setMarketing(email, true, "commande");
         await logEvent("info", "boutique", "Nouvelle commande de " + name + " : " + row.amount_fcfa + " FCFA (en attente de paiement)", { articles: priced.map((x) => x.q + " x " + x.p.name), code_parrain: rc?.code ?? null }, row.ref);
         return json({ ref: row.ref, token: row.public_token });
       }
@@ -1065,6 +1082,15 @@ async function handle(req: Request): Promise<Response> {
     }
 
     // ---------- Page de suivi du client ----------
+    case "unsubscribe": { // lien « se désinscrire » des emails d'offres
+      const t = str(body.t, 64);
+      if (!t) return json({ error: "not_found" }, 404);
+      const { data } = await db.from("marketing_contacts").update({ optin: false, unsub_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .eq("token", t).select("email").maybeSingle();
+      if (!data) return json({ error: "not_found" }, 404);
+      return json({ ok: true, email: data.email.replace(/^(.{2}).*(@.*)$/, "$1•••$2") });
+    }
+
     case "invoice": { // facture d'une commande (o = jeton de la commande) ou devis (d = jeton du devis)
       const { data: st } = await db.from("settings").select("key, value")
         .in("key", ["invoice_legal_name", "invoice_address", "invoice_phone", "invoice_email", "invoice_ninea", "invoice_rc"]);

@@ -128,7 +128,7 @@ function render() {
     try {
       const d = await LO.boutique({
         action: "create_order", items: LO.cart().map((i) => ({ slug: i.slug, qty: i.qty })),
-        name: $("#name").value, email: $("#email").value, phone: $("#phone").value, website: $("#website").value, ref: quote.code || "", origin: LO.source(),
+        name: $("#name").value, email: $("#email").value, phone: $("#phone").value, website: $("#website").value, ref: quote.code || "", origin: LO.source(), marketing: !!($("#mkt") && $("#mkt").checked),
         shipping: hasPhysical() ? { method: ship.method, address: ship.address, zone: ship.zone, lat: ship.lat, lng: ship.lng } : undefined,
       });
       if (d.token) {
@@ -152,6 +152,8 @@ function render() {
       ...f("email", "Email", "email", "email", "vous@exemple.com"),
       ...f("phone", "Numéro WhatsApp", "tel", "tel", "ex : 77 123 45 67"),
       el("input", { id: "website", class: "hp", tabindex: "-1", autocomplete: "off", "aria-hidden": "true" }),
+      el("label", { class: "note", style: "display:flex;gap:8px;align-items:flex-start;margin-top:10px;cursor:pointer" },
+        el("input", { id: "mkt", type: "checkbox", style: "margin-top:3px" }), "Je souhaite recevoir les offres et nouveautés licenceoff par email (désinscription en un clic)."),
       hasPhysical() ? shipBox(update) : null,
       codeBox(),
       listTotal > total ? el("div", { class: "note", style: "margin-top:12px;display:flex;justify-content:space-between" }, el("span", { text: "Remise parrain (" + quote.code + ")" }), el("span", { text: "− " + fcfa(listTotal - total) })) : null,

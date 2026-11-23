@@ -64,10 +64,12 @@ function dash(d) {
   const interests = el("div", {}, ...tops.map((t) => el("div", { style: "margin:8px 0" }, el("div", { class: "chips2" }, box(t), ...d.categories.filter((c) => c.parent === t.slug).map(box)))));
   const name = el("input", { class: "field", value: d.me.name, placeholder: "Votre nom" });
   const phone = el("input", { class: "field", value: d.me.phone, placeholder: "Numéro WhatsApp" });
+  const mkt = el("input", { type: "checkbox" }); mkt.checked = !!d.me.marketing;
+  const mktRow = el("label", { class: "note", style: "display:flex;gap:8px;align-items:flex-start;margin-top:10px;cursor:pointer" }, mkt, "Recevoir les offres et nouveautés licenceoff par email");
   const save = el("button", { class: "btn", style: "margin-top:10px", text: "Enregistrer" });
   save.addEventListener("click", async () => {
     save.disabled = true;
-    await api({ action: "account_save", name: name.value, phone: phone.value, interests: [...interests.querySelectorAll("input:checked")].map((i) => i.value) });
+    await api({ action: "account_save", name: name.value, phone: phone.value, interests: [...interests.querySelectorAll("input:checked")].map((i) => i.value), marketing: mkt.checked });
     save.disabled = false; LO.toast("Enregistré ✔"); load();
   });
 
@@ -100,7 +102,7 @@ function dash(d) {
 
     el("div", { class: "panel acc-sec" }, el("h2", { text: "Mes centres d'intérêt" }),
       el("p", { class: "note", text: "Cochez ce qui vous intéresse : vos suggestions s'adaptent." }), interests,
-      el("h2", { style: "margin-top:16px", text: "Mes informations" }), el("label", { text: "Nom" }), name, el("label", { text: "WhatsApp" }), phone, save),
+      el("h2", { style: "margin-top:16px", text: "Mes informations" }), el("label", { text: "Nom" }), name, el("label", { text: "WhatsApp" }), phone, mktRow, save),
 
     el("div", { class: "panel acc-sec" }, el("h2", { text: "Mon historique" }),
       consentOk ? null : el("p", { class: "note" }, "L'historique n'est enregistré que si vous acceptez les cookies. ",

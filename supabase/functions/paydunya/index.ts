@@ -213,6 +213,8 @@ async function resendSend(to: string, mail: { subject: string; html: string; tex
     return { ok: false, reason: "envoi_echoue" };
   }
   await logEvent("info", "email", "Email envoyé à " + to + " : « " + mail.subject + " »");
+  // compteur des emails envoyés (gardé sans limite de durée)
+  try { await db.from("email_sends").insert({ to_email: to.toLowerCase(), subject: mail.subject.slice(0, 200) }); } catch (_) { /* le compteur ne bloque jamais l'envoi */ }
   return { ok: true };
 }
 

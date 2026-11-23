@@ -514,7 +514,8 @@
 
     <section id="tab-clients" class="hidden">
       <h1>Clients</h1>
-      <div class="bar"><input id="clSearch" class="grow" placeholder="Rechercher : nom, email, téléphone, code parrain"><button id="clCsv" class="grey">Exporter (CSV)</button></div>
+      <div class="box" id="clStats" style="display:flex;gap:18px;flex-wrap:wrap"></div>
+      <div class="bar"><input id="clSearch" class="grow" placeholder="Rechercher : nom, email, téléphone, code parrain"><label class="check" style="margin:0"><input type="checkbox" id="clOptin"> Seulement les inscrits aux offres</label><button id="clCsv" class="grey">Exporter (CSV)</button></div>
       <div class="box"><div class="tablewrap"><table><thead><tr><th>Client</th><th>Commandes</th><th>Dépensé</th><th>Première / dernière</th><th>Parrain</th><th>IP</th><th>Messages</th></tr></thead><tbody id="clRows"></tbody></table></div></div>
     </section>
 
@@ -1623,10 +1624,16 @@ $("rvFilter").addEventListener("change", renderReviews);
 
 // ---------- clients (CRM) ----------
 let clients = [];
-async function loadClients() { clients = (await api({ action: "clients_list" })).rows; renderClients(); }
+async function loadClients() {
+  const [c, st] = await Promise.all([api({ action: "clients_list" }), api({ action: "email_stats" }).catch(() => null)]);
+  clients = c.rows;
+  if (st) $("clStats").replaceChildren(...[["📧 Emails envoyés (7 jours)", st.week], ["30 jours", st.month], ["12 mois", st.year], ["Total", st.total], ["👥 Clients", clients.length], ["✅ Inscrits aux offres", st.optin]]
+    .map(([l, v]) => { const d = el("div"); d.append(el("div", l, "small"), el("strong", String(v))); return d; }));
+  renderClients();
+}
 function renderClients() {
   const q = $("clSearch").value.trim().toLowerCase();
-  const list = clients.filter((c) => !q || [c.name, c.email, c.phone, ...(c.codes || []), ...(c.account ? [...c.account.interests, ...c.account.favorites, ...c.account.searches] : [])].join(" ").toLowerCase().includes(q));
+  const list = clients.filter((c) => (!$("clOptin").checked || c.marketing) && (!q || [c.name, c.email, c.phone, ...(c.codes || []), ...(c.account ? [...c.account.interests, ...c.account.favorites, ...c.account.searches] : [])].join(" ").toLowerCase().includes(q)));
   $("clRows").replaceChildren(...list.slice(0, 500).map((c) => {
     const det = el("details"); det.append(el("summary", c.orders.length + " commande(s)"), ...c.orders.map((o) => el("div", dt(o.date) + " · " + o.ref + " · " + (ST[o.status] || o.status) + " · " + fcfa(o.amount) + " · " + o.items + (o.code ? " · 🤝 " + o.code : "") + (o.ip ? " · IP " + o.ip : ""), "small")));
     let acc = null;
@@ -1638,17 +1645,19 @@ function renderClients() {
         el("div", "Produits vus : " + (a.viewed.join(", ") || "—"), "small"),
         el("div", "Recherches : " + (a.searches.join(", ") || "—"), "small"));
     }
-    return tr(td(el("strong", c.name || "—"), c.account ? el("span", " 👤", "small") : null, el("br"), el("span", c.email, "small"), el("br"), el("span", c.phone || "", "small")), td(det, acc), td(el("strong", fcfa(c.spent)), el("br"), el("span", c.paid_orders + " payée(s)", "small")),
+    return tr(td(el("strong", c.name || "—"), c.account ? el("span", " 👤", "small") : null, c.marketing ? el("span", " ✅ offres", "small") : null, el("br"), el("span", c.email, "small"), el("br"), el("span", c.phone || "", "small")), td(det, acc), td(el("strong", fcfa(c.spent)), el("br"), el("span", c.paid_orders + " payée(s)", "small")),
       td(el("span", dt(c.first) + " / " + dt(c.last), "small")), td((c.codes || []).join(", ") || "—"), td(el("span", c.ip || "—", "small mono")),
       td(btn(c.messages ? "✉️ " + c.messages + " message(s)" : "✉️ Écrire", "grey", () => openMessages(c.email))));
   }));
   if (!list.length) $("clRows").append(tr(td("Aucun client.")));
 }
 $("clSearch").addEventListener("input", renderClients);
+$("clOptin").addEventListener("change", renderClients);
 $("clCsv").addEventListener("click", () => {
   const esc = (v) => '"' + String(v ?? "").replace(/"/g, '""') + '"';
-  const rows = [["Nom", "Email", "Téléphone", "Commandes", "Payées", "Dépensé (FCFA)", "Première", "Dernière", "Codes parrain", "IP"].map(esc).join(";"),
-    ...clients.map((c) => [c.name, c.email, c.phone, c.orders.length, c.paid_orders, c.spent, c.first, c.last, (c.codes || []).join(" "), c.ip].map(esc).join(";"))];
+  const rows = [["Nom", "Email", "Téléphone", "Commandes", "Payées", "Dépensé (FCFA)", "Première", "Dernière", "Codes parrain", "IP", "Inscrit aux offres", "Produits achetés", "Produits vus"].map(esc).join(";"),
+    ...clients.filter((c) => !$("clOptin").checked || c.marketing).map((c) => [c.name, c.email, c.phone, c.orders.length, c.paid_orders, c.spent, c.first, c.last, (c.codes || []).join(" "), c.ip,
+      c.marketing ? "oui" : "non", c.orders.map((o) => o.items).join(" | "), c.account ? c.account.viewed.join(" | ") : ""].map(esc).join(";"))];
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["\ufeff" + rows.join("\n")], { type: "text/csv" })); a.download = "clients-licenceoff.csv"; a.click();
 });
 

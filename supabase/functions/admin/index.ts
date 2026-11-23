@@ -219,6 +219,8 @@ async function resendSend(to: string, mail: { subject: string; html: string; tex
     return { ok: false, reason: "envoi_echoue" };
   }
   await logEvent("info", "email", "Email envoyé à " + to + " : « " + mail.subject + " »");
+  // compteur des emails envoyés (gardé sans limite de durée)
+  try { await db.from("email_sends").insert({ to_email: to.toLowerCase(), subject: mail.subject.slice(0, 200) }); } catch (_) { /* le compteur ne bloque jamais l'envoi */ }
   return { ok: true };
 }
 
@@ -1118,7 +1120,20 @@ Deno.serve(async (req) => {
           if (!by.has(m.customer_email)) by.set(m.customer_email, { email: m.customer_email, name: m.customer_name ?? "", phone: null, ip: null, orders: [], spent: 0, paid_orders: 0, codes: new Set(), first: m.created_at, last: m.created_at });
           const c = by.get(m.customer_email); c.messages = (c.messages ?? 0) + 1;
         }
-        return json({ rows: [...by.values()].map((c) => ({ ...c, codes: [...c.codes] })) });
+        // consentement aux offres par email
+        const { data: mk } = await db.from("marketing_contacts").select("email, optin, optin_at, unsub_at").limit(50000);
+        const mkBy = Object.fromEntries((mk ?? []).map((m) => [m.email, m]));
+        return json({ rows: [...by.values()].map((c) => ({ ...c, codes: [...c.codes], marketing: mkBy[c.email]?.optin === true, marketing_at: mkBy[c.email]?.optin_at ?? null })) });
+      }
+      case "email_stats": { // emails envoyés (7 jours, 30 jours, 12 mois, total) et inscrits aux offres
+        const cnt = async (days?: number) => {
+          let q = db.from("email_sends").select("id", { count: "exact", head: true });
+          if (days) q = q.gte("created_at", new Date(Date.now() - days * DAY).toISOString());
+          return (await q).count ?? 0;
+        };
+        const [w, m, y, all] = await Promise.all([cnt(7), cnt(30), cnt(365), cnt()]);
+        const { count: optin } = await db.from("marketing_contacts").select("email", { count: "exact", head: true }).eq("optin", true);
+        return json({ week: w, month: m, year: y, total: all, optin: optin ?? 0 });
       }
 
       // ================= Modèles d'email =================
