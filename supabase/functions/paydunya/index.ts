@@ -26,6 +26,27 @@ const json = (body: unknown, status = 200) =>
 
 const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
+// ================= Journal (table app_logs, onglet « Journal » de l'admin) =================
+// Jamais de clé ni de secret : les champs sensibles sont masqués avant l'écriture.
+const SECRET_RE = /key|token|secret|password|passwd|authorization|cle|serial|apikey/i;
+function cleanDetail(v: unknown, depth = 0): unknown {
+  if (v == null) return v;
+  if (typeof v === "string") return v.replace(/Bearer\s+\S+/gi, "Bearer ***").replace(/\b(re|sk|pk|live|test)_[A-Za-z0-9_-]{8,}/g, "***").slice(0, 800);
+  if (typeof v !== "object") return v;
+  if (depth > 3) return "…";
+  if (Array.isArray(v)) return v.slice(0, 20).map((x) => cleanDetail(x, depth + 1));
+  const out: Record<string, unknown> = {};
+  for (const [k, x] of Object.entries(v as Record<string, unknown>).slice(0, 30)) out[k] = SECRET_RE.test(k) ? "***" : cleanDetail(x, depth + 1);
+  return out;
+}
+async function logEvent(level: "info" | "warn" | "error", source: string, message: string, detail?: unknown, orderRef?: string | null) {
+  if (level === "error") console.error(source, message);
+  try {
+    const d = detail instanceof Error ? { erreur: detail.message, pile: String(detail.stack ?? "").slice(0, 800) } : detail;
+    await db.from("app_logs").insert({ level, source, message: String(message).slice(0, 300), detail: d === undefined ? null : cleanDetail(d), order_ref: orderRef ?? null });
+  } catch (_) { /* le journal ne doit jamais bloquer la boutique */ }
+}
+
 const MODE = (Deno.env.get("PAYDUNYA_MODE") ?? "test").trim().toLowerCase();
 const API = MODE === "live" ? "https://app.paydunya.com/api/v1" : "https://app.paydunya.com/sandbox-api/v1";
 const SITE = (Deno.env.get("SITE_URL") ?? "https://www.licenceoff.com").trim().replace(/\/$/, "");
@@ -156,7 +177,7 @@ function siteCtx() {
 }
 async function resendSend(to: string, mail: { subject: string; html: string; text: string }) {
   const key = (Deno.env.get("RESEND_API_KEY") ?? "").trim();
-  if (!key) return { ok: false, reason: "resend_non_configure" };
+  if (!key) { await logEvent("warn", "email", "Email non envoyé : clé Resend absente dans Supabase (secret RESEND_API_KEY)", { destinataire: to }); return { ok: false, reason: "resend_non_configure" }; }
   const r = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" },
@@ -166,7 +187,12 @@ async function resendSend(to: string, mail: { subject: string; html: string; tex
       subject: mail.subject, html: mail.html, text: mail.text,
     }),
   }).catch(() => null);
-  if (!r || !r.ok) { console.error("Resend", r ? (await r.text().catch(() => "")).slice(0, 300) : "reseau"); return { ok: false, reason: "envoi_echoue" }; }
+  if (!r || !r.ok) {
+    const rep = r ? (await r.text().catch(() => "")).slice(0, 500) : "pas de réponse (réseau)";
+    await logEvent("error", "email", "Email non envoyé à " + to + " : « " + mail.subject + " »", { statut_http: r?.status ?? null, reponse_resend: rep });
+    return { ok: false, reason: "envoi_echoue" };
+  }
+  await logEvent("info", "email", "Email envoyé à " + to + " : « " + mail.subject + " »");
   return { ok: true };
 }
 
@@ -277,20 +303,36 @@ async function notifyPayouts() {
 }
 
 // Après chaque livraison : email d'installation (étape 1) et/ou email de la clé (commande livrée), alerte parrainage
+async function orderRefOf(orderId: string) {
+  const { data } = await db.from("orders").select("ref").eq("id", orderId).maybeSingle();
+  return data?.ref ?? null;
+}
+const DELIVERY_LOG: Record<string, ["info" | "warn", string]> = {
+  delivered: ["info", "Commande livrée au client"],
+  out_of_stock: ["warn", "Commande payée mais stock vide : elle attend des clés (ajoutez du stock)"],
+  to_process: ["info", "Commande payée : des articles sont à traiter par vous"],
+  awaiting_install: ["info", "Lien de téléchargement envoyé, le client installe"],
+};
 async function sendOrderEmails(orderId: string, reason?: string) {
-  await sendInstallEmail(orderId).catch((e) => console.error("email installation", e));
-  if (reason === "delivered") await sendDeliveryEmail(orderId).catch((e) => console.error("email", e));
-  await notifyPayouts().catch((e) => console.error("alerte parrainage", e));
+  const lg = reason ? DELIVERY_LOG[reason] : undefined;
+  if (lg) await logEvent(lg[0], "livraison", lg[1], { etape: reason }, await orderRefOf(orderId));
+  await sendInstallEmail(orderId).catch((e) => logEvent("error", "email", "Erreur pendant l'email d'installation", e));
+  if (reason === "delivered") await sendDeliveryEmail(orderId).catch((e) => logEvent("error", "email", "Erreur pendant l'email de livraison", e));
+  await notifyPayouts().catch((e) => logEvent("error", "parrainage", "Erreur pendant l'alerte de versement parrain", e));
 }
 
 // Demande à PayDunya l'état réel de la facture et livre si elle est payée
-async function confirmAndDeliver(invoiceToken: string) {
+async function confirmAndDeliver(invoiceToken: string, from = "retour") {
   const k = keys();
-  if (!k || !invoiceToken || invoiceToken.length > 100) return { ok: false, reason: "invalide" };
+  if (!k) { await logEvent("warn", "paiement", "Vérification de paiement impossible : clés PayDunya absentes dans Supabase"); return { ok: false, reason: "invalide" }; }
+  if (!invoiceToken || invoiceToken.length > 100) {
+    if (from === "ipn") await logEvent("warn", "paiement", "Notification PayDunya reçue sans numéro de facture");
+    return { ok: false, reason: "invalide" };
+  }
 
   const { data: o } = await db.from("orders")
-    .select("id, status, amount_fcfa").eq("paydunya_token", invoiceToken).maybeSingle();
-  if (!o) return { ok: false, reason: "commande_introuvable" };
+    .select("id, ref, status, amount_fcfa").eq("paydunya_token", invoiceToken).maybeSingle();
+  if (!o) { await logEvent("warn", "paiement", "Notification PayDunya pour une facture inconnue", { origine: from }); return { ok: false, reason: "commande_introuvable" }; }
   if (["delivered", "processing", "installing"].includes(o.status)) return { ok: true, reason: "already_delivered" };
   if (o.status === "cancelled") return { ok: false, reason: "cancelled" };
 
@@ -299,10 +341,17 @@ async function confirmAndDeliver(invoiceToken: string) {
   });
   // deno-lint-ignore no-explicit-any
   const b: any = await r.json().catch(() => ({}));
-  if (b.response_code !== "00") return { ok: false, reason: "confirm_echec" };
-  if (b.status !== "completed") return { ok: false, reason: "pas_encore_paye", status: b.status };
+  if (b.response_code !== "00") {
+    await logEvent("error", "paiement", "PayDunya n'a pas pu confirmer la facture", { origine: from, statut_http: r.status, code: b.response_code, reponse: b.response_text }, o.ref);
+    return { ok: false, reason: "confirm_echec" };
+  }
+  if (b.status !== "completed") {
+    if (from === "ipn" || b.status === "cancelled") await logEvent("info", "paiement", "Paiement pas encore terminé (statut PayDunya : " + b.status + ")", { origine: from }, o.ref);
+    return { ok: false, reason: "pas_encore_paye", status: b.status };
+  }
   if (Number(b.invoice?.total_amount) !== Number(o.amount_fcfa)) {
     await db.from("orders").update({ note: "ALERTE : montant PayDunya différent (" + b.invoice?.total_amount + ")" }).eq("id", o.id);
+    await logEvent("error", "paiement", "Montant payé différent du montant de la commande : commande NON livrée", { paye: b.invoice?.total_amount, attendu: o.amount_fcfa }, o.ref);
     return { ok: false, reason: "montant_different" };
   }
 
@@ -313,12 +362,19 @@ async function confirmAndDeliver(invoiceToken: string) {
 
   const tokens = Array.from({ length: 30 }, () => newToken());
   const { data, error } = await db.rpc("deliver_order_v3", { p_order_id: o.id, p_tokens: tokens, p_days: 7, p_force: false });
-  if (error) return { ok: false, reason: "error" };
+  await logEvent("info", "paiement", "Paiement reçu : " + o.amount_fcfa + " FCFA", { origine: from, moyen: b.customer?.payment_method ?? b.invoice?.payment_method ?? null }, o.ref);
+  if (error) { await logEvent("error", "livraison", "Paiement reçu mais la livraison a échoué", { erreur: error.message }, o.ref); return { ok: false, reason: "error" }; }
   await sendOrderEmails(o.id, data?.reason);
   return data;
 }
 
 Deno.serve(async (req) => {
+  try { return await handle(req); } catch (e) {
+    await logEvent("error", "paiement", "Erreur inattendue dans la fonction paydunya", e);
+    return json({ error: "erreur_serveur" }, 500);
+  }
+});
+async function handle(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "method" }, 405);
 
@@ -331,7 +387,7 @@ Deno.serve(async (req) => {
       const f = await req.formData();
       token = String(f.get("data[invoice][token]") ?? f.get("data[token]") ?? f.get("token") ?? "");
     } catch (_) { /* ignore */ }
-    const result = await confirmAndDeliver(token);
+    const result = await confirmAndDeliver(token, "ipn");
     return json(result);
   }
 
@@ -351,7 +407,7 @@ Deno.serve(async (req) => {
     case "create": {
       if (o.status !== "pending") return json({ error: "deja_payee" }, 400);
       const k = keys();
-      if (!k) return json({ error: "paydunya_non_configure" }, 503);
+      if (!k) { await logEvent("warn", "paiement", "Un client a voulu payer mais les clés PayDunya ne sont pas encore dans Supabase", null, o.ref); return json({ error: "paydunya_non_configure" }, 503); }
       // deno-lint-ignore no-explicit-any
       const items = (o.order_items ?? []) as any[];
       const prodName = items.map((i) => (i.quantity > 1 ? i.quantity + " x " : "") + i.product_name).join(", ").slice(0, 180) || "Commande";
@@ -369,7 +425,7 @@ Deno.serve(async (req) => {
       // deno-lint-ignore no-explicit-any
       const b: any = await r.json().catch(() => ({}));
       if (b.response_code !== "00" || !b.token || !b.response_text) {
-        console.error("PayDunya create", b);
+        await logEvent("error", "paiement", "PayDunya a refusé de créer le paiement", { statut_http: r.status, code: b.response_code, reponse: b.response_text, mode: MODE }, o.ref);
         return json({ error: "paydunya_erreur" }, 502);
       }
       await db.from("orders").update({ paydunya_token: b.token, payment_method: "paydunya" }).eq("id", o.id);
@@ -385,4 +441,4 @@ Deno.serve(async (req) => {
     default:
       return json({ error: "action_inconnue" }, 400);
   }
-});
+}

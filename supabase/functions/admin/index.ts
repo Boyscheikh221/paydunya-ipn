@@ -19,6 +19,27 @@ const json = (body: unknown, status = 200) =>
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const db = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
+// ================= Journal (table app_logs, onglet « Journal » de l'admin) =================
+// Jamais de clé ni de secret : les champs sensibles sont masqués avant l'écriture.
+const SECRET_RE = /key|token|secret|password|passwd|authorization|cle|serial|apikey/i;
+function cleanDetail(v: unknown, depth = 0): unknown {
+  if (v == null) return v;
+  if (typeof v === "string") return v.replace(/Bearer\s+\S+/gi, "Bearer ***").replace(/\b(re|sk|pk|live|test)_[A-Za-z0-9_-]{8,}/g, "***").slice(0, 800);
+  if (typeof v !== "object") return v;
+  if (depth > 3) return "…";
+  if (Array.isArray(v)) return v.slice(0, 20).map((x) => cleanDetail(x, depth + 1));
+  const out: Record<string, unknown> = {};
+  for (const [k, x] of Object.entries(v as Record<string, unknown>).slice(0, 30)) out[k] = SECRET_RE.test(k) ? "***" : cleanDetail(x, depth + 1);
+  return out;
+}
+async function logEvent(level: "info" | "warn" | "error", source: string, message: string, detail?: unknown, orderRef?: string | null) {
+  if (level === "error") console.error(source, message);
+  try {
+    const d = detail instanceof Error ? { erreur: detail.message, pile: String(detail.stack ?? "").slice(0, 800) } : detail;
+    await db.from("app_logs").insert({ level, source, message: String(message).slice(0, 300), detail: d === undefined ? null : cleanDetail(d), order_ref: orderRef ?? null });
+  } catch (_) { /* le journal ne doit jamais bloquer la boutique */ }
+}
+
 const DAY = 86400000;
 const LINK_DAYS = 7;
 const STOCK_TYPES = ["key", "key_file", "stock"];
@@ -161,7 +182,7 @@ function siteCtx() {
 }
 async function resendSend(to: string, mail: { subject: string; html: string; text: string }) {
   const key = (Deno.env.get("RESEND_API_KEY") ?? "").trim();
-  if (!key) return { ok: false, reason: "resend_non_configure" };
+  if (!key) { await logEvent("warn", "email", "Email non envoyé : clé Resend absente dans Supabase (secret RESEND_API_KEY)", { destinataire: to }); return { ok: false, reason: "resend_non_configure" }; }
   const r = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" },
@@ -171,7 +192,12 @@ async function resendSend(to: string, mail: { subject: string; html: string; tex
       subject: mail.subject, html: mail.html, text: mail.text,
     }),
   }).catch(() => null);
-  if (!r || !r.ok) { console.error("Resend", r ? (await r.text().catch(() => "")).slice(0, 300) : "reseau"); return { ok: false, reason: "envoi_echoue" }; }
+  if (!r || !r.ok) {
+    const rep = r ? (await r.text().catch(() => "")).slice(0, 500) : "pas de réponse (réseau)";
+    await logEvent("error", "email", "Email non envoyé à " + to + " : « " + mail.subject + " »", { statut_http: r?.status ?? null, reponse_resend: rep });
+    return { ok: false, reason: "envoi_echoue" };
+  }
+  await logEvent("info", "email", "Email envoyé à " + to + " : « " + mail.subject + " »");
   return { ok: true };
 }
 
@@ -282,10 +308,22 @@ async function notifyPayouts() {
 }
 
 // Après chaque livraison : email d'installation (étape 1) et/ou email de la clé (commande livrée), alerte parrainage
+async function orderRefOf(orderId: string) {
+  const { data } = await db.from("orders").select("ref").eq("id", orderId).maybeSingle();
+  return data?.ref ?? null;
+}
+const DELIVERY_LOG: Record<string, ["info" | "warn", string]> = {
+  delivered: ["info", "Commande livrée au client"],
+  out_of_stock: ["warn", "Commande payée mais stock vide : elle attend des clés (ajoutez du stock)"],
+  to_process: ["info", "Commande payée : des articles sont à traiter par vous"],
+  awaiting_install: ["info", "Lien de téléchargement envoyé, le client installe"],
+};
 async function sendOrderEmails(orderId: string, reason?: string) {
-  await sendInstallEmail(orderId).catch((e) => console.error("email installation", e));
-  if (reason === "delivered") await sendDeliveryEmail(orderId).catch((e) => console.error("email", e));
-  await notifyPayouts().catch((e) => console.error("alerte parrainage", e));
+  const lg = reason ? DELIVERY_LOG[reason] : undefined;
+  if (lg) await logEvent(lg[0], "livraison", lg[1], { etape: reason }, await orderRefOf(orderId));
+  await sendInstallEmail(orderId).catch((e) => logEvent("error", "email", "Erreur pendant l'email d'installation", e));
+  if (reason === "delivered") await sendDeliveryEmail(orderId).catch((e) => logEvent("error", "email", "Erreur pendant l'email de livraison", e));
+  await notifyPayouts().catch((e) => logEvent("error", "parrainage", "Erreur pendant l'alerte de versement parrain", e));
 }
 
 // Vente faite par WhatsApp / en direct : crée la commande (plusieurs articles possibles)
@@ -346,20 +384,144 @@ async function deliverWaiting(productId: string) {
   return n;
 }
 
+// ================= Notifications : ce qui attend une action de l'admin =================
+type Notif = { kind: string; level: "urgent" | "info"; text: string; count: number; tab: string };
+async function buildNotifications(): Promise<Notif[]> {
+  const n: Notif[] = [];
+  const [{ data: items }, { data: prods }, { data: pays }, { count: revs }, { count: errs }, { data: st }, { data: manualPaid }] = await Promise.all([
+    db.from("order_items").select("status, product_name, claim_requested_at, orders!inner(ref, status)").in("status", ["waiting_stock", "to_process"]).neq("orders.status", "cancelled").limit(2000),
+    db.from("products").select("id, name, active, delivery_type, low_stock_threshold, stock_qty"),
+    db.from("payouts").select("amount_fcfa").eq("status", "to_pay"),
+    db.from("product_reviews").select("id", { count: "exact", head: true }).eq("status", "pending"),
+    db.from("app_logs").select("id", { count: "exact", head: true }).eq("level", "error").eq("seen", false),
+    db.from("settings").select("key, value").in("key", ["admin_email", "auto_delivery"]),
+    db.from("orders").select("ref").eq("status", "pending").not("payment_ref", "is", null).neq("payment_method", "paydunya").limit(200),
+  ]);
+  const set = Object.fromEntries((st ?? []).map((r) => [r.key, r.value]));
+  const toProcess = (items ?? []).filter((i) => i.status === "to_process");
+  const waiting = (items ?? []).filter((i) => i.status === "waiting_stock");
+  // deno-lint-ignore no-explicit-any
+  const refs = (arr: any[]) => [...new Set(arr.map((i) => i.orders?.ref).filter(Boolean))];
+  if (manualPaid?.length) n.push({ kind: "manual_payment", level: "urgent", count: manualPaid.length, tab: "orders",
+    text: manualPaid.length + " client(s) disent avoir payé par Wave / Orange Money : vérifiez et validez (" + manualPaid.slice(0, 3).map((o) => o.ref).join(", ") + ")" });
+  if (toProcess.length) n.push({ kind: "to_process", level: "urgent", count: refs(toProcess).length, tab: "orders",
+    text: refs(toProcess).length + " commande(s) à traiter par vous (service, produit physique ou livraison auto coupée)" });
+  if (waiting.length) {
+    const byProd: Record<string, number> = {};
+    for (const i of waiting) byProd[i.product_name] = (byProd[i.product_name] ?? 0) + 1;
+    n.push({ kind: "key_requests", level: "urgent", count: waiting.length, tab: "keys",
+      text: waiting.length + " demande(s) de clé en attente faute de stock : " + Object.entries(byProd).map(([p, c]) => p + " (" + c + ")").join(", ") });
+  }
+  // stock bas : clés (non réutilisables) et produits physiques
+  const stockProds = (prods ?? []).filter((p) => p.active && STOCK_TYPES.includes(p.delivery_type));
+  const { data: keys } = stockProds.length
+    ? await db.from("license_keys").select("product_id, reusable").eq("status", "available").in("product_id", stockProds.map((p) => p.id)).limit(20000)
+    : { data: [] as { product_id: string; reusable: boolean }[] };
+  const low: string[] = [];
+  for (const p of stockProds) {
+    const ks = (keys ?? []).filter((k) => k.product_id === p.id);
+    if (ks.some((k) => k.reusable)) continue;
+    if (ks.length <= (p.low_stock_threshold ?? 0)) low.push(p.name + " (" + ks.length + ")");
+  }
+  for (const p of (prods ?? []).filter((p) => p.active && p.delivery_type === "physical" && p.stock_qty != null)) {
+    if (p.stock_qty <= (p.low_stock_threshold ?? 0)) low.push(p.name + " (" + p.stock_qty + " en stock)");
+  }
+  if (low.length) n.push({ kind: "low_stock", level: "urgent", count: low.length, tab: "keys", text: "Stock bas : " + low.join(", ") });
+  if (pays?.length) n.push({ kind: "payouts", level: "urgent", count: pays.length, tab: "parrains",
+    text: pays.length + " versement(s) parrain à faire : " + fcfaTxt(pays.reduce((s, p) => s + (p.amount_fcfa || 0), 0)) });
+  if (revs) n.push({ kind: "reviews", level: "info", count: revs, tab: "reviews", text: revs + " avis client(s) à valider" });
+  if (errs) n.push({ kind: "errors", level: "urgent", count: errs, tab: "logs", text: errs + " erreur(s) non lue(s) dans le journal" });
+  if (!(Deno.env.get("PAYDUNYA_MASTER_KEY") ?? "").trim()) n.push({ kind: "paydunya", level: "info", count: 1, tab: "settings",
+    text: "Paiement en ligne pas encore actif : les clés PayDunya ne sont pas dans Supabase" });
+  if (!set.admin_email) n.push({ kind: "admin_email", level: "info", count: 1, tab: "settings",
+    text: "Ajoutez votre email d'alerte dans Réglages pour recevoir le rapport du lundi et les alertes" });
+  if (set.auto_delivery === false) n.push({ kind: "auto_off", level: "info", count: 1, tab: "settings", text: "La livraison automatique est désactivée" });
+  return n;
+}
+
+// ================= Rapport de la semaine (email du lundi) =================
+async function buildReport() {
+  const now = Date.now(), since = new Date(now - 7 * DAY).toISOString(), prev = new Date(now - 14 * DAY).toISOString();
+  const paidSt = ["paid", "processing", "installing", "delivered"];
+  const [{ data: ords }, { data: items }, { data: views }, { count: newCust }, { count: errs }, notifs] = await Promise.all([
+    db.from("orders").select("ref, status, amount_fcfa, paid_at, created_at").gte("created_at", prev).limit(10000),
+    db.from("order_items").select("product_name, quantity, unit_price, status, orders!inner(paid_at)").gte("orders.paid_at", since).limit(10000),
+    db.from("page_views").select("visitor, created_at").gte("created_at", since).limit(50000),
+    db.from("customers").select("id", { count: "exact", head: true }).gte("created_at", since),
+    db.from("app_logs").select("id", { count: "exact", head: true }).eq("level", "error").gte("created_at", since),
+    buildNotifications(),
+  ]);
+  const paid = (ords ?? []).filter((o) => paidSt.includes(o.status) && o.paid_at);
+  const week = paid.filter((o) => o.paid_at >= since), before = paid.filter((o) => o.paid_at < since && o.paid_at >= prev);
+  const sum = (a: { amount_fcfa: number }[]) => a.reduce((s, o) => s + (o.amount_fcfa || 0), 0);
+  const ca = sum(week), caPrev = sum(before);
+  const agg: Record<string, { q: number; ca: number }> = {};
+  for (const i of items ?? []) if (i.status !== "cancelled") { agg[i.product_name] ??= { q: 0, ca: 0 }; agg[i.product_name].q += i.quantity; agg[i.product_name].ca += i.quantity * i.unit_price; }
+  const top = Object.entries(agg).sort((a, b) => b[1].ca - a[1].ca).slice(0, 5);
+  const visitors = new Set((views ?? []).map((v) => v.visitor)).size;
+  const unpaid = (ords ?? []).filter((o) => o.status === "pending" && o.created_at >= since).length;
+  const evo = caPrev ? Math.round((ca - caPrev) / caPrev * 100) : null;
+  const d = (iso: number) => new Date(iso).toLocaleDateString("fr-FR", { day: "numeric", month: "long" });
+  const period = "du " + d(now - 7 * DAY) + " au " + d(now - DAY);
+  const kpi = (l: string, v: string) => `<td style="padding:10px;background:#eff5ff;border-radius:10px;text-align:center"><div style="font-size:12px;color:#5b6b86">${esc(l)}</div><div style="font-size:20px;font-weight:900">${esc(v)}</div></td>`;
+  const html = `<h2 style="margin:0 0 4px">Votre semaine sur licenceoff</h2><p style="margin:0 0 16px;color:#5b6b86">${esc(period)}</p>
+<table role="presentation" width="100%" cellspacing="6" cellpadding="0"><tr>${kpi("Ventes", fcfaTxt(ca))}${kpi("Commandes payées", String(week.length))}</tr><tr>${kpi("Visiteurs", String(visitors))}${kpi("Nouveaux comptes clients", String(newCust ?? 0))}</tr></table>
+<p style="margin:12px 0">${evo === null ? "" : (evo >= 0 ? "📈 +" : "📉 ") + evo + " % par rapport à la semaine d'avant (" + esc(fcfaTxt(caPrev)) + "). "}${unpaid ? unpaid + " commande(s) créée(s) mais pas payée(s)." : ""}</p>
+<h3 style="margin:18px 0 6px">Produits les plus vendus</h3>${top.length ? "<ol style=\"margin:0;padding-left:20px\">" + top.map(([p, v]) => `<li><b>${esc(p)}</b> : ${v.q} vendu(s), ${esc(fcfaTxt(v.ca))}</li>`).join("") + "</ol>" : "<p style=\"margin:0\">Pas de vente cette semaine.</p>"}
+<h3 style="margin:18px 0 6px">À faire</h3>${notifs.length ? "<ul style=\"margin:0;padding-left:20px\">" + notifs.map((x) => `<li style="margin-bottom:4px">${x.level === "urgent" ? "🔴 " : "🔵 "}${esc(x.text)}</li>`).join("") + "</ul>" : "<p style=\"margin:0\">Rien à faire, tout est en ordre ✔</p>"}
+${errs ? `<p style="margin:14px 0 0">⚠️ ${errs} erreur(s) cette semaine : voir l'onglet Journal de l'admin.</p>` : ""}
+<p style="text-align:center;margin:22px 0 0"><a href="${esc(siteCtx().site)}/admin" style="display:inline-block;background:${EM.O};color:#fff;font-weight:800;text-decoration:none;padding:12px 20px;border-radius:10px">Ouvrir l'admin</a></p>`;
+  const text = "Votre semaine sur licenceoff (" + period + ")\nVentes : " + fcfaTxt(ca) + " (" + week.length + " commandes payées)\nVisiteurs : " + visitors +
+    "\nNouveaux comptes : " + (newCust ?? 0) + "\n\nProduits les plus vendus :\n" + (top.map(([p, v]) => "- " + p + " : " + v.q + " vendu(s)").join("\n") || "- aucun") +
+    "\n\nÀ faire :\n" + (notifs.map((x) => "- " + x.text).join("\n") || "- rien") + "\n\nAdmin : " + siteCtx().site + "/admin";
+  return { subject: "Rapport de la semaine : " + fcfaTxt(ca) + " de ventes — licenceoff", html: wrapHtml(html), text };
+}
+async function sendReport(trigger: string) {
+  const { data: st } = await db.from("settings").select("value").eq("key", "admin_email").maybeSingle();
+  const to = String(st?.value ?? "").trim();
+  if (!to) { await logEvent("warn", "rapport", "Rapport de la semaine non envoyé : aucun email d'alerte dans Réglages"); return { ok: false, reason: "pas_d_email" }; }
+  const mail = await buildReport();
+  const r = await resendSend(to, mail);
+  if (r.ok) {
+    await db.from("settings").upsert({ key: "report_last_sent", value: new Date().toISOString(), updated_at: new Date().toISOString() });
+    await logEvent("info", "rapport", "Rapport de la semaine envoyé (" + trigger + ")");
+  }
+  return r;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST") return json({ error: "method" }, 405);
 
-  const expected = (Deno.env.get("ADMIN_PASSWORD") ?? "").trim();
-  const given = (req.headers.get("x-admin-password") ?? "").trim();
-  if (!expected || !safeEqual(given, expected)) {
-    await new Promise((r) => setTimeout(r, 800));
-    return json({ error: "unauthorized" }, 401);
-  }
-
   // deno-lint-ignore no-explicit-any
   let body: any;
   try { body = await req.json(); } catch (_) { return json({ error: "bad_json" }, 400); }
+
+  // Tâche planifiée du lundi (pg_cron) : jeton interne aléatoire stocké dans settings.cron_secret
+  if (body?.action === "weekly_report" && body.cron) {
+    const { data: cs } = await db.from("settings").select("value").eq("key", "cron_secret").maybeSingle();
+    const secret = String(cs?.value ?? "");
+    if (!secret || !safeEqual(String(body.cron), secret)) return json({ error: "unauthorized" }, 401);
+    const { data: on } = await db.from("settings").select("key, value").in("key", ["weekly_report", "report_last_sent"]);
+    const set = Object.fromEntries((on ?? []).map((r) => [r.key, r.value]));
+    if (set.weekly_report === false) return json({ ok: true, skipped: "desactive" });
+    if (set.report_last_sent && Date.now() - new Date(String(set.report_last_sent)).getTime() < 5 * DAY) return json({ ok: true, skipped: "deja_envoye" });
+    try { return json(await sendReport("automatique, lundi")); } catch (e) { await logEvent("error", "rapport", "Le rapport du lundi a échoué", e); return json({ error: "erreur" }, 500); }
+  }
+
+  const expected = (Deno.env.get("ADMIN_PASSWORD") ?? "").trim();
+  const given = (req.headers.get("x-admin-password") ?? "").trim();
+  if (!expected || !safeEqual(given, expected)) {
+    // on note les mauvais mots de passe (au plus 1 ligne par minute pour ne pas remplir le journal)
+    const ip = (req.headers.get("cf-connecting-ip") ?? req.headers.get("x-forwarded-for")?.split(",")[0] ?? "").trim().slice(0, 64);
+    if (given) {
+      const { count } = await db.from("app_logs").select("id", { count: "exact", head: true }).eq("source", "connexion").eq("level", "warn")
+        .like("message", "Mot de passe admin%").gte("created_at", new Date(Date.now() - 60_000).toISOString());
+      if (!count) await logEvent("warn", "connexion", "Mot de passe admin incorrect", { adresse_ip: ip || null, navigateur: (req.headers.get("user-agent") ?? "").slice(0, 160) });
+    }
+    await new Promise((r) => setTimeout(r, 800));
+    return json({ error: "unauthorized" }, 401);
+  }
 
   try {
     switch (body.action) {
@@ -384,7 +546,35 @@ Deno.serve(async (req) => {
         const { data: visits } = await db.rpc("visit_stats");
         const { data: openPay } = await db.from("payouts").select("amount_fcfa, parrains(name)").eq("status", "to_pay");
         const { count: reviewsPending } = await db.from("product_reviews").select("id", { count: "exact", head: true }).eq("status", "pending");
-        return json({ stock, orders: recent ?? [], items: top ?? [], visits: visits ?? null, payouts: openPay ?? [], reviews_pending: reviewsPending ?? 0 });
+        const notifications = await buildNotifications().catch((e) => { logEvent("error", "admin", "Calcul des notifications impossible", e); return []; });
+        return json({ stock, orders: recent ?? [], items: top ?? [], visits: visits ?? null, payouts: openPay ?? [], reviews_pending: reviewsPending ?? 0, notifications });
+      }
+      case "notifications": {
+        return json({ notifications: await buildNotifications() });
+      }
+
+      // ================= Journal =================
+      case "logs_list": {
+        let q = db.from("app_logs").select("*").order("id", { ascending: false }).limit(200);
+        if (["info", "warn", "error"].includes(body.level)) q = q.eq("level", body.level);
+        if (body.source) q = q.eq("source", str(body.source, 30));
+        if (Number(body.before) > 0) q = q.lt("id", Number(body.before));
+        const s = str(body.q, 80).replace(/[,()*]/g, " ").trim();
+        if (s) q = q.or(`message.ilike.*${s}*,order_ref.ilike.*${s}*`);
+        const { data, error } = await q;
+        if (error) return json({ error: error.message }, 500);
+        const { count } = await db.from("app_logs").select("id", { count: "exact", head: true }).eq("level", "error").eq("seen", false);
+        return json({ rows: data, unseen_errors: count ?? 0 });
+      }
+      case "logs_seen": {
+        const { error } = await db.from("app_logs").update({ seen: true }).eq("seen", false);
+        if (error) return json({ error: error.message }, 500);
+        return json({ ok: true });
+      }
+      case "report_send": {
+        const r = await sendReport("manuel, depuis l'admin");
+        if (!r.ok) return json({ error: r.reason }, 400);
+        return json({ ok: true });
       }
 
       // ================= Commandes =================
@@ -653,11 +843,11 @@ Deno.serve(async (req) => {
 
       // ================= Réglages =================
       case "settings_get": {
-        const { data } = await db.from("settings").select("key, value");
+        const { data } = await db.from("settings").select("key, value").neq("key", "cron_secret");
         return json({ settings: Object.fromEntries((data ?? []).map((r) => [r.key, r.value])) });
       }
       case "settings_set": {
-        const allowed = ["auto_delivery", "payout_threshold", "default_discount_pct", "admin_email", "shipping_home_fcfa", "shipping_bus_fcfa"];
+        const allowed = ["auto_delivery", "payout_threshold", "default_discount_pct", "admin_email", "shipping_home_fcfa", "shipping_bus_fcfa", "weekly_report"];
         const key = str(body.key, 40);
         if (!allowed.includes(key)) return json({ error: "reglage_inconnu" }, 400);
         let value: unknown = body.value === true;
@@ -942,6 +1132,7 @@ Deno.serve(async (req) => {
         return json({ error: "action_inconnue" }, 400);
     }
   } catch (e) {
+    await logEvent("error", "admin", "Erreur dans l'admin (action « " + String(body?.action ?? "?").slice(0, 40) + " »)", e);
     return json({ error: String((e as Error).message ?? e) }, 500);
   }
 });

@@ -18,6 +18,27 @@ const json = (body: unknown, status = 200) =>
 
 const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
+// ================= Journal (table app_logs, onglet « Journal » de l'admin) =================
+// Jamais de clé ni de secret : les champs sensibles sont masqués avant l'écriture.
+const SECRET_RE = /key|token|secret|password|passwd|authorization|cle|serial|apikey/i;
+function cleanDetail(v: unknown, depth = 0): unknown {
+  if (v == null) return v;
+  if (typeof v === "string") return v.replace(/Bearer\s+\S+/gi, "Bearer ***").replace(/\b(re|sk|pk|live|test)_[A-Za-z0-9_-]{8,}/g, "***").slice(0, 800);
+  if (typeof v !== "object") return v;
+  if (depth > 3) return "…";
+  if (Array.isArray(v)) return v.slice(0, 20).map((x) => cleanDetail(x, depth + 1));
+  const out: Record<string, unknown> = {};
+  for (const [k, x] of Object.entries(v as Record<string, unknown>).slice(0, 30)) out[k] = SECRET_RE.test(k) ? "***" : cleanDetail(x, depth + 1);
+  return out;
+}
+async function logEvent(level: "info" | "warn" | "error", source: string, message: string, detail?: unknown, orderRef?: string | null) {
+  if (level === "error") console.error(source, message);
+  try {
+    const d = detail instanceof Error ? { erreur: detail.message, pile: String(detail.stack ?? "").slice(0, 800) } : detail;
+    await db.from("app_logs").insert({ level, source, message: String(message).slice(0, 300), detail: d === undefined ? null : cleanDetail(d), order_ref: orderRef ?? null });
+  } catch (_) { /* le journal ne doit jamais bloquer la boutique */ }
+}
+
 function newToken(n = 24): string {
   const b = new Uint8Array(n);
   crypto.getRandomValues(b);
@@ -146,7 +167,7 @@ function siteCtx() {
 }
 async function resendSend(to: string, mail: { subject: string; html: string; text: string }) {
   const key = (Deno.env.get("RESEND_API_KEY") ?? "").trim();
-  if (!key) return { ok: false, reason: "resend_non_configure" };
+  if (!key) { await logEvent("warn", "email", "Email non envoyé : clé Resend absente dans Supabase (secret RESEND_API_KEY)", { destinataire: to }); return { ok: false, reason: "resend_non_configure" }; }
   const r = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" },
@@ -156,7 +177,12 @@ async function resendSend(to: string, mail: { subject: string; html: string; tex
       subject: mail.subject, html: mail.html, text: mail.text,
     }),
   }).catch(() => null);
-  if (!r || !r.ok) { console.error("Resend", r ? (await r.text().catch(() => "")).slice(0, 300) : "reseau"); return { ok: false, reason: "envoi_echoue" }; }
+  if (!r || !r.ok) {
+    const rep = r ? (await r.text().catch(() => "")).slice(0, 500) : "pas de réponse (réseau)";
+    await logEvent("error", "email", "Email non envoyé à " + to + " : « " + mail.subject + " »", { statut_http: r?.status ?? null, reponse_resend: rep });
+    return { ok: false, reason: "envoi_echoue" };
+  }
+  await logEvent("info", "email", "Email envoyé à " + to + " : « " + mail.subject + " »");
   return { ok: true };
 }
 
@@ -267,10 +293,22 @@ async function notifyPayouts() {
 }
 
 // Après chaque livraison : email d'installation (étape 1) et/ou email de la clé (commande livrée), alerte parrainage
+async function orderRefOf(orderId: string) {
+  const { data } = await db.from("orders").select("ref").eq("id", orderId).maybeSingle();
+  return data?.ref ?? null;
+}
+const DELIVERY_LOG: Record<string, ["info" | "warn", string]> = {
+  delivered: ["info", "Commande livrée au client"],
+  out_of_stock: ["warn", "Commande payée mais stock vide : elle attend des clés (ajoutez du stock)"],
+  to_process: ["info", "Commande payée : des articles sont à traiter par vous"],
+  awaiting_install: ["info", "Lien de téléchargement envoyé, le client installe"],
+};
 async function sendOrderEmails(orderId: string, reason?: string) {
-  await sendInstallEmail(orderId).catch((e) => console.error("email installation", e));
-  if (reason === "delivered") await sendDeliveryEmail(orderId).catch((e) => console.error("email", e));
-  await notifyPayouts().catch((e) => console.error("alerte parrainage", e));
+  const lg = reason ? DELIVERY_LOG[reason] : undefined;
+  if (lg) await logEvent(lg[0], "livraison", lg[1], { etape: reason }, await orderRefOf(orderId));
+  await sendInstallEmail(orderId).catch((e) => logEvent("error", "email", "Erreur pendant l'email d'installation", e));
+  if (reason === "delivered") await sendDeliveryEmail(orderId).catch((e) => logEvent("error", "email", "Erreur pendant l'email de livraison", e));
+  await notifyPayouts().catch((e) => logEvent("error", "parrainage", "Erreur pendant l'alerte de versement parrain", e));
 }
 
 // Nombre d'unités disponibles par produit (seulement pour les produits à stock)
@@ -375,6 +413,12 @@ async function sitemap() {
 }
 
 Deno.serve(async (req) => {
+  try { return await handle(req); } catch (e) {
+    await logEvent("error", "boutique", "Erreur inattendue dans la fonction boutique", e);
+    return json({ error: "erreur_serveur" }, 500);
+  }
+});
+async function handle(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method === "GET" && new URL(req.url).searchParams.has("sitemap")) return sitemap();
   if (req.method !== "POST") return json({ error: "method" }, 405);
@@ -502,7 +546,7 @@ Deno.serve(async (req) => {
       if (cid) {
         const { count } = await db.from("customer_sessions").select("token_hash", { count: "exact", head: true })
           .eq("customer_id", cid).eq("kind", "login").gte("created_at", new Date(Date.now() - 3600_000).toISOString());
-        if ((count ?? 0) >= 5) return json({ ok: true });
+        if ((count ?? 0) >= 5) { await logEvent("warn", "connexion", "Trop de demandes de lien de connexion pour " + email + " (5 par heure) : bloqué"); return json({ ok: true }); }
       } else {
         // nom repris de la dernière commande passée avec cet email, s'il y en a une
         const { data: last } = await db.from("orders").select("customer_name, phone").eq("email", email).order("created_at", { ascending: false }).limit(1).maybeSingle();
@@ -529,7 +573,8 @@ Deno.serve(async (req) => {
       const cid = used[0].customer_id;
       const s = newToken(32);
       await db.from("customer_sessions").insert({ token_hash: await sha256(s), customer_id: cid, kind: "session", expires_at: new Date(Date.now() + 60 * 86400_000).toISOString() });
-      await db.from("customers").update({ last_login_at: new Date().toISOString() }).eq("id", cid);
+      const { data: who } = await db.from("customers").update({ last_login_at: new Date().toISOString() }).eq("id", cid).select("email").maybeSingle();
+      await logEvent("info", "connexion", "Client connecté à son compte : " + (who?.email ?? "?"));
       // l'historique de ce navigateur (déjà accepté par les cookies) rejoint le compte
       const v = str(body.v, 40);
       if (v) await db.from("customer_events").update({ customer_id: cid }).eq("visitor", v).is("customer_id", null);
@@ -656,6 +701,8 @@ Deno.serve(async (req) => {
         .eq("token_hash", h).eq("kind", "login").is("used_at", null).gt("expires_at", new Date().toISOString()).select("parrain_id");
       if (!used?.length) return json({ error: "lien_expire" }, 401);
       const s = newToken(32);
+      const { data: pw } = await db.from("parrains").select("name").eq("id", used[0].parrain_id).maybeSingle();
+      await logEvent("info", "connexion", "Parrain connecté à son espace : " + (pw?.name ?? "?"));
       await db.from("parrain_sessions").insert({ token_hash: await sha256(s), parrain_id: used[0].parrain_id, kind: "session", expires_at: new Date(Date.now() + 30 * 86400_000).toISOString() });
       return json({ s });
     }
@@ -792,13 +839,15 @@ Deno.serve(async (req) => {
         const { data: o, error } = await db.from("orders").insert(row).select("id").single();
         if (error) {
           if (String(error.message).includes("duplicate")) continue;
+          await logEvent("error", "boutique", "Une commande n'a pas pu être enregistrée", { erreur: error.message, email });
           return json({ error: "error" }, 500);
         }
         const { error: e2 } = await db.from("order_items").insert(priced.map((x) => ({
           order_id: o.id, product_id: x.p.id, product_name: x.p.name, delivery_type: x.p.delivery_type,
           unit_price: x.unit, quantity: x.q, list_price: x.p.price_fcfa, wholesale_price: x.wholesale,
         })));
-        if (e2) { await db.from("orders").delete().eq("id", o.id); return json({ error: "error" }, 500); }
+        if (e2) { await db.from("orders").delete().eq("id", o.id); await logEvent("error", "boutique", "Une commande n'a pas pu être enregistrée (articles)", { erreur: e2.message, email }); return json({ error: "error" }, 500); }
+        await logEvent("info", "boutique", "Nouvelle commande de " + name + " : " + row.amount_fcfa + " FCFA (en attente de paiement)", { articles: priced.map((x) => x.q + " x " + x.p.name), code_parrain: rc?.code ?? null }, row.ref);
         return json({ ref: row.ref, token: row.public_token });
       }
       return json({ error: "error" }, 500);
@@ -809,9 +858,10 @@ Deno.serve(async (req) => {
       const token = str(body.o, 64);
       const payRef = str(body.payment_ref, 100);
       if (!token || !payRef) return json({ error: "invalide" }, 400);
-      const { error } = await db.from("orders").update({ payment_ref: payRef, payment_method: "manuel" })
-        .eq("public_token", token).eq("status", "pending");
+      const { data: upd, error } = await db.from("orders").update({ payment_ref: payRef, payment_method: "manuel" })
+        .eq("public_token", token).eq("status", "pending").select("ref");
       if (error) return json({ error: "error" }, 500);
+      if (upd?.length) await logEvent("warn", "paiement", "Le client dit avoir payé (Wave / Orange Money) : vérifiez et validez la commande", { numero_transaction: payRef }, upd[0].ref);
       return json({ ok: true });
     }
 
@@ -826,7 +876,7 @@ Deno.serve(async (req) => {
       if (!it?.length) return json({ error: "deja_demande" }, 400);
       const tokens = Array.from({ length: 10 }, () => newToken());
       const { data, error } = await db.rpc("deliver_order_v3", { p_order_id: o.id, p_tokens: tokens, p_days: 7, p_force: false });
-      if (error) return json({ error: "error" }, 500);
+      if (error) { await logEvent("error", "livraison", "Le client a fini l'installation mais l'envoi de la clé a échoué", { erreur: error.message }, await orderRefOf(o.id)); return json({ error: "error" }, 500); }
       await sendOrderEmails(o.id, data?.reason);
       // delivered : clé envoyée ; to_process : livraison auto désactivée, l'admin l'envoie ; out_of_stock : dès réception du stock
       return json({ ok: true, reason: data?.reason });
@@ -904,4 +954,4 @@ Deno.serve(async (req) => {
     default:
       return json({ error: "action_inconnue" }, 400);
   }
-});
+}

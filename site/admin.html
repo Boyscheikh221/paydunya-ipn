@@ -55,6 +55,17 @@
   .s-available{background:var(--vert)} .s-sent{background:var(--bleu)} .s-disabled{background:var(--gris)}
   .s-active{background:var(--vert)} .s-revoked{background:var(--rouge)} .s-used{background:var(--gris)} .s-expired{background:var(--jaune)}
   .s-on,.s-sale,.s-visible,.s-pub{background:var(--vert)} .s-off,.s-hidden,.s-draft{background:var(--gris)}
+  .s-error{background:var(--rouge)} .s-warn{background:var(--jaune)} .s-info{background:var(--bleu)}
+  .todo { border-color:#fca5a5; }
+  .todo ul { list-style:none; margin:0; padding:0; }
+  .todo li { display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid var(--ligne); }
+  .todo li:first-child { border-top:0; }
+  .todo li .t { flex:1; min-width:0; }
+  .todo li.ok { color:var(--vert); font-weight:700; }
+  .logrow { cursor:pointer; }
+  .logrow.unseen td:first-child { box-shadow:inset 3px 0 0 var(--rouge); }
+  .logdetail td { background:#f8fafc; }
+  .logdetail pre { margin:0; white-space:pre-wrap; word-break:break-word; font-size:12px; max-height:320px; overflow:auto; }
   .acts { display:flex; flex-wrap:wrap; gap:4px; }
   .small { font-size:12px; color:var(--gris); }
   .mono { font-family:ui-monospace,Consolas,monospace; }
@@ -92,7 +103,7 @@
 <div id="app" class="layout hidden">
   <nav>
     <a class="logo" href="/" target="_blank" rel="noopener"><span class="a">licence</span><span class="b">off</span></a>
-    <button data-tab="dash" class="on">📊 Tableau de bord</button>
+    <button data-tab="dash" class="on">📊 Tableau de bord <span id="badgeTodo" class="badge hidden" title="Actions à faire"></span></button>
     <button data-tab="orders">🧾 Commandes <span id="badgePending" class="badge hidden"></span></button>
     <button data-tab="products">📦 Produits</button>
     <button data-tab="keys">🔑 Stock</button>
@@ -105,6 +116,7 @@
     <button data-tab="reviews">⭐ Avis <span id="badgeRev" class="badge hidden"></span></button>
     <button data-tab="faq">❓ FAQ</button>
     <button data-tab="links">🔗 Liens</button>
+    <button data-tab="logs">📜 Journal <span id="badgeLog" class="badge hidden" title="Erreurs non lues" style="background:var(--rouge)"></span></button>
     <button data-tab="settings">⚙️ Réglages</button>
     <div class="bottom"><button id="btnLogout">↩ Déconnexion</button></div>
   </nav>
@@ -113,6 +125,7 @@
     <!-- ===== Tableau de bord ===== -->
     <section id="tab-dash">
       <h1>Tableau de bord</h1>
+      <div id="todoBox" class="box todo"><h2 style="margin:0 0 6px">🔔 À faire</h2><ul id="todoList"><li class="small">Chargement…</li></ul></div>
       <div id="payWarn" class="box hidden" style="border-color:#86efac;background:#f0fdf4"></div>
       <div id="autoWarn" class="box hidden" style="border-color:#fcd34d;background:#fffbeb">⚠️ La livraison automatique est <b>désactivée</b> : les commandes payées attendent votre validation dans « Commandes ». <a href="#" id="autoWarnLink">Changer</a></div>
       <div id="kpis" class="kpis"></div>
@@ -452,8 +465,26 @@
     </section>
 
     <!-- ===== Réglages ===== -->
+    <section id="tab-logs" class="hidden">
+      <h1>Journal</h1>
+      <p class="small">Ce qui se passe en coulisses : paiements PayDunya, emails, livraisons, téléchargements, connexions et erreurs. Cliquez sur une ligne pour voir le détail technique. Aucune clé ni mot de passe n'est enregistré ici. On garde 90 jours.</p>
+      <div class="bar" style="flex-wrap:wrap;gap:8px;margin-bottom:12px">
+        <select id="lLevel"><option value="">Tout</option><option value="error">Erreurs</option><option value="warn">Avertissements</option><option value="info">Infos</option></select>
+        <select id="lSource"><option value="">Toutes les origines</option><option value="paiement">Paiement</option><option value="email">Emails</option><option value="livraison">Livraison</option><option value="telechargement">Téléchargements</option><option value="connexion">Connexions</option><option value="boutique">Boutique</option><option value="parrainage">Parrainage</option><option value="rapport">Rapport</option><option value="admin">Admin</option></select>
+        <input id="lQ" type="search" placeholder="Rechercher (message, n° de commande)" style="flex:1;min-width:180px">
+        <button id="lSeen" class="grey">Tout marquer comme lu</button>
+      </div>
+      <div class="box"><div class="tablewrap"><table><thead><tr><th>Date</th><th>Niveau</th><th>Origine</th><th>Message</th><th>Commande</th></tr></thead><tbody id="logRows"></tbody></table></div>
+        <div class="bar" style="margin-top:10px"><button id="lMore" class="grey hidden">Voir plus ancien</button></div></div>
+    </section>
+
     <section id="tab-settings" class="hidden">
       <h1>Réglages</h1>
+      <div class="box switch">
+        <div><h2 style="margin:0 0 4px">Rapport de la semaine</h2>
+          <div class="small">Chaque lundi à 8 h, un email à votre adresse d'alerte (ci-dessous) : ventes et visites de la semaine, produits les plus vendus, stock bas, parrains à payer, commandes en attente, avis à valider.</div></div>
+        <div style="text-align:right"><span id="repTag" class="tag"></span><br><button id="repToggle" style="margin-top:8px"></button><br><button id="repNow" class="grey" style="margin-top:8px">Recevoir maintenant</button></div>
+      </div>
       <div class="box switch">
         <div><h2 style="margin:0 0 4px">Livraison automatique</h2>
           <div class="small">Activée : dès que le paiement est confirmé, le client reçoit ses clés et liens tout seul.<br>Désactivée : les commandes payées attendent que vous cliquiez « Livrer maintenant ». Chaque produit a aussi son propre interrupteur.</div></div>
@@ -464,7 +495,7 @@
         <div class="grid">
           <div><label>Seuil de versement (FCFA)</label><input id="sThreshold" type="number" min="0"></div>
           <div><label>Remise client par défaut (%)</label><input id="sDiscount" type="number" min="0" max="90" step="0.5"></div>
-          <div><label>Votre email pour les alertes de versement</label><input id="sAdminEmail" type="email" placeholder="vous@gmail.com"></div>
+          <div><label>Votre email pour les alertes et le rapport du lundi</label><input id="sAdminEmail" type="email" placeholder="vous@gmail.com"></div>
         </div>
         <div class="bar" style="margin-top:10px"><button id="sSavePar" class="green">Enregistrer</button></div>
       </div>
@@ -508,6 +539,7 @@ let stock = []; // stock de clés par produit (rempli par le tableau de bord)
 const METHOD = { wave: "Wave", orange_money: "Orange Money", free_money: "Free Money", especes: "Espèces", paydunya: "PayDunya", manuel: "Transfert manuel", autre: "Autre" };
 const ERR = {
   titre_obligatoire: "Le titre est obligatoire.",
+  pas_d_email: "Ajoutez d'abord votre email d'alerte (Réglages > Parrainage), puis enregistrez.",
   adresse_deja_utilisee: "Cette adresse de page est déjà utilisée. Choisissez-en une autre.",
   sku_deja_utilise: "Cette référence (SKU) est déjà utilisée par un autre produit.",
   lien_invalide: "Le lien de téléchargement doit commencer par https://",
@@ -575,7 +607,7 @@ async function uploadImage(input, hidden, preview, msg) {
 }
 
 // ---------- navigation ----------
-const loaders = { dash: loadDash, orders: loadOrders, products: loadProducts, keys: loadKeys, blog: loadBlog, pages: loadPages, emails: loadTemplates, send: loadSend, parrains: loadParrains, clients: loadClients, reviews: loadReviews, faq: loadFaq, links: loadLinks, settings: loadSettings };
+const loaders = { dash: loadDash, orders: loadOrders, products: loadProducts, keys: loadKeys, blog: loadBlog, pages: loadPages, emails: loadTemplates, send: loadSend, parrains: loadParrains, clients: loadClients, reviews: loadReviews, faq: loadFaq, links: loadLinks, logs: loadLogs, settings: loadSettings };
 document.querySelectorAll("nav [data-tab]").forEach((b) => b.addEventListener("click", () => openTab(b.dataset.tab)));
 function openTab(t) {
   document.querySelectorAll("nav [data-tab]").forEach((b) => b.classList.toggle("on", b.dataset.tab === t));
@@ -598,6 +630,7 @@ async function loadRefs() {
 async function loadDash() {
   const [d, s] = await Promise.all([api({ action: "dashboard" }), api({ action: "settings_get" })]);
   stock = d.stock || [];
+  renderTodo(d.notifications || []);
   $("badgeRev").classList.toggle("hidden", !d.reviews_pending); $("badgeRev").textContent = d.reviews_pending || "";
   settings = s.settings;
   $("autoWarn").classList.toggle("hidden", settings.auto_delivery !== false);
@@ -633,6 +666,58 @@ async function loadDash() {
   $("dashOrders").replaceChildren(...d.orders.slice(0, 8).map((o) => tr(td(dt(o.created_at)), td(o.ref), td(o.customer_name), td(tag(o.status)), td(fcfa(o.amount_fcfa)))));
 }
 $("autoWarnLink").addEventListener("click", (e) => { e.preventDefault(); openTab("settings"); });
+
+// ---------- notifications (« À faire ») ----------
+function renderTodo(list) {
+  const urgent = list.filter((x) => x.level === "urgent").length;
+  const b = $("badgeTodo"); b.textContent = urgent; b.classList.toggle("hidden", !urgent);
+  document.title = (urgent ? "(" + urgent + ") " : "") + "licenceoff — Administration";
+  const err = list.find((x) => x.kind === "errors");
+  $("badgeLog").textContent = err ? err.count : ""; $("badgeLog").classList.toggle("hidden", !err);
+  $("todoBox").style.borderColor = urgent ? "" : "#86efac";
+  $("todoList").replaceChildren(...(list.length ? list.map((x) => {
+    const li = el("li");
+    li.append(el("span", x.level === "urgent" ? "🔴" : "🔵"), el("span", x.text, "t"), btn("Voir", "grey", () => openTab(x.tab)));
+    return li;
+  }) : [el("li", "Rien à faire, tout est en ordre ✔", "ok")]));
+}
+async function refreshTodo() {
+  if (!pw || document.hidden) return;
+  try { renderTodo((await api({ action: "notifications" })).notifications || []); } catch (_) { /* ignoré */ }
+}
+setInterval(refreshTodo, 120000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshTodo(); });
+
+// ---------- journal ----------
+const SRC = { paiement: "Paiement", email: "Email", livraison: "Livraison", telechargement: "Téléchargement", connexion: "Connexion", boutique: "Boutique", parrainage: "Parrainage", rapport: "Rapport", admin: "Admin" };
+const LVL = { error: "Erreur", warn: "Attention", info: "Info" };
+let logRows = [];
+async function loadLogs(more) {
+  const q = { action: "logs_list", level: $("lLevel").value, source: $("lSource").value, q: $("lQ").value };
+  if (more === true && logRows.length) q.before = logRows[logRows.length - 1].id;
+  const d = await api(q);
+  logRows = more === true ? logRows.concat(d.rows) : d.rows;
+  $("badgeLog").textContent = d.unseen_errors || ""; $("badgeLog").classList.toggle("hidden", !d.unseen_errors);
+  $("lMore").classList.toggle("hidden", d.rows.length < 200);
+  const out = [];
+  for (const r of logRows) {
+    const row = tr(td(dt(r.created_at)), td(el("span", LVL[r.level] || r.level, "tag s-" + r.level)), td(SRC[r.source] || r.source), td(r.message), td(r.order_ref || ""));
+    row.className = "logrow" + (!r.seen && r.level === "error" ? " unseen" : "");
+    const det = document.createElement("tr"); det.className = "logdetail hidden";
+    const c = document.createElement("td"); c.colSpan = 5;
+    c.append(el("pre", r.detail ? JSON.stringify(r.detail, null, 2) : "Pas de détail technique."));
+    det.append(c);
+    row.addEventListener("click", () => det.classList.toggle("hidden"));
+    out.push(row, det);
+  }
+  $("logRows").replaceChildren(...(out.length ? out : [tr(td("Rien pour l'instant."))]));
+}
+$("lLevel").addEventListener("change", () => loadLogs().catch((e) => toast(errMsg(e))));
+$("lSource").addEventListener("change", () => loadLogs().catch((e) => toast(errMsg(e))));
+let lqT; $("lQ").addEventListener("input", () => { clearTimeout(lqT); lqT = setTimeout(() => loadLogs().catch((e) => toast(errMsg(e))), 350); });
+$("lMore").addEventListener("click", () => loadLogs(true).catch((e) => toast(errMsg(e))));
+$("lSeen").addEventListener("click", async () => { try { await api({ action: "logs_seen" }); toast("Journal marqué comme lu ✔"); await loadLogs(); refreshTodo(); } catch (e) { toast(errMsg(e)); } });
+
 
 function renderVisits(v) {
   if (!v) { $("visKpis").replaceChildren(el("p", "Statistiques indisponibles.", "small")); return; }
@@ -1053,7 +1138,17 @@ async function loadSettings() {
   const b = $("autoToggle"); b.textContent = on ? "Désactiver" : "Activer"; b.className = on ? "red" : "green";
   $("sThreshold").value = settings.payout_threshold ?? 10000; $("sDiscount").value = settings.default_discount_pct ?? 10; $("sAdminEmail").value = settings.admin_email || "";
   $("sShipHome").value = settings.shipping_home_fcfa ?? 1500; $("sShipBus").value = settings.shipping_bus_fcfa ?? 1000;
+  const rep = settings.weekly_report !== false;
+  const rt = $("repTag"); rt.textContent = rep ? "Activé" : "Désactivé"; rt.className = "tag s-" + (rep ? "on" : "off");
+  const rb = $("repToggle"); rb.textContent = rep ? "Désactiver" : "Activer"; rb.className = rep ? "red" : "green";
 }
+$("repToggle").addEventListener("click", async () => {
+  try { await api({ action: "settings_set", key: "weekly_report", value: settings.weekly_report === false }); await loadSettings(); toast("Rapport du lundi " + (settings.weekly_report !== false ? "activé" : "désactivé") + " ✔"); } catch (e) { toast(errMsg(e)); }
+});
+$("repNow").addEventListener("click", async () => {
+  const b = $("repNow"); b.disabled = true;
+  try { await api({ action: "report_send" }); toast("Rapport envoyé à " + (settings.admin_email || "votre email") + " ✔"); } catch (e) { toast(errMsg(e)); } finally { b.disabled = false; }
+});
 $("sSaveShip").addEventListener("click", async () => {
   try {
     await api({ action: "settings_set", key: "shipping_home_fcfa", value: $("sShipHome").value });
