@@ -993,6 +993,17 @@ function clientMessage(o) {
     "", "Le lien de téléchargement ne fonctionne qu'une seule fois.", "", "licenceoff.com — merci de votre confiance");
   return lines.join("\n");
 }
+async function renewLink(o, i, reload) {
+  if (!confirm("Renouveler le lien de téléchargement de « " + i.product_name + " » pour " + o.customer_name + " ?\n\nLe client garde le même lien que dans son email : il marchera de nouveau une fois. Aucune nouvelle commande n'est créée.")) return;
+  try { await api({ action: "item_new_link", id: i.id }); } catch (e) { toast(errMsg(e)); return; }
+  toast("Lien renouvelé ✔");
+  const page = ORDER_PAGE + "?o=" + o.public_token;
+  const msg = "Bonjour " + (o.customer_name || "") + ", votre lien de téléchargement (commande " + o.ref + ") marche de nouveau. Ouvrez-le ici : " + page + "\nSi le téléchargement est bloqué, essayez avec un autre navigateur ou une autre connexion (wifi / 4G).";
+  if (o.phone && confirm("Lien renouvelé ✔\n\nPrévenir le client sur WhatsApp ?")) window.open("https://wa.me/" + waNumber(o.phone) + "?text=" + encodeURIComponent(msg), "_blank", "noopener");
+  else if (!o.phone) copy(msg, "Lien renouvelé ✔ · message pour le client copié");
+  reload();
+}
+
 async function cancelOrder(o, items, reload) {
   const paid = o.status !== "pending";
   const nKeys = items.reduce((n, i) => n + (i.license_keys || []).length, 0);
@@ -1032,7 +1043,8 @@ async function loadOrders() {
       if (i.claim_requested_at && i.status !== "delivered") box.append(el("br"), el("span", "📩 Le client a fini l'installation et demande sa clé", "small"));
       if (i.status === "awaiting_install") acts.append(btn("🔑 Envoyer la clé maintenant", "green", async () => { if (confirm("Envoyer la clé sans attendre que le client confirme l'installation ?")) await run({ action: "item_send_key_now", id: i.id }, "Clé envoyée ✔", reload)(); }));
       if (i.status === "to_process" && ["manual", "physical"].includes(i.delivery_type)) acts.append(btn(i.delivery_type === "physical" ? "📦 Marquer livré" : "✔ Marquer fait", "green", run({ action: "item_complete", id: i.id }, "Article marqué livré ✔", reload)));
-      if (i.status === "delivered" && ["key_file", "file"].includes(i.delivery_type)) acts.append(btn("Nouveau lien", "grey", async () => { if (confirm("Créer un nouveau lien à usage unique ? L'ancien lien non utilisé sera désactivé.")) await run({ action: "item_new_link", id: i.id }, "Nouveau lien créé ✔", reload)(); }));
+      if (o.status !== "cancelled" && ["delivered", "awaiting_install"].includes(i.status) && ["key_file", "file"].includes(i.delivery_type) && (i.downloads || []).length)
+        acts.append(btn("🔄 Renouveler le lien", "org", () => renewLink(o, i, reload)));
       if (acts.childNodes.length) box.append(acts);
       cItems.append(box);
     }
