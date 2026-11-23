@@ -344,6 +344,15 @@ async function sendOrderEmails(orderId: string, reason?: string) {
 }
 
 // Consentement aux offres par email (newsletter) : on garde la date et l'origine
+// nom par défaut des ventes manuelles (« Client WhatsApp ») ou vide : le vrai nom n'est pas connu
+function isPlaceholderName(n?: string | null) {
+  const t = String(n ?? "").trim();
+  return t.length < 2 || /^client( (whatsapp|facebook|wa|fb))?$/i.test(t) || /^(inconnu|n\/a)$/i.test(t);
+}
+function maskEmail(e?: string | null) {
+  const [u, d] = String(e ?? "").split("@");
+  return u && d ? u.slice(0, 2) + "•••@" + d : "";
+}
 async function setMarketing(email: string, optin: boolean, source: string) {
   const e = String(email ?? "").trim().toLowerCase();
   if (!e.includes("@")) return;
@@ -1130,11 +1139,34 @@ async function handle(req: Request): Promise<Response> {
         lines, total: o.amount_fcfa, vat_rate: Number(o.vat_rate) || 0 });
     }
 
+    case "set_name": { // le client donne son prénom et son nom (commande passée par WhatsApp / Facebook) → commande, facture, fiche client
+      const token = str(body.o, 64);
+      const first = str(body.first, 60).replace(/\s+/g, " ").trim(), last = str(body.last, 60).replace(/\s+/g, " ").trim();
+      if (!token) return json({ error: "not_found" }, 404);
+      const { data: o } = await db.from("orders").select("id, email, customer_name, phone").eq("public_token", token).maybeSingle();
+      if (!o) return json({ error: "not_found" }, 404);
+      const askName = isPlaceholderName(o.customer_name), askPhone = String(o.phone ?? "").replace(/\D/g, "").length < 8;
+      if (!askName && !askPhone) return json({ ok: true, already: true }); // déjà connu : on n'écrase rien
+      if (askName && (first.length < 2 || last.length < 2 || /[<>@\d]/.test(first + last))) return json({ error: "nom_invalide" }, 400);
+      const phone = str(body.phone, 30).replace(/[^\d+]/g, "");
+      if (askPhone && phone.replace(/\D/g, "").length < 8) return json({ error: "telephone_invalide" }, 400);
+      const cap = (w: string) => w.split(/([ -])/).map((x) => x.length > 1 ? x[0].toLocaleUpperCase("fr") + x.slice(1) : x).join("");
+      const name = askName ? cap(first) + " " + cap(last) : o.customer_name;
+      await db.from("orders").update({ customer_name: name, ...(askPhone ? { phone } : {}) }).eq("id", o.id);
+      const email = String(o.email).toLowerCase();
+      const { data: c } = await db.from("customers").select("id, name, phone").eq("email", email).maybeSingle();
+      if (c) await db.from("customers").update({ name: c.name && !isPlaceholderName(c.name) ? c.name : name, phone: c.phone || phone || null }).eq("id", c.id);
+      else await db.from("customers").insert({ email, name, phone: phone || o.phone || null });
+      if (body.marketing === true) await setMarketing(email, true, "page_commande");
+      await logEvent("info", "boutique", "Le client a donné son nom pour la commande", { nom: name });
+      return json({ ok: true, name });
+    }
+
     case "status": {
       const token = str(body.o, 64);
       if (!token) return json({ error: "not_found" }, 404);
       const { data: o } = await db.from("orders")
-        .select("id, ref, invoice_no, status, amount_fcfa, payment_method, payment_ref, paydunya_token, key_locked, created_at, delivered_at, shipping_method, shipping_fee_fcfa, shipping_address, shipping_zone, order_items(id, product_name, delivery_type, unit_price, quantity, status, created_at, claim_requested_at, products(slug, image_url, installer_path))")
+        .select("id, ref, invoice_no, status, amount_fcfa, payment_method, payment_ref, paydunya_token, key_locked, customer_name, email, phone, created_at, delivered_at, shipping_method, shipping_fee_fcfa, shipping_address, shipping_zone, order_items(id, product_name, delivery_type, unit_price, quantity, status, created_at, claim_requested_at, products(slug, image_url, installer_path))")
         .eq("public_token", token).maybeSingle();
       if (!o) return json({ error: "not_found" }, 404);
       const paid = ["paid", "processing", "installing", "delivered"].includes(o.status);
@@ -1157,7 +1189,11 @@ async function handle(req: Request): Promise<Response> {
         for (const l of ls ?? []) if (!linkByItem[l.order_item_id]) linkByItem[l.order_item_id] = l;
       }
 
+      // nom pas encore connu (vente WhatsApp / Facebook) : on le demande avant d'afficher les clés et les liens
+      const askName = isPlaceholderName(o.customer_name), askPhone = String(o.phone ?? "").replace(/\D/g, "").length < 8;
+      const needName = askName || askPhone;
       return json({
+        need_name: needName, ask_name: askName, ask_phone: askPhone, email_hint: needName ? maskEmail(o.email) : null,
         ref: o.ref, status: o.status, amount_fcfa: o.amount_fcfa, created_at: o.created_at, invoice: !!o.invoice_no,
         payment_method: o.payment_method, has_payment_ref: !!o.payment_ref, has_paydunya: !!o.paydunya_token, key_locked: !!o.key_locked,
         shipping: o.shipping_method ? { method: o.shipping_method, fee: o.shipping_fee_fcfa, address: o.shipping_address, zone: o.shipping_zone } : null,
@@ -1169,12 +1205,12 @@ async function handle(req: Request): Promise<Response> {
             // délai de grâce de 30 min après le premier clic (voir consume_download)
             const grace = link?.last_download_at && Date.now() - new Date(link.last_download_at).getTime() < 30 * 60_000;
             if (link) state = new Date(link.expires_at) < new Date() ? "expired" : link.download_count >= link.max_downloads && !grace ? "used" : "ready";
-            download = { state, token: state === "ready" ? link.token : null };
+            download = { state: needName && state === "ready" ? "need_name" : state, token: state === "ready" && !needName ? link.token : null };
           }
           return {
             name: i.product_name, slug: i.products?.slug ?? null, image_url: i.products?.image_url ?? "",
             delivery_type: i.delivery_type, unit_price: i.unit_price, quantity: i.quantity, status: i.status,
-            keys: i.status === "delivered" ? (keysByItem[i.id] ?? []) : [], download,
+            keys: i.status === "delivered" && !needName ? (keysByItem[i.id] ?? []) : [], keys_hidden: i.status === "delivered" && needName && (keysByItem[i.id] ?? []).length > 0, download,
             id: i.id, can_claim: i.status === "awaiting_install" && !i.claim_requested_at,
             claimed: !!i.claim_requested_at && i.status !== "delivered",
             reviewed: reviewedIds.has(i.id),

@@ -73,7 +73,9 @@ function itemBlock(i) {
       body.append(el("div", { class: "key" }, k), c);
     }
   }
-  if (i.download) {
+  if (i.keys_hidden || i.download?.state === "need_name") {
+    body.append(el("p", { class: "note", style: "margin-top:8px;font-weight:700", text: "🔒 " + (i.keys_hidden ? "Votre clé est prête" : "Votre logiciel est prêt") + " : indiquez vos coordonnées ci-dessus pour l'afficher." }));
+  } else if (i.download) {
     if (i.download.state === "ready") {
       const b = el("button", { class: "btn block", style: "margin-top:10px", text: "Télécharger le logiciel" });
       b.addEventListener("click", async () => {
@@ -89,7 +91,7 @@ function itemBlock(i) {
       body.append(el("p", { class: "note", text: "Lien de téléchargement déjà utilisé ou expiré. Écrivez-nous pour en recevoir un nouveau." }));
     }
   }
-  if (i.can_claim) {
+  if (i.can_claim && !CUR.need_name) {
     const msg = el("p", { class: "msg" });
     const b = el("button", { class: "btn orange block", style: "margin-top:12px", text: "✅ J'ai fini l'installation : recevoir ma clé" });
     b.addEventListener("click", async () => {
@@ -108,6 +110,34 @@ function itemBlock(i) {
   if (i.reviewed) body.append(el("p", { class: "note", text: "⭐ Merci pour votre avis !" }));
   else if (i.can_review) body.append(reviewForm(i));
   return box;
+}
+
+// commande passée par WhatsApp / Facebook : le client donne son nom et son téléphone avant de voir sa clé
+let CUR = {};
+function nameForm() {
+  const inp = (ph, type, ac) => el("input", { class: "field", placeholder: ph, type: type || "text", autocomplete: ac || "off", style: "margin-top:8px" });
+  const first = inp("Prénom", "text", "given-name"), last = inp("Nom", "text", "family-name"), phone = inp("Numéro WhatsApp (ex. 77 123 45 67)", "tel", "tel");
+  const mkt = el("input", { type: "checkbox", style: "margin-top:3px" });
+  const msg = el("p", { class: "msg" });
+  const b = el("button", { class: "btn orange block", style: "margin-top:12px", text: "🔑 Valider et voir ma clé" });
+  b.addEventListener("click", async () => {
+    msg.textContent = "";
+    if (CUR.ask_name && (first.value.trim().length < 2 || last.value.trim().length < 2)) { msg.textContent = "Indiquez votre prénom et votre nom."; return (first.value.trim().length < 2 ? first : last).focus(); }
+    if (CUR.ask_phone && phone.value.replace(/\D/g, "").length < 8) { msg.textContent = "Indiquez votre numéro WhatsApp."; return phone.focus(); }
+    b.disabled = true; b.textContent = "Enregistrement…";
+    const d = await LO.boutique({ action: "set_name", o: token, first: first.value, last: last.value, phone: phone.value, marketing: mkt.checked }).catch(() => ({ error: "net" }));
+    if (d.ok) return load();
+    b.disabled = false; b.textContent = "🔑 Valider et voir ma clé";
+    msg.textContent = d.error === "nom_invalide" ? "Vérifiez votre prénom et votre nom (lettres seulement)." : d.error === "telephone_invalide" ? "Vérifiez votre numéro WhatsApp." : "Erreur, réessayez.";
+  });
+  return el("div", { class: "panel", style: "margin-bottom:14px;border:2px solid var(--orange,#F5A21B)" },
+    el("h2", { style: "margin:0 0 6px;font-size:18px", text: "Encore une étape pour voir votre clé" }),
+    el("p", { class: "note", style: "margin:0", text: "Indiquez vos coordonnées : elles figurent sur votre facture et créent votre compte client licenceoff.com" + (CUR.email_hint ? " (" + CUR.email_hint + ")" : "") + ", pour retrouver vos clés à tout moment." }),
+    CUR.ask_name ? el("div", { style: "display:grid;grid-template-columns:1fr 1fr;gap:0 8px" }, first, last) : null,
+    CUR.ask_phone ? phone : null,
+    el("label", { class: "note", style: "display:flex;gap:8px;align-items:flex-start;margin-top:10px;cursor:pointer" }, mkt, "Recevoir les offres et nouveautés licenceoff.com par email (désinscription en un clic)."),
+    b, msg,
+    el("p", { class: "note", style: "margin:8px 0 0" }, "Vos données servent uniquement à votre commande et à votre compte. ", el("a", { href: "/confidentialite", text: "Confidentialité" })));
 }
 
 // avis client : 1 par article livré, publié après validation
@@ -164,7 +194,9 @@ async function load() {
     el("div", { class: "tot" }, el("span", { text: "Total" }), el("span", { text: fcfa(o.amount_fcfa) })),
     o.invoice ? el("p", { style: "margin:10px 0 0" }, el("a", { class: "btn light", href: "/facture?o=" + encodeURIComponent(token), target: "_blank", rel: "noopener", text: "🧾 Ma facture (PDF)" })) : null);
 
+  CUR = o;
   const parts = [head];
+  if (o.need_name) parts.push(nameForm());
   if (o.status === "pending" && o.key_locked) {
     parts.push(el("div", { class: "panel", style: "margin-bottom:14px;border:2px solid var(--orange,#F5A21B)" },
       el("h2", { style: "margin:0 0 6px;font-size:18px", text: "🔒 Votre clé est réservée" }),
