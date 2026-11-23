@@ -21,6 +21,9 @@
   nav button { display:flex; align-items:center; gap:8px; width:100%; background:transparent; color:#cbd5e1; text-align:left; padding:10px; border-radius:8px; font-size:14px; margin-bottom:2px; }
   nav button.on { background:rgba(255,255,255,.12); color:#fff; }
   nav .badge { margin-left:auto; background:var(--orange); color:#fff; border-radius:99px; padding:0 7px; font-size:12px; }
+  nav #badgeMsg { background:#dc2626; font-weight:700; }
+  nav button.has-msg { color:#dc2626; font-weight:700; }
+  #todoList li.msg .t { color:#dc2626; font-weight:700; }
   nav .bottom { margin-top:24px; border-top:1px solid rgba(255,255,255,.15); padding-top:12px; }
   main { flex:1; padding:22px; min-width:0; }
   h1 { font-size:20px; margin:0 0 16px; }
@@ -712,11 +715,12 @@ function renderTodo(list) {
   document.title = (urgent ? "(" + urgent + ") " : "") + "licenceoff — Administration";
   const msg = list.find((x) => x.kind === "messages");
   $("badgeMsg").textContent = msg ? msg.count : ""; $("badgeMsg").classList.toggle("hidden", !msg);
+  document.querySelector('nav [data-tab="messages"]').classList.toggle("has-msg", !!msg);
   const err = list.find((x) => x.kind === "errors");
   $("badgeLog").textContent = err ? err.count : ""; $("badgeLog").classList.toggle("hidden", !err);
   $("todoBox").style.borderColor = urgent ? "" : "#86efac";
   $("todoList").replaceChildren(...(list.length ? list.map((x) => {
-    const li = el("li");
+    const li = el("li", null, x.kind === "messages" ? "msg" : "");
     li.append(el("span", x.level === "urgent" ? "🔴" : "🔵"), el("span", x.text, "t"), btn("Voir", "grey", () => openTab(x.tab)));
     return li;
   }) : [el("li", "Rien à faire, tout est en ordre ✔", "ok")]));
