@@ -354,7 +354,11 @@ async function createAdminOrder(body: any): Promise<Response | { o: any }> {
   if (error) return json({ error: error.message }, 500);
   const { error: e2 } = await db.from("order_items").insert(items.map((l: { id: string; qty: number }) => ({
     order_id: o.id, product_id: l.id, product_name: byId[l.id].name, delivery_type: byId[l.id].delivery_type,
-    unit_price: byId[l.id].price_fcfa, quantity: l.qty,
+    // prix réellement payé (vente WhatsApp à un autre prix) : réparti sur les lignes pour des stats justes
+    unit_price: amount === computed ? byId[l.id].price_fcfa
+      : computed > 0 ? Math.round(byId[l.id].price_fcfa * amount / computed)
+      : Math.round(amount / items.reduce((n: number, x: { qty: number }) => n + x.qty, 0)),
+    quantity: l.qty,
   })));
   if (e2) { await db.from("orders").delete().eq("id", o.id); return json({ error: e2.message }, 500); }
   return { o };
