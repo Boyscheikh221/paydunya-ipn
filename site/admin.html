@@ -21,6 +21,16 @@
   nav button { display:flex; align-items:center; gap:8px; width:100%; background:transparent; color:#cbd5e1; text-align:left; padding:10px; border-radius:8px; font-size:14px; margin-bottom:2px; }
   nav button.on { background:rgba(255,255,255,.12); color:#fff; }
   nav .badge { margin-left:auto; background:var(--orange); color:#fff; border-radius:99px; padding:0 7px; font-size:12px; }
+  .seg { display:inline-flex; border:1px solid #d6dce8; border-radius:10px; overflow:hidden; }
+  .seg button { background:#fff; color:#334; border:0; border-radius:0; padding:6px 12px; font-weight:600; }
+  .seg button.on { background:var(--blue,#1E4FB8); color:#fff; }
+  .ori { display:flex; gap:18px; align-items:center; flex-wrap:wrap; }
+  .oripie { width:200px; height:200px; flex:none; }
+  .oripie path { stroke:#fff; stroke-width:2px; }
+  .oripie path:hover { opacity:.85; }
+  .oritab { flex:1; min-width:240px; }
+  .oritab td:first-child { white-space:nowrap; }
+  .sw { display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:6px; vertical-align:-1px; }
   nav #badgeMsg { background:#dc2626; font-weight:700; }
   nav button.has-msg { color:#dc2626; font-weight:700; }
   #todoList li.msg .t { color:#dc2626; font-weight:700; }
@@ -158,8 +168,14 @@
           <div><h2>D'où viennent les visiteurs</h2><table class="small"><tbody id="visRefs"></tbody></table></div>
         </div>
       </div>
+      <div class="box">
+        <div class="bar" style="justify-content:space-between;flex-wrap:wrap;gap:8px"><h2 style="margin:0">D'où viennent vos ventes</h2>
+          <div class="seg" id="oriPeriod"><button data-p="week">Semaine</button><button data-p="month" class="on">Mois</button><button data-p="year">Année</button></div></div>
+        <p class="small" id="oriSub" style="margin:4px 0 10px"></p>
+        <div class="ori"><div id="oriPie" class="oripie"></div><table class="small oritab"><thead><tr><th>Origine</th><th>Ventes</th><th>Montant</th><th>Part</th></tr></thead><tbody id="oriRows"></tbody></table></div>
+        <div class="small" id="dashCamps" style="margin-top:10px"></div>
+      </div>
       <div class="grid">
-        <div class="box"><h2>D'où viennent vos ventes (30 j)</h2><table class="small"><tbody id="dashChannels"></tbody></table><div class="small" id="dashCamps" style="margin-top:8px"></div></div>
         <div class="box"><h2>Meilleures ventes (30 j)</h2><table class="small"><tbody id="dashTop"></tbody></table></div>
         <div class="box"><h2>Stock bas</h2><table class="small"><tbody id="dashStock"></tbody></table></div>
       </div>
@@ -712,20 +728,57 @@ async function loadDash() {
   for (const i of d.items) if (i.status !== "cancelled") { agg[i.product_name] ??= { q: 0, ca: 0 }; agg[i.product_name].q += i.quantity; agg[i.product_name].ca += i.quantity * i.unit_price; }
   const top = Object.entries(agg).sort((a, b) => b[1].ca - a[1].ca).slice(0, 8);
   $("dashTop").replaceChildren(...(top.length ? top.map(([n, v]) => tr(td(n), td(v.q + " vendu(s)"), td(fcfa(v.ca)))) : [tr(td("Pas encore de ventes"))]));
-  // ventes par origine
-  const byCh = {};
-  for (const o of paid) { const c = o.channel || "direct"; byCh[c] ??= { n: 0, ca: 0 }; byCh[c].n++; byCh[c].ca += o.amount_fcfa || 0; }
-  const tot = sum(paid) || 1;
-  const chs = Object.entries(byCh).sort((a, b) => b[1].ca - a[1].ca);
-  $("dashChannels").replaceChildren(...(chs.length ? chs.map(([c, v]) => tr(td(chLabel(c)), td(v.n + " vente(s)"), td(el("strong", fcfa(v.ca))), td(Math.round(v.ca * 100 / tot) + " %"))) : [tr(td("Pas encore de ventes"))]));
-  const camps = {};
-  for (const o of paid) if (o.campaign && /_ads$/.test(o.channel || "")) { camps[o.campaign] ??= { n: 0, ca: 0, ch: o.channel }; camps[o.campaign].n++; camps[o.campaign].ca += o.amount_fcfa || 0; }
-  const cl = Object.entries(camps).sort((a, b) => b[1].ca - a[1].ca).slice(0, 6);
-  $("dashCamps").replaceChildren(...(cl.length ? [el("strong", "Campagnes de pub : "), ...cl.map(([n, v], i) => el("span", (i ? " · " : "") + n + " : " + v.n + " vente(s), " + fcfa(v.ca)))] : []));
+  loadOrigin().catch(() => {});
   $("dashStock").replaceChildren(...(low.length ? low.map((x) => tr(td(x.name), td(el("span", x.available === 0 ? "Rupture" : x.available + " restant(s)", "low")),
     td(btn("Ajouter", "grey", async () => { await openTab("keys"); $("kProd").value = x.id; $("kText").focus(); })))) : [tr(td("Tout va bien ✔"))]));
   $("dashOrders").replaceChildren(...d.orders.slice(0, 8).map((o) => tr(td(dt(o.created_at)), td(o.ref), td(o.customer_name), td(tag(o.status)), td(fcfa(o.amount_fcfa)))));
 }
+// ---------- origine des ventes : camembert + tableau ----------
+const CH_COLOR = { facebook_ads: "#2a78d6", google_ads: "#eb6834", whatsapp: "#1baf7a", google: "#eda100", fb_manuel: "#e87ba4", wa_manuel: "#008300", facebook: "#6250d6", tel_manuel: "#e34948", direct: "#8f8f88", autre: "#bdbcb5", autre_manuel: "#bdbcb5" };
+let oriPeriod = "month";
+async function loadOrigin() {
+  const d = await api({ action: "sales_origin", period: oriPeriod });
+  const by = {};
+  for (const o of d.rows) { const c = o.channel || "direct"; by[c] ??= { n: 0, ca: 0 }; by[c].n++; by[c].ca += o.amount_fcfa || 0; }
+  const list = Object.entries(by).sort((a, b) => b[1].ca - a[1].ca || b[1].n - a[1].n);
+  const totCa = list.reduce((x, [, v]) => x + v.ca, 0), totN = d.rows.length;
+  const label = { week: "7 derniers jours", month: "30 derniers jours", year: "12 derniers mois" }[oriPeriod];
+  $("oriSub").textContent = label + " : " + totN + " vente(s) payée(s), " + fcfa(totCa);
+  const share = (v) => totCa > 0 ? v.ca / totCa : (totN ? v.n / totN : 0);
+  // camembert (anneau) en SVG
+  const NS = "http://www.w3.org/2000/svg", svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("viewBox", "0 0 200 200"); svg.setAttribute("role", "img"); svg.setAttribute("aria-label", "Répartition des ventes par origine");
+  if (!list.length) {
+    const c = document.createElementNS(NS, "circle"); c.setAttribute("cx", 100); c.setAttribute("cy", 100); c.setAttribute("r", 70); c.setAttribute("fill", "none"); c.setAttribute("stroke", "#e6e9f0"); c.setAttribute("stroke-width", 36); svg.append(c);
+  } else if (list.length === 1) {
+    const c = document.createElementNS(NS, "circle"); c.setAttribute("cx", 100); c.setAttribute("cy", 100); c.setAttribute("r", 70); c.setAttribute("fill", "none"); c.setAttribute("stroke", CH_COLOR[list[0][0]] || "#bdbcb5"); c.setAttribute("stroke-width", 36);
+    const t = document.createElementNS(NS, "title"); t.textContent = chLabel(list[0][0]) + " : 100 %"; c.append(t); svg.append(c);
+  } else {
+    let a0 = -Math.PI / 2;
+    const pt = (r, a) => (100 + r * Math.cos(a)).toFixed(2) + " " + (100 + r * Math.sin(a)).toFixed(2);
+    for (const [c, v] of list) {
+      const a1 = a0 + share(v) * 2 * Math.PI, big = a1 - a0 > Math.PI ? 1 : 0;
+      const p = document.createElementNS(NS, "path");
+      p.setAttribute("d", "M " + pt(88, a0) + " A 88 88 0 " + big + " 1 " + pt(88, a1) + " L " + pt(52, a1) + " A 52 52 0 " + big + " 0 " + pt(52, a0) + " Z");
+      p.setAttribute("fill", CH_COLOR[c] || "#bdbcb5");
+      const t = document.createElementNS(NS, "title"); t.textContent = chLabel(c) + " : " + v.n + " vente(s), " + fcfa(v.ca) + " (" + Math.round(share(v) * 100) + " %)"; p.append(t);
+      svg.append(p); a0 = a1;
+    }
+  }
+  const mid = document.createElementNS(NS, "text"); mid.setAttribute("x", 100); mid.setAttribute("y", 106); mid.setAttribute("text-anchor", "middle"); mid.setAttribute("font-size", "18"); mid.setAttribute("font-weight", "700"); mid.setAttribute("fill", "#0F2A6B");
+  mid.textContent = totN + " vente" + (totN > 1 ? "s" : ""); svg.append(mid);
+  $("oriPie").replaceChildren(svg);
+  $("oriRows").replaceChildren(...(list.length ? list.map(([c, v]) => { const sw = el("span", null, "sw"); sw.style.background = CH_COLOR[c] || "#bdbcb5";
+    return tr(td(sw, chLabel(c)), td(String(v.n)), td(el("strong", fcfa(v.ca))), td(Math.round(share(v) * 100) + " %")); }) : [tr(td("Pas encore de ventes sur cette période"))]));
+  const camps = {};
+  for (const o of d.rows) if (o.campaign && /_ads$/.test(o.channel || "")) { camps[o.campaign] ??= { n: 0, ca: 0 }; camps[o.campaign].n++; camps[o.campaign].ca += o.amount_fcfa || 0; }
+  const cl = Object.entries(camps).sort((a, b) => b[1].ca - a[1].ca).slice(0, 6);
+  $("dashCamps").replaceChildren(...(cl.length ? [el("strong", "Campagnes de pub : "), ...cl.map(([n, v], i) => el("span", (i ? " · " : "") + n + " : " + v.n + " vente(s), " + fcfa(v.ca)))] : []));
+}
+document.querySelectorAll("#oriPeriod button").forEach((b) => b.addEventListener("click", () => {
+  oriPeriod = b.dataset.p; document.querySelectorAll("#oriPeriod button").forEach((x) => x.classList.toggle("on", x === b));
+  loadOrigin().catch((e) => toast(errMsg(e)));
+}));
 $("autoWarnLink").addEventListener("click", (e) => { e.preventDefault(); openTab("settings"); });
 
 // ---------- notifications (« À faire ») ----------

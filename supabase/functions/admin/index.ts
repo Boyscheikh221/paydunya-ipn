@@ -564,6 +564,14 @@ Deno.serve(async (req) => {
       case "notifications": {
         return json({ notifications: await buildNotifications() });
       }
+      case "sales_origin": { // ventes payées par origine : semaine / mois / année
+        const days = { week: 7, month: 30, year: 365 }[String(body.period)] ?? 30;
+        const since = new Date(Date.now() - days * DAY).toISOString();
+        const { data, error } = await db.from("orders").select("channel, campaign, amount_fcfa")
+          .in("status", ["paid", "processing", "installing", "delivered"]).gte("paid_at", since).limit(20000);
+        if (error) return json({ error: error.message }, 500);
+        return json({ days, rows: data ?? [] });
+      }
 
       // ================= Messages des clients =================
       case "inbox_list": { // une ligne par client (dernier message), filtre : nouveaux / tous / archivés
