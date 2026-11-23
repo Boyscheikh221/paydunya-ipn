@@ -89,7 +89,8 @@ function dash(d) {
       d.orders.length ? el("div", {}, ...d.orders.map((o) => el("div", { class: "ord" },
         el("div", {}, el("b", { text: o.ref }), el("span", { class: "note", text: " · " + new Date(o.date).toLocaleDateString("fr-FR") }), el("div", { class: "note", text: o.items })),
         el("div", { style: "display:flex;gap:10px;align-items:center" }, el("span", { class: "tag " + (ST[o.status] || ["", ""])[1], text: (ST[o.status] || [o.status])[0] }), el("b", { text: fcfa(o.amount) }),
-          el("a", { class: "btn light", href: "/commande?o=" + encodeURIComponent(o.token), text: "Clés et liens" })))))
+          el("a", { class: "btn light", href: "/commande?o=" + encodeURIComponent(o.token), text: "Clés et liens" }),
+          o.invoice ? el("a", { class: "btn light", href: "/facture?o=" + encodeURIComponent(o.token), target: "_blank", rel: "noopener", text: "🧾 Facture" }) : null))))
         : el("p", { class: "note", text: "Aucune commande avec cet email pour l'instant." })),
 
     el("div", { class: "panel acc-sec" }, el("h2", { text: "♥ Mes favoris" }),

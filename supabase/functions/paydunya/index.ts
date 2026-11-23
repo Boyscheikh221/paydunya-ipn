@@ -153,7 +153,7 @@ function renderBody(body: string, c: Ctx) {
 }
 // Email « transactionnel » sobre (fond blanc, peu d'images, pas de slogan) : Gmail le classe
 // plus souvent dans « Principal » que dans « Promotions ».
-function wrapHtml(inner: string, ref?: string) {
+function wrapHtml(inner: string, ref?: string, invoiceUrl?: string) {
   const { B, N, O } = EM;
   const why = ref ? `Cet email concerne votre commande <b>${esc(ref)}</b> sur licenceoff.com.<br>` : "";
   return `<!doctype html><html lang="fr"><body style="margin:0;background:#ffffff;font-family:Segoe UI,Arial,sans-serif;color:${N}">
@@ -164,7 +164,7 @@ function wrapHtml(inner: string, ref?: string) {
   <td style="vertical-align:middle;font-size:20px;font-weight:800;color:${B}">licence<span style="color:${O}">off</span></td></tr></table></td></tr>
 <tr><td style="padding:20px 0;font-size:15px;line-height:1.5">${inner}</td></tr>
 <tr><td style="border-top:1px solid #e3e8f0;padding:12px 0;color:#6b7690;font-size:12px">
-  ${why}Une question ? Répondez simplement à cet email.<br>
+  ${why}${invoiceUrl ? `Votre facture : <a href="${esc(invoiceUrl)}" style="color:${B}">voir et télécharger la facture</a><br>` : ""}Une question ? Répondez simplement à cet email.<br>
   Pour recevoir nos prochains emails sans problème, ajoutez commandes@licenceoff.com à vos contacts. Si cet email est arrivé dans « Promotions » ou « Spam », déplacez-le dans « Principal ».<br>
   licenceoff — Dakar, Sénégal · www.licenceoff.com</td></tr>
 </table></td></tr></table></body></html>`;
@@ -174,10 +174,12 @@ function renderEmail(tpl: Tpl, c: Ctx) {
   const v = vars(c) as Record<string, string>;
   const subject = String(tpl.subject || BUILTIN_TPL.subject).replace(/\{(prenom|nom|commande|total|version|produit)\}/g, (_, k) => v[k]).replace(/ {2,}/g, " ").trim().slice(0, 200);
   const ref = String(c.o.ref || "");
+  // lien vers la facture (commande payée avec un numéro de facture)
+  const inv = c.o.invoice_no && c.o.public_token ? siteCtx().site + "/facture.html?o=" + encodeURIComponent(c.o.public_token) : undefined;
   const subj = ref && ref !== "—" && !subject.includes(ref) ? (subject + " — commande " + ref).slice(0, 200) : subject;
   return {
-    subject: subj, html: wrapHtml(html, ref && ref !== "—" ? ref : undefined),
-    text: text + (ref && ref !== "—" ? "\n\nCet email concerne votre commande " + ref + " sur licenceoff.com." : "") + "\nUne question ? Répondez simplement à cet email.\nPour recevoir nos prochains emails sans problème, ajoutez commandes@licenceoff.com à vos contacts. Si cet email est arrivé dans « Promotions » ou « Spam », déplacez-le dans « Principal ».\nlicenceoff — www.licenceoff.com",
+    subject: subj, html: wrapHtml(html, ref && ref !== "—" ? ref : undefined, inv),
+    text: text + (ref && ref !== "—" ? "\n\nCet email concerne votre commande " + ref + " sur licenceoff.com." : "") + (inv ? "\nVotre facture : " + inv : "") + "\nUne question ? Répondez simplement à cet email.\nPour recevoir nos prochains emails sans problème, ajoutez commandes@licenceoff.com à vos contacts. Si cet email est arrivé dans « Promotions » ou « Spam », déplacez-le dans « Principal ».\nlicenceoff — www.licenceoff.com",
     headers: ref && ref !== "—" ? { "X-Entity-Ref-ID": ref } : undefined,
   };
 }
@@ -214,7 +216,7 @@ async function resendSend(to: string, mail: { subject: string; html: string; tex
 async function sendDeliveryEmail(orderId: string, force = false, templateId?: string): Promise<{ sent: boolean; count?: number; reason?: string }> {
   if (!(Deno.env.get("RESEND_API_KEY") ?? "").trim()) return { sent: false, reason: "resend_non_configure" };
   const { data: o } = await db.from("orders")
-    .select("id, ref, public_token, customer_name, email, amount_fcfa, status, emailed_at, order_items(id, product_name, delivery_type, quantity, status, created_at, license_keys(key_value), products(email_template_id))")
+    .select("id, ref, public_token, invoice_no, customer_name, email, amount_fcfa, status, emailed_at, order_items(id, product_name, delivery_type, quantity, status, created_at, license_keys(key_value), products(email_template_id))")
     .eq("id", orderId).maybeSingle();
   if (!o || !o.email) return { sent: false, reason: "commande_introuvable" };
   if (!force && o.status !== "delivered") return { sent: false, reason: "pas_encore_livree" };
@@ -255,7 +257,7 @@ async function sendDeliveryEmail(orderId: string, force = false, templateId?: st
 async function sendInstallEmail(orderId: string, force = false): Promise<{ sent: boolean; count?: number; reason?: string }> {
   if (!(Deno.env.get("RESEND_API_KEY") ?? "").trim()) return { sent: false, reason: "resend_non_configure" };
   const { data: o } = await db.from("orders")
-    .select("id, ref, public_token, customer_name, email, amount_fcfa, status, order_items(id, product_name, delivery_type, quantity, status, created_at, install_emailed_at, products(install_template_id))")
+    .select("id, ref, public_token, invoice_no, customer_name, email, amount_fcfa, status, order_items(id, product_name, delivery_type, quantity, status, created_at, install_emailed_at, products(install_template_id))")
     .eq("id", orderId).maybeSingle();
   if (!o || !o.email) return { sent: false, reason: "commande_introuvable" };
   let items: Item[] = ((o.order_items ?? []) as Item[]).filter((i) => i.status === "awaiting_install" && (force || !i.install_emailed_at));

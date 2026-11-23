@@ -153,7 +153,7 @@ function renderBody(body: string, c: Ctx) {
 }
 // Email « transactionnel » sobre (fond blanc, peu d'images, pas de slogan) : Gmail le classe
 // plus souvent dans « Principal » que dans « Promotions ».
-function wrapHtml(inner: string, ref?: string) {
+function wrapHtml(inner: string, ref?: string, invoiceUrl?: string) {
   const { B, N, O } = EM;
   const why = ref ? `Cet email concerne votre commande <b>${esc(ref)}</b> sur licenceoff.com.<br>` : "";
   return `<!doctype html><html lang="fr"><body style="margin:0;background:#ffffff;font-family:Segoe UI,Arial,sans-serif;color:${N}">
@@ -164,7 +164,7 @@ function wrapHtml(inner: string, ref?: string) {
   <td style="vertical-align:middle;font-size:20px;font-weight:800;color:${B}">licence<span style="color:${O}">off</span></td></tr></table></td></tr>
 <tr><td style="padding:20px 0;font-size:15px;line-height:1.5">${inner}</td></tr>
 <tr><td style="border-top:1px solid #e3e8f0;padding:12px 0;color:#6b7690;font-size:12px">
-  ${why}Une question ? Répondez simplement à cet email.<br>
+  ${why}${invoiceUrl ? `Votre facture : <a href="${esc(invoiceUrl)}" style="color:${B}">voir et télécharger la facture</a><br>` : ""}Une question ? Répondez simplement à cet email.<br>
   Pour recevoir nos prochains emails sans problème, ajoutez commandes@licenceoff.com à vos contacts. Si cet email est arrivé dans « Promotions » ou « Spam », déplacez-le dans « Principal ».<br>
   licenceoff — Dakar, Sénégal · www.licenceoff.com</td></tr>
 </table></td></tr></table></body></html>`;
@@ -174,10 +174,12 @@ function renderEmail(tpl: Tpl, c: Ctx) {
   const v = vars(c) as Record<string, string>;
   const subject = String(tpl.subject || BUILTIN_TPL.subject).replace(/\{(prenom|nom|commande|total|version|produit)\}/g, (_, k) => v[k]).replace(/ {2,}/g, " ").trim().slice(0, 200);
   const ref = String(c.o.ref || "");
+  // lien vers la facture (commande payée avec un numéro de facture)
+  const inv = c.o.invoice_no && c.o.public_token ? siteCtx().site + "/facture.html?o=" + encodeURIComponent(c.o.public_token) : undefined;
   const subj = ref && ref !== "—" && !subject.includes(ref) ? (subject + " — commande " + ref).slice(0, 200) : subject;
   return {
-    subject: subj, html: wrapHtml(html, ref && ref !== "—" ? ref : undefined),
-    text: text + (ref && ref !== "—" ? "\n\nCet email concerne votre commande " + ref + " sur licenceoff.com." : "") + "\nUne question ? Répondez simplement à cet email.\nPour recevoir nos prochains emails sans problème, ajoutez commandes@licenceoff.com à vos contacts. Si cet email est arrivé dans « Promotions » ou « Spam », déplacez-le dans « Principal ».\nlicenceoff — www.licenceoff.com",
+    subject: subj, html: wrapHtml(html, ref && ref !== "—" ? ref : undefined, inv),
+    text: text + (ref && ref !== "—" ? "\n\nCet email concerne votre commande " + ref + " sur licenceoff.com." : "") + (inv ? "\nVotre facture : " + inv : "") + "\nUne question ? Répondez simplement à cet email.\nPour recevoir nos prochains emails sans problème, ajoutez commandes@licenceoff.com à vos contacts. Si cet email est arrivé dans « Promotions » ou « Spam », déplacez-le dans « Principal ».\nlicenceoff — www.licenceoff.com",
     headers: ref && ref !== "—" ? { "X-Entity-Ref-ID": ref } : undefined,
   };
 }
@@ -214,7 +216,7 @@ async function resendSend(to: string, mail: { subject: string; html: string; tex
 async function sendDeliveryEmail(orderId: string, force = false, templateId?: string): Promise<{ sent: boolean; count?: number; reason?: string }> {
   if (!(Deno.env.get("RESEND_API_KEY") ?? "").trim()) return { sent: false, reason: "resend_non_configure" };
   const { data: o } = await db.from("orders")
-    .select("id, ref, public_token, customer_name, email, amount_fcfa, status, emailed_at, order_items(id, product_name, delivery_type, quantity, status, created_at, license_keys(key_value), products(email_template_id))")
+    .select("id, ref, public_token, invoice_no, customer_name, email, amount_fcfa, status, emailed_at, order_items(id, product_name, delivery_type, quantity, status, created_at, license_keys(key_value), products(email_template_id))")
     .eq("id", orderId).maybeSingle();
   if (!o || !o.email) return { sent: false, reason: "commande_introuvable" };
   if (!force && o.status !== "delivered") return { sent: false, reason: "pas_encore_livree" };
@@ -255,7 +257,7 @@ async function sendDeliveryEmail(orderId: string, force = false, templateId?: st
 async function sendInstallEmail(orderId: string, force = false): Promise<{ sent: boolean; count?: number; reason?: string }> {
   if (!(Deno.env.get("RESEND_API_KEY") ?? "").trim()) return { sent: false, reason: "resend_non_configure" };
   const { data: o } = await db.from("orders")
-    .select("id, ref, public_token, customer_name, email, amount_fcfa, status, order_items(id, product_name, delivery_type, quantity, status, created_at, install_emailed_at, products(install_template_id))")
+    .select("id, ref, public_token, invoice_no, customer_name, email, amount_fcfa, status, order_items(id, product_name, delivery_type, quantity, status, created_at, install_emailed_at, products(install_template_id))")
     .eq("id", orderId).maybeSingle();
   if (!o || !o.email) return { sent: false, reason: "commande_introuvable" };
   let items: Item[] = ((o.order_items ?? []) as Item[]).filter((i) => i.status === "awaiting_install" && (force || !i.install_emailed_at));
@@ -746,7 +748,7 @@ async function handle(req: Request): Promise<Response> {
       const c = await customerFromSession(body.s);
       if (!c) return json({ error: "non_connecte" }, 401);
       const [{ data: orders }, { data: favs }, { data: evs }, { data: prods }, { data: cats }] = await Promise.all([
-        db.from("orders").select("ref, public_token, created_at, status, amount_fcfa, order_items(product_id, product_name, quantity)")
+        db.from("orders").select("ref, public_token, invoice_no, created_at, status, amount_fcfa, order_items(product_id, product_name, quantity)")
           .eq("email", c.email).order("created_at", { ascending: false }).limit(100),
         db.from("customer_favorites").select("product_id, created_at").eq("customer_id", c.id).order("created_at", { ascending: false }),
         db.from("customer_events").select("kind, product_id, query, created_at").eq("customer_id", c.id).order("created_at", { ascending: false }).limit(200),
@@ -780,7 +782,7 @@ async function handle(req: Request): Promise<Response> {
       return json({
         me: { email: c.email, name: c.name ?? "", phone: c.phone ?? "", interests, created_at: c.created_at },
         // deno-lint-ignore no-explicit-any
-        orders: (orders ?? []).map((o: any) => ({ ref: o.ref, token: o.public_token, date: o.created_at, status: o.status, amount: o.amount_fcfa,
+        orders: (orders ?? []).map((o: any) => ({ ref: o.ref, token: o.public_token, invoice: !!o.invoice_no, date: o.created_at, status: o.status, amount: o.amount_fcfa,
           // deno-lint-ignore no-explicit-any
           items: (o.order_items ?? []).map((i: any) => (i.quantity > 1 ? i.quantity + " × " : "") + i.product_name).join(", ") })),
         favorites: favIds.map(pub).filter(Boolean),
@@ -1058,11 +1060,49 @@ async function handle(req: Request): Promise<Response> {
     }
 
     // ---------- Page de suivi du client ----------
+    case "invoice": { // facture d'une commande (o = jeton de la commande) ou devis (d = jeton du devis)
+      const { data: st } = await db.from("settings").select("key, value")
+        .in("key", ["invoice_legal_name", "invoice_address", "invoice_phone", "invoice_email", "invoice_ninea", "invoice_rc"]);
+      const seller: Record<string, string> = {};
+      for (const r of st ?? []) seller[r.key.replace("invoice_", "")] = String(r.value ?? "");
+      if (!seller.legal_name) seller.legal_name = "licenceoff";
+      const { wa } = siteCtx();
+      seller.whatsapp = wa;
+      const dTok = str(body.d, 80), oTok = str(body.o, 80);
+      if (dTok) {
+        const { data: q } = await db.from("quotes").select("*").eq("public_token", dTok).maybeSingle();
+        if (!q) return json({ error: "not_found" }, 404);
+        // deno-lint-ignore no-explicit-any
+        const lines = ((q.items ?? []) as any[]).map((i) => ({ name: String(i.name ?? ""), qty: Number(i.qty) || 1, unit_price: Number(i.unit_price) || 0 }));
+        return json({ kind: "quote", seller, no: q.quote_no, date: q.created_at, valid_until: q.valid_until, status: q.status,
+          customer: { name: q.customer_name, company: q.company, email: q.email, phone: q.phone, address: q.address },
+          lines, total: q.total_fcfa, vat_rate: Number(q.vat_rate) || 0, notes: q.notes ?? "" });
+      }
+      if (!oTok) return json({ error: "not_found" }, 404);
+      const { data: o } = await db.from("orders")
+        .select("ref, invoice_no, invoice_at, status, amount_fcfa, vat_rate, customer_name, email, phone, billing_company, billing_address, shipping_address, shipping_fee_fcfa, discount_fcfa, payment_method, payment_ref, paid_at, created_at, order_items(product_name, quantity, unit_price, created_at)")
+        .eq("public_token", oTok).maybeSingle();
+      if (!o || !o.invoice_no) return json({ error: "pas_de_facture" }, 404);
+      // deno-lint-ignore no-explicit-any
+      const lines: { name: string; qty: number; unit_price: number }[] = ((o.order_items ?? []) as any[])
+        .sort((a, b) => a.created_at.localeCompare(b.created_at))
+        .map((i) => ({ name: i.product_name, qty: i.quantity, unit_price: i.unit_price }));
+      if (o.shipping_fee_fcfa > 0) lines.push({ name: "Livraison", qty: 1, unit_price: o.shipping_fee_fcfa });
+      if (o.discount_fcfa > 0) lines.push({ name: "Remise (code parrain)", qty: 1, unit_price: -o.discount_fcfa });
+      const diff = o.amount_fcfa - lines.reduce((t, l) => t + l.qty * l.unit_price, 0);
+      if (diff !== 0) lines.push({ name: diff < 0 ? "Remise" : "Ajustement", qty: 1, unit_price: diff });
+      return json({ kind: "invoice", seller, no: o.invoice_no, date: o.invoice_at ?? o.paid_at ?? o.created_at, ref: o.ref,
+        status: o.status, cancelled: o.status === "cancelled",
+        customer: { name: o.customer_name, company: o.billing_company, email: o.email, phone: o.phone, address: o.billing_address || o.shipping_address },
+        payment: { method: o.payment_method, ref: o.payment_ref, date: o.paid_at },
+        lines, total: o.amount_fcfa, vat_rate: Number(o.vat_rate) || 0 });
+    }
+
     case "status": {
       const token = str(body.o, 64);
       if (!token) return json({ error: "not_found" }, 404);
       const { data: o } = await db.from("orders")
-        .select("id, ref, status, amount_fcfa, payment_method, payment_ref, paydunya_token, created_at, delivered_at, shipping_method, shipping_fee_fcfa, shipping_address, shipping_zone, order_items(id, product_name, delivery_type, unit_price, quantity, status, created_at, claim_requested_at, products(slug, image_url, installer_path))")
+        .select("id, ref, invoice_no, status, amount_fcfa, payment_method, payment_ref, paydunya_token, created_at, delivered_at, shipping_method, shipping_fee_fcfa, shipping_address, shipping_zone, order_items(id, product_name, delivery_type, unit_price, quantity, status, created_at, claim_requested_at, products(slug, image_url, installer_path))")
         .eq("public_token", token).maybeSingle();
       if (!o) return json({ error: "not_found" }, 404);
       const paid = ["paid", "processing", "installing", "delivered"].includes(o.status);
@@ -1086,7 +1126,7 @@ async function handle(req: Request): Promise<Response> {
       }
 
       return json({
-        ref: o.ref, status: o.status, amount_fcfa: o.amount_fcfa, created_at: o.created_at,
+        ref: o.ref, status: o.status, amount_fcfa: o.amount_fcfa, created_at: o.created_at, invoice: !!o.invoice_no,
         payment_method: o.payment_method, has_payment_ref: !!o.payment_ref, has_paydunya: !!o.paydunya_token,
         shipping: o.shipping_method ? { method: o.shipping_method, fee: o.shipping_fee_fcfa, address: o.shipping_address, zone: o.shipping_zone } : null,
         items: items.map((i) => {

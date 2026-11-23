@@ -161,7 +161,8 @@ async function load() {
       el("div", {}, el("div", { class: "note", text: "Commande " + o.ref + " · " + new Date(o.created_at).toLocaleDateString("fr-FR") }),
         el("h1", { style: "margin:4px 0 0;font-size:24px", text: o.status === "delivered" ? "Merci, votre commande est prête !" : "Votre commande" })),
       el("span", { class: "tag " + cls, text: lab })),
-    el("div", { class: "tot" }, el("span", { text: "Total" }), el("span", { text: fcfa(o.amount_fcfa) })));
+    el("div", { class: "tot" }, el("span", { text: "Total" }), el("span", { text: fcfa(o.amount_fcfa) })),
+    o.invoice ? el("p", { style: "margin:10px 0 0" }, el("a", { class: "btn light", href: "/facture?o=" + encodeURIComponent(token), target: "_blank", rel: "noopener", text: "🧾 Ma facture (PDF)" })) : null);
 
   const parts = [head];
   if (o.status === "pending") {

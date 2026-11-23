@@ -142,6 +142,7 @@
     <button data-tab="pages">📄 Pages</button>
     <button data-tab="emails">✉️ Emails</button>
     <button data-tab="send">📤 Envoi manuel</button>
+    <button data-tab="quotes">📄 Devis</button>
     <button data-tab="parrains">🤝 Parrains <span id="badgePay" class="badge hidden"></span></button>
     <button data-tab="messages">📥 Messages <span id="badgeMsg" class="badge hidden"></span></button>
     <button data-tab="clients">👥 Clients</button>
@@ -417,6 +418,31 @@
       <div class="box"><div class="tablewrap"><table><thead><tr><th>Modèle</th><th>Sorte</th><th>Objet</th><th>Produits</th><th></th></tr></thead><tbody id="tRows"></tbody></table></div></div>
     </section>
 
+    <section id="tab-quotes" class="hidden">
+      <h1>Devis (revendeurs, entreprises)</h1>
+      <p class="small">Préparez un devis avec vos prix, envoyez-le par email (le client l'ouvre et le télécharge en PDF), puis, quand il a payé, cliquez « Convertir en commande » : la commande et sa facture sont créées.</p>
+      <div class="box">
+        <h2 id="qTitle">Nouveau devis</h2>
+        <input type="hidden" id="qId">
+        <div class="grid">
+          <div><label>Nom du client</label><input id="qName" placeholder="Prénom Nom"></div>
+          <div><label>Société (facultatif)</label><input id="qCompany" placeholder="ex. Optic Services SARL"></div>
+          <div><label>Email</label><input id="qEmail" type="email" placeholder="client@gmail.com"></div>
+          <div><label>Téléphone</label><input id="qPhone" placeholder="facultatif"></div>
+          <div><label>Adresse (facultatif)</label><input id="qAddress" placeholder="ex. Dakar, Plateau"></div>
+          <div><label>Valable jusqu'au</label><input id="qValid" type="date"></div>
+        </div>
+        <label style="margin-top:10px">Articles</label>
+        <div id="qLines"></div>
+        <div class="bar"><button id="qAddLine" class="grey">➕ Ajouter un article</button><span class="grow"></span><b id="qTotal"></b></div>
+        <label>Notes (conditions, délais…)</label><textarea id="qNotes" rows="2" placeholder="ex. Prix revendeur. Livraison des clés par email sous 24 h après paiement."></textarea>
+        <div class="bar" style="margin-top:10px"><button id="qSave" class="green">💾 Enregistrer le devis</button><button id="qReset" class="grey">Nouveau devis</button><span id="qMsg" class="small"></span></div>
+      </div>
+      <div class="box">
+        <table><thead><tr><th>Devis</th><th>Client</th><th>Total</th><th>Statut</th><th></th></tr></thead><tbody id="qRows"></tbody></table>
+      </div>
+    </section>
+
     <section id="tab-send" class="hidden">
       <h1>Envoi manuel (ventes WhatsApp)</h1>
       <p class="small">Choisissez le produit et l'adresse : l'email part avec le modèle de ce produit (réglé dans Produits), ou le modèle par défaut.</p>
@@ -566,6 +592,20 @@
         <div class="bar" style="margin-top:10px"><button id="sSaveShip" class="green">Enregistrer</button></div>
       </div>
       <div class="box">
+        <h2 style="margin:0 0 4px">Factures et devis</h2>
+        <div class="small">Chaque commande payée reçoit automatiquement une facture numérotée (FA-2026-00001…), envoyée dans l'email du client et disponible sur sa page de commande. Ces informations sont imprimées en haut des factures et devis. Laissez vide ce que vous n'avez pas encore.</div>
+        <div class="grid">
+          <div><label>Nom de l'entreprise (nom légal)</label><input id="sInvName" placeholder="licenceoff"></div>
+          <div><label>Adresse</label><input id="sInvAddr" placeholder="ex. Dakar, Sénégal"></div>
+          <div><label>Téléphone</label><input id="sInvPhone" placeholder="ex. +221 77 786 07 77"></div>
+          <div><label>Email</label><input id="sInvEmail" type="email" placeholder="contact@licenceoff.com"></div>
+          <div><label>NINEA</label><input id="sInvNinea" placeholder="quand l'entreprise sera immatriculée"></div>
+          <div><label>Registre du commerce (RC)</label><input id="sInvRc" placeholder="ex. SN-DKR-2026-A-…"></div>
+        </div>
+        <label class="check" style="margin-top:8px"><input type="checkbox" id="sInvVat"> Facturer la TVA (18 %). Vos prix restent les mêmes (TTC) : la facture affiche le HT et la TVA. À activer seulement quand vous êtes assujetti.</label>
+        <div class="bar" style="margin-top:10px"><button id="sSaveInv" class="green">Enregistrer</button></div>
+      </div>
+      <div class="box">
         <h2 style="margin:0 0 4px">Publicités Meta (Facebook, Instagram)</h2>
         <div class="small">Le pixel se charge seulement chez les visiteurs qui acceptent les cookies. Laissez vide pour ne rien charger.<br>Flux produits pour le catalogue : <a href="https://vnzpxfoeiixiqxkhdnik.supabase.co/functions/v1/boutique?feed=meta" target="_blank" rel="noopener">flux Meta / Google (XML)</a> · <a href="https://vnzpxfoeiixiqxkhdnik.supabase.co/functions/v1/boutique?feed=csv" target="_blank" rel="noopener">CSV</a> (seulement les produits publiés avec une photo).</div>
         <div class="grid"><div><label>ID du pixel Meta (chiffres)</label><input id="sPixel" inputmode="numeric" placeholder="ex. 123456789012345"></div></div>
@@ -603,6 +643,7 @@ const METHOD = { wave: "Wave", orange_money: "Orange Money", free_money: "Free M
 const ERR = {
   titre_obligatoire: "Le titre est obligatoire.",
   pixel_invalide: "L'ID du pixel Meta ne contient que des chiffres (Gestionnaire d'événements Meta).",
+  devis_deja_converti: "Ce devis est déjà devenu une commande.", devis_introuvable: "Devis introuvable.",
   prix_manquant: "Mettez d'abord un prix (plus de 0 F) avant de publier ce produit.",
   message_vide: "Écrivez d'abord votre message.",
   pas_d_email: "Ajoutez d'abord votre email d'alerte (Réglages > Parrainage), puis enregistrez.",
@@ -679,7 +720,7 @@ async function uploadImage(input, hidden, preview, msg) {
 }
 
 // ---------- navigation ----------
-const loaders = { dash: loadDash, orders: loadOrders, products: loadProducts, keys: loadKeys, blog: loadBlog, pages: loadPages, emails: loadTemplates, send: loadSend, parrains: loadParrains, clients: loadClients, messages: loadMessages, reviews: loadReviews, faq: loadFaq, links: loadLinks, logs: loadLogs, settings: loadSettings };
+const loaders = { dash: loadDash, orders: loadOrders, products: loadProducts, keys: loadKeys, blog: loadBlog, pages: loadPages, emails: loadTemplates, send: loadSend, quotes: loadQuotes, parrains: loadParrains, clients: loadClients, messages: loadMessages, reviews: loadReviews, faq: loadFaq, links: loadLinks, logs: loadLogs, settings: loadSettings };
 document.querySelectorAll("nav [data-tab]").forEach((b) => b.addEventListener("click", () => openTab(b.dataset.tab)));
 function openTab(t) {
   document.querySelectorAll("nav [data-tab]").forEach((b) => b.classList.toggle("on", b.dataset.tab === t));
@@ -993,8 +1034,9 @@ async function loadOrders() {
       if (confirm((o.status === "installing" ? "Renvoyer l'email d'installation à " : "Envoyer l'email de livraison à ") + o.email + " ?")) await run({ action: "order_email", id: o.id }, "Email envoyé ✔", reload)();
     }));
     acts.append(btn("Page client", "grey", () => copy(ORDER_PAGE + "?o=" + o.public_token, "Lien de la page client copié ✔")));
+    if (o.invoice_no) acts.append(btn("🧾 Facture", "grey", () => window.open(SITE + "/facture?o=" + encodeURIComponent(o.public_token), "_blank", "noopener")));
     tb.append(tr(
-      td(el("strong", o.ref), el("br"), el("span", dt(o.created_at), "small"), el("br"), el("span", o.source === "admin" ? "vente manuelle" : "site", "small"), el("br"), el("span", "Origine : " + chLabel(o.channel) + (o.campaign ? " · " + o.campaign : ""), "small")),
+      td(el("strong", o.ref), el("br"), el("span", dt(o.created_at), "small"), el("br"), el("span", o.source === "admin" ? "vente manuelle" : "site", "small"), el("br"), el("span", "Origine : " + chLabel(o.channel) + (o.campaign ? " · " + o.campaign : ""), "small"), o.invoice_no ? el("br") : null, o.invoice_no ? el("span", "Facture " + o.invoice_no, "small") : null),
       td(el("strong", o.customer_name), el("br"), el("span", o.email, "small"), el("br"), el("span", o.phone || "", "small"),
         o.referral_code ? el("div", "🤝 " + o.referral_code + " · remise " + fcfa(o.discount_fcfa) + " · gain parrain " + fcfa(o.commission_fcfa), "small") : null,
         o.ip ? el("div", "IP " + o.ip, "small mono") : null,
@@ -1216,6 +1258,77 @@ $("kImport").addEventListener("click", async () => {
   } catch (e) { $("kMsg").textContent = e.message === "aucune_cle" ? "Aucune clé trouvée dans le texte." : errMsg(e); }
 });
 
+// ---------- devis ----------
+const QST = { draft: ["Brouillon", "s-draft"], sent: ["Envoyé", "s-pending"], accepted: ["Accepté", "s-on"], converted: ["Converti en commande", "s-delivered"], cancelled: ["Annulé", "s-cancelled"] };
+function qLine(l = {}) {
+  const row = el("div", null, "bar"); row.style.margin = "4px 0";
+  const sel = document.createElement("select"); sel.className = "grow";
+  for (const p of products) sel.append(new Option(p.name + (p.active ? "" : " (brouillon)"), p.id));
+  if (l.product_id) sel.value = l.product_id;
+  const qty = el("input"); qty.type = "number"; qty.min = "1"; qty.value = l.qty || 1; qty.style.width = "80px"; qty.title = "Quantité";
+  const up = el("input"); up.type = "number"; up.min = "0"; up.style.width = "140px"; up.title = "Prix unitaire (FCFA)";
+  const ph = () => { const p = products.find((x) => x.id === sel.value); up.placeholder = p ? p.price_fcfa + " (prix site)" : ""; };
+  if (l.unit_price != null) up.value = l.unit_price;
+  ph();
+  const del = btn("✕", "grey", () => { row.remove(); qTotal(); });
+  for (const x of [sel, qty, up]) { x.addEventListener("input", qTotal); x.addEventListener("change", () => { ph(); qTotal(); }); }
+  row.append(sel, qty, up, del);
+  row._get = () => ({ product_id: sel.value, qty: Number(qty.value) || 1, unit_price: up.value === "" ? (products.find((x) => x.id === sel.value)?.price_fcfa ?? 0) : Number(up.value) });
+  return row;
+}
+function qItems() { return [...$("qLines").children].map((r) => r._get()); }
+function qTotal() { $("qTotal").textContent = "Total : " + fcfa(qItems().reduce((t, i) => t + i.qty * i.unit_price, 0)); }
+function qReset() {
+  $("qId").value = ""; $("qTitle").textContent = "Nouveau devis";
+  for (const id of ["qName", "qCompany", "qEmail", "qPhone", "qAddress", "qNotes"]) $(id).value = "";
+  const d = new Date(Date.now() + 30 * 86400000); $("qValid").value = d.toISOString().slice(0, 10);
+  $("qLines").replaceChildren(qLine()); qTotal(); $("qMsg").textContent = "";
+}
+function qEdit(q) {
+  $("qId").value = q.id; $("qTitle").textContent = "Modifier le devis " + q.quote_no;
+  $("qName").value = q.customer_name || ""; $("qCompany").value = q.company || ""; $("qEmail").value = q.email || ""; $("qPhone").value = q.phone || "";
+  $("qAddress").value = q.address || ""; $("qNotes").value = q.notes || ""; $("qValid").value = q.valid_until || "";
+  $("qLines").replaceChildren(...(q.items || []).map(qLine)); qTotal(); window.scrollTo({ top: 0, behavior: "smooth" });
+}
+async function loadQuotes() {
+  await loadRefs();
+  if (!$("qLines").children.length) qReset();
+  const { rows } = await api({ action: "quotes_list" });
+  const reload = () => loadQuotes();
+  $("qRows").replaceChildren(...rows.map((q) => {
+    const acts = el("div", null, "acts");
+    const url = SITE + "/facture?d=" + q.public_token;
+    acts.append(btn("👁 Voir / PDF", "grey", () => window.open(url, "_blank", "noopener")));
+    if (q.status !== "converted") {
+      acts.append(btn("Modifier", "grey", () => qEdit(q)));
+      if (q.email) acts.append(btn("✉ Envoyer au client", "org", async () => { if (confirm("Envoyer le devis " + q.quote_no + " à " + q.email + " ?")) await run({ action: "quote_send", id: q.id }, "Devis envoyé ✔", reload)(); }));
+      if (q.status !== "cancelled") acts.append(btn("✅ Convertir en commande", "green", async () => {
+        if (!q.email) return toast("Ajoutez l'email du client au devis d'abord.");
+        if (!confirm("Le client a payé " + fcfa(q.total_fcfa) + " ?\nLe devis " + q.quote_no + " devient une commande payée, avec sa facture.")) return;
+        const deliver = confirm("Livrer tout de suite ? (clés du stock + email au client)\nOK = oui · Annuler = je livrerai plus tard depuis Commandes");
+        const d = await api({ action: "quote_convert", id: q.id, deliver, channel: "autre_manuel", payment_method: "autre" });
+        toast("Commande " + (d.order?.ref || "") + " créée" + (d.order?.invoice_no ? " · facture " + d.order.invoice_no : "") + " ✔"); await reload();
+      }));
+      if (q.status !== "cancelled") acts.append(btn("Annuler", "red", async () => { if (confirm("Annuler le devis " + q.quote_no + " ?")) await run({ action: "quote_status", id: q.id, status: "cancelled" }, "Devis annulé", reload)(); }));
+    }
+    const [lab, cls] = QST[q.status] || [q.status, ""];
+    return tr(td(el("strong", q.quote_no), el("br"), el("span", dt(q.created_at), "small")),
+      td(q.company ? el("strong", q.company) : null, q.company ? el("br") : null, q.customer_name, el("br"), el("span", q.email || "", "small")),
+      td(fcfa(q.total_fcfa)), td(el("span", lab, "tag " + cls), q.orders ? el("br") : null, q.orders ? el("span", q.orders.ref + (q.orders.invoice_no ? " · " + q.orders.invoice_no : ""), "small") : null), td(acts));
+  }));
+  if (!rows.length) $("qRows").append(tr(td("Aucun devis pour l'instant.")));
+}
+$("qAddLine").addEventListener("click", () => { $("qLines").append(qLine()); qTotal(); });
+$("qReset").addEventListener("click", qReset);
+$("qSave").addEventListener("click", async () => {
+  const b = $("qSave"); b.disabled = true;
+  try {
+    const d = await api({ action: "quote_save", id: $("qId").value || undefined, customer_name: $("qName").value, company: $("qCompany").value, email: $("qEmail").value,
+      phone: $("qPhone").value, address: $("qAddress").value, valid_until: $("qValid").value, notes: $("qNotes").value, items: qItems() });
+    toast("Devis " + d.row.quote_no + " enregistré ✔"); qReset(); await loadQuotes();
+  } catch (e) { $("qMsg").textContent = errMsg(e); } finally { b.disabled = false; }
+});
+
 // ---------- blog ----------
 async function loadBlog() {
   const { rows } = await api({ action: "posts_list" });
@@ -1390,6 +1503,8 @@ async function loadSettings() {
   const b = $("autoToggle"); b.textContent = on ? "Désactiver" : "Activer"; b.className = on ? "red" : "green";
   $("sThreshold").value = settings.payout_threshold ?? 10000; $("sDiscount").value = settings.default_discount_pct ?? 10; $("sAdminEmail").value = settings.admin_email || "";
   $("sPixel").value = settings.meta_pixel_id || "";
+  $("sInvName").value = settings.invoice_legal_name || ""; $("sInvAddr").value = settings.invoice_address || ""; $("sInvPhone").value = settings.invoice_phone || "";
+  $("sInvEmail").value = settings.invoice_email || ""; $("sInvNinea").value = settings.invoice_ninea || ""; $("sInvRc").value = settings.invoice_rc || ""; $("sInvVat").checked = settings.invoice_vat_enabled === true;
   $("sShipHome").value = settings.shipping_home_fcfa ?? 1500; $("sShipBus").value = settings.shipping_bus_fcfa ?? 1000;
   const rep = settings.weekly_report !== false;
   const rt = $("repTag"); rt.textContent = rep ? "Activé" : "Désactivé"; rt.className = "tag s-" + (rep ? "on" : "off");
@@ -1401,6 +1516,15 @@ $("repToggle").addEventListener("click", async () => {
 $("repNow").addEventListener("click", async () => {
   const b = $("repNow"); b.disabled = true;
   try { await api({ action: "report_send" }); toast("Rapport envoyé à " + (settings.admin_email || "votre email") + " ✔"); } catch (e) { toast(errMsg(e)); } finally { b.disabled = false; }
+});
+$("sSaveInv").addEventListener("click", async () => {
+  if ($("sInvVat").checked && settings.invoice_vat_enabled !== true && !confirm("Activer la TVA 18 % sur les prochaines factures ? (les factures déjà créées ne changent pas)")) return;
+  try {
+    for (const [k, id] of [["invoice_legal_name", "sInvName"], ["invoice_address", "sInvAddr"], ["invoice_phone", "sInvPhone"], ["invoice_email", "sInvEmail"], ["invoice_ninea", "sInvNinea"], ["invoice_rc", "sInvRc"]])
+      await api({ action: "settings_set", key: k, value: $(id).value.trim() });
+    await api({ action: "settings_set", key: "invoice_vat_enabled", value: $("sInvVat").checked });
+    toast("Informations de facturation enregistrées ✔"); await loadSettings();
+  } catch (e) { toast(errMsg(e)); }
 });
 $("sSaveShip").addEventListener("click", async () => {
   try {

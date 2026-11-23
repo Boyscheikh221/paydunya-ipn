@@ -159,7 +159,7 @@ function renderBody(body: string, c: Ctx) {
 }
 // Email « transactionnel » sobre (fond blanc, peu d'images, pas de slogan) : Gmail le classe
 // plus souvent dans « Principal » que dans « Promotions ».
-function wrapHtml(inner: string, ref?: string) {
+function wrapHtml(inner: string, ref?: string, invoiceUrl?: string) {
   const { B, N, O } = EM;
   const why = ref ? `Cet email concerne votre commande <b>${esc(ref)}</b> sur licenceoff.com.<br>` : "";
   return `<!doctype html><html lang="fr"><body style="margin:0;background:#ffffff;font-family:Segoe UI,Arial,sans-serif;color:${N}">
@@ -170,7 +170,7 @@ function wrapHtml(inner: string, ref?: string) {
   <td style="vertical-align:middle;font-size:20px;font-weight:800;color:${B}">licence<span style="color:${O}">off</span></td></tr></table></td></tr>
 <tr><td style="padding:20px 0;font-size:15px;line-height:1.5">${inner}</td></tr>
 <tr><td style="border-top:1px solid #e3e8f0;padding:12px 0;color:#6b7690;font-size:12px">
-  ${why}Une question ? Répondez simplement à cet email.<br>
+  ${why}${invoiceUrl ? `Votre facture : <a href="${esc(invoiceUrl)}" style="color:${B}">voir et télécharger la facture</a><br>` : ""}Une question ? Répondez simplement à cet email.<br>
   Pour recevoir nos prochains emails sans problème, ajoutez commandes@licenceoff.com à vos contacts. Si cet email est arrivé dans « Promotions » ou « Spam », déplacez-le dans « Principal ».<br>
   licenceoff — Dakar, Sénégal · www.licenceoff.com</td></tr>
 </table></td></tr></table></body></html>`;
@@ -180,10 +180,12 @@ function renderEmail(tpl: Tpl, c: Ctx) {
   const v = vars(c) as Record<string, string>;
   const subject = String(tpl.subject || BUILTIN_TPL.subject).replace(/\{(prenom|nom|commande|total|version|produit)\}/g, (_, k) => v[k]).replace(/ {2,}/g, " ").trim().slice(0, 200);
   const ref = String(c.o.ref || "");
+  // lien vers la facture (commande payée avec un numéro de facture)
+  const inv = c.o.invoice_no && c.o.public_token ? siteCtx().site + "/facture.html?o=" + encodeURIComponent(c.o.public_token) : undefined;
   const subj = ref && ref !== "—" && !subject.includes(ref) ? (subject + " — commande " + ref).slice(0, 200) : subject;
   return {
-    subject: subj, html: wrapHtml(html, ref && ref !== "—" ? ref : undefined),
-    text: text + (ref && ref !== "—" ? "\n\nCet email concerne votre commande " + ref + " sur licenceoff.com." : "") + "\nUne question ? Répondez simplement à cet email.\nPour recevoir nos prochains emails sans problème, ajoutez commandes@licenceoff.com à vos contacts. Si cet email est arrivé dans « Promotions » ou « Spam », déplacez-le dans « Principal ».\nlicenceoff — www.licenceoff.com",
+    subject: subj, html: wrapHtml(html, ref && ref !== "—" ? ref : undefined, inv),
+    text: text + (ref && ref !== "—" ? "\n\nCet email concerne votre commande " + ref + " sur licenceoff.com." : "") + (inv ? "\nVotre facture : " + inv : "") + "\nUne question ? Répondez simplement à cet email.\nPour recevoir nos prochains emails sans problème, ajoutez commandes@licenceoff.com à vos contacts. Si cet email est arrivé dans « Promotions » ou « Spam », déplacez-le dans « Principal ».\nlicenceoff — www.licenceoff.com",
     headers: ref && ref !== "—" ? { "X-Entity-Ref-ID": ref } : undefined,
   };
 }
@@ -220,7 +222,7 @@ async function resendSend(to: string, mail: { subject: string; html: string; tex
 async function sendDeliveryEmail(orderId: string, force = false, templateId?: string): Promise<{ sent: boolean; count?: number; reason?: string }> {
   if (!(Deno.env.get("RESEND_API_KEY") ?? "").trim()) return { sent: false, reason: "resend_non_configure" };
   const { data: o } = await db.from("orders")
-    .select("id, ref, public_token, customer_name, email, amount_fcfa, status, emailed_at, order_items(id, product_name, delivery_type, quantity, status, created_at, license_keys(key_value), products(email_template_id))")
+    .select("id, ref, public_token, invoice_no, customer_name, email, amount_fcfa, status, emailed_at, order_items(id, product_name, delivery_type, quantity, status, created_at, license_keys(key_value), products(email_template_id))")
     .eq("id", orderId).maybeSingle();
   if (!o || !o.email) return { sent: false, reason: "commande_introuvable" };
   if (!force && o.status !== "delivered") return { sent: false, reason: "pas_encore_livree" };
@@ -261,7 +263,7 @@ async function sendDeliveryEmail(orderId: string, force = false, templateId?: st
 async function sendInstallEmail(orderId: string, force = false): Promise<{ sent: boolean; count?: number; reason?: string }> {
   if (!(Deno.env.get("RESEND_API_KEY") ?? "").trim()) return { sent: false, reason: "resend_non_configure" };
   const { data: o } = await db.from("orders")
-    .select("id, ref, public_token, customer_name, email, amount_fcfa, status, order_items(id, product_name, delivery_type, quantity, status, created_at, install_emailed_at, products(install_template_id))")
+    .select("id, ref, public_token, invoice_no, customer_name, email, amount_fcfa, status, order_items(id, product_name, delivery_type, quantity, status, created_at, install_emailed_at, products(install_template_id))")
     .eq("id", orderId).maybeSingle();
   if (!o || !o.email) return { sent: false, reason: "commande_introuvable" };
   let items: Item[] = ((o.order_items ?? []) as Item[]).filter((i) => i.status === "awaiting_install" && (force || !i.install_emailed_at));
@@ -348,7 +350,9 @@ async function createAdminOrder(body: any): Promise<Response | { o: any }> {
   if (name.length < 2) return json({ error: "nom_invalide" }, 400);
   if (!email.includes("@")) return json({ error: "email_invalide" }, 400);
   const lines = (Array.isArray(body.items) ? body.items : []).slice(0, 20)
-    .map((i: { product_id: string; qty: number }) => ({ id: str(i.product_id, 40), qty: clamp(Math.floor(Number(i.qty) || 1), 1, 20) }))
+    // unit_price : prix par ligne imposé (devis converti) ; sinon prix du site, ramené au montant réellement payé
+    .map((i: { product_id: string; qty: number; unit_price?: number }) => ({ id: str(i.product_id, 40), qty: clamp(Math.floor(Number(i.qty) || 1), 1, 1000),
+      up: i.unit_price != null && Number.isFinite(Number(i.unit_price)) ? clamp(Math.round(Number(i.unit_price)), 0, 100_000_000) : null }))
     .filter((i: { id: string }) => i.id);
   if (!lines.length) return json({ error: "panier_vide" }, 400);
   const { data: prods } = await db.from("products").select("id, name, price_fcfa, delivery_type").in("id", lines.map((l: { id: string }) => l.id));
@@ -367,12 +371,14 @@ async function createAdminOrder(body: any): Promise<Response | { o: any }> {
     payment_method: str(body.payment_method, 30) || null, payment_ref: str(body.payment_ref, 100) || ("TX-" + ref.slice(3)),
     note: str(body.note, 300) || null, source: "admin",
     channel: MANUAL_CHANNELS.includes(body.channel) ? body.channel : "wa_manuel", campaign: str(body.campaign, 80) || null,
+    billing_company: str(body.company, 120) || null, billing_address: str(body.address, 300) || null,
   }).select().single();
   if (error) return json({ error: error.message }, 500);
   const { error: e2 } = await db.from("order_items").insert(items.map((l: { id: string; qty: number }) => ({
     order_id: o.id, product_id: l.id, product_name: byId[l.id].name, delivery_type: byId[l.id].delivery_type,
     // prix réellement payé (vente WhatsApp à un autre prix) : réparti sur les lignes pour des stats justes
-    unit_price: amount === computed ? byId[l.id].price_fcfa
+    unit_price: (l as { up: number | null }).up != null ? (l as { up: number }).up
+      : amount === computed ? byId[l.id].price_fcfa
       : computed > 0 ? Math.round(byId[l.id].price_fcfa * amount / computed)
       : Math.round(amount / items.reduce((n: number, x: { qty: number }) => n + x.qty, 0)),
     quantity: l.qty,
@@ -988,13 +994,17 @@ Deno.serve(async (req) => {
         return json({ settings: Object.fromEntries((data ?? []).map((r) => [r.key, r.value])) });
       }
       case "settings_set": {
-        const allowed = ["auto_delivery", "payout_threshold", "default_discount_pct", "admin_email", "shipping_home_fcfa", "shipping_bus_fcfa", "weekly_report", "meta_pixel_id"];
+        const allowed = ["auto_delivery", "payout_threshold", "default_discount_pct", "admin_email", "shipping_home_fcfa", "shipping_bus_fcfa", "weekly_report", "meta_pixel_id",
+          "invoice_legal_name", "invoice_address", "invoice_phone", "invoice_email", "invoice_ninea", "invoice_rc", "invoice_vat_enabled"];
+        // informations légales imprimées sur les factures et devis
+        const TEXT_MAX: Record<string, number> = { invoice_legal_name: 100, invoice_address: 300, invoice_phone: 40, invoice_email: 200, invoice_ninea: 40, invoice_rc: 60 };
         const key = str(body.key, 40);
         if (!allowed.includes(key)) return json({ error: "reglage_inconnu" }, 400);
         let value: unknown = body.value === true;
         if (key === "payout_threshold") value = clamp(Math.round(Number(body.value) || 0), 0, 10_000_000);
         if (key === "default_discount_pct") value = clamp(Number(body.value) || 0, 0, 90);
         if (key === "shipping_home_fcfa" || key === "shipping_bus_fcfa") value = clamp(Math.round(Number(body.value) || 0), 0, 1_000_000);
+        if (TEXT_MAX[key]) value = str(body.value, TEXT_MAX[key]);
         if (key === "meta_pixel_id") { value = str(body.value, 30).replace(/\s/g, ""); if (value && !/^\d{5,20}$/.test(value as string)) return json({ error: "pixel_invalide" }, 400); }
         if (key === "admin_email") { value = str(body.value, 200).toLowerCase(); if (value && !/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/.test(value as string)) return json({ error: "email_invalide" }, 400); }
         const { error } = await db.from("settings").upsert({ key, value, updated_at: new Date().toISOString() });
@@ -1152,6 +1162,95 @@ Deno.serve(async (req) => {
         const r = await resendSend(to, { ...mail, subject: "[TEST] " + mail.subject });
         if (!r.ok) return json({ error: r.reason }, 400);
         return json({ ok: true });
+      }
+
+      // ================= Devis (revendeurs, entreprises) =================
+      case "quotes_list": {
+        const { data, error } = await db.from("quotes").select("*, orders(ref, invoice_no, status)").order("created_at", { ascending: false }).limit(300);
+        if (error) return json({ error: error.message }, 500);
+        return json({ rows: data });
+      }
+      case "quote_save": {
+        const name = str(body.customer_name, 100);
+        if (name.length < 2) return json({ error: "nom_invalide" }, 400);
+        const email = str(body.email, 200).toLowerCase();
+        if (email && !/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/.test(email)) return json({ error: "email_invalide" }, 400);
+        // deno-lint-ignore no-explicit-any
+        const raw = (Array.isArray(body.items) ? body.items : []).slice(0, 50) as any[];
+        const ids = raw.map((i) => str(i.product_id, 40)).filter(Boolean);
+        const { data: prods } = ids.length ? await db.from("products").select("id, name, price_fcfa").in("id", ids) : { data: [] };
+        const byId = Object.fromEntries((prods ?? []).map((p) => [p.id, p]));
+        const items = raw.filter((i) => byId[str(i.product_id, 40)]).map((i) => {
+          const p = byId[str(i.product_id, 40)];
+          const up = Number(i.unit_price);
+          return { product_id: p.id, name: str(i.name, 150) || p.name, qty: clamp(Math.floor(Number(i.qty) || 1), 1, 1000),
+            unit_price: Number.isFinite(up) && String(i.unit_price) !== "" ? clamp(Math.round(up), 0, 100_000_000) : p.price_fcfa };
+        });
+        if (!items.length) return json({ error: "panier_vide" }, 400);
+        const { data: vat } = await db.from("settings").select("value").eq("key", "invoice_vat_enabled").maybeSingle();
+        const row = {
+          customer_name: name, company: str(body.company, 120) || null, email: email || null,
+          phone: str(body.phone, 30) || null, address: str(body.address, 300) || null,
+          items, total_fcfa: items.reduce((t, i) => t + i.qty * i.unit_price, 0),
+          vat_rate: vat?.value === true ? 18 : 0, notes: str(body.notes, 1000) || null,
+          valid_until: /^\d{4}-\d{2}-\d{2}$/.test(str(body.valid_until, 10)) ? str(body.valid_until, 10) : null,
+          updated_at: new Date().toISOString(),
+        };
+        const id = str(body.id, 40);
+        if (id) {
+          const { data: cur } = await db.from("quotes").select("status").eq("id", id).maybeSingle();
+          if (!cur) return json({ error: "devis_introuvable" }, 404);
+          if (cur.status === "converted") return json({ error: "devis_deja_converti" }, 400);
+        }
+        const { data, error } = id
+          ? await db.from("quotes").update(row).eq("id", id).select().single()
+          : await db.from("quotes").insert(row).select().single();
+        if (error) return json({ error: error.message }, 500);
+        return json({ row: data });
+      }
+      case "quote_status": {
+        const status = str(body.status, 20);
+        if (!["draft", "sent", "accepted", "cancelled"].includes(status)) return json({ error: "statut_invalide" }, 400);
+        const { error } = await db.from("quotes").update({ status, updated_at: new Date().toISOString() }).eq("id", str(body.id, 40)).neq("status", "converted");
+        if (error) return json({ error: error.message }, 500);
+        return json({ ok: true });
+      }
+      case "quote_send": { // envoie le devis au client (lien vers la page imprimable)
+        const { data: q } = await db.from("quotes").select("*").eq("id", str(body.id, 40)).maybeSingle();
+        if (!q) return json({ error: "devis_introuvable" }, 404);
+        if (!q.email) return json({ error: "email_invalide" }, 400);
+        const { site } = siteCtx();
+        const url = site + "/facture.html?d=" + q.public_token;
+        const first = String(q.customer_name).split(" ")[0];
+        const html = `<p style="margin:0 0 12px">Bonjour ${esc(first)},</p>
+<p style="margin:0 0 12px">Veuillez trouver votre devis <b>${esc(q.quote_no)}</b>${q.company ? " pour " + esc(q.company) : ""}, d'un montant de <b>${esc(fcfaTxt(q.total_fcfa))}</b>.</p>
+<p style="margin:0 0 16px"><a href="${esc(url)}" style="display:inline-block;background:${EM.B};color:#fff;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:10px">Voir et télécharger le devis</a></p>
+${q.valid_until ? `<p style="margin:0 0 12px">Ce devis est valable jusqu'au ${esc(new Date(q.valid_until).toLocaleDateString("fr-FR"))}.</p>` : ""}
+<p style="margin:0 0 12px">Pour l'accepter ou poser une question, répondez simplement à cet email.</p>`;
+        const text = "Bonjour " + first + ",\n\nVotre devis " + q.quote_no + " (" + fcfaTxt(q.total_fcfa) + ") : " + url + "\n\nPour l'accepter ou poser une question, répondez à cet email.";
+        const r = await resendSend(q.email, { subject: "Votre devis " + q.quote_no + " — licenceoff", html: wrapHtml(html), text });
+        if (!r.ok) return json({ error: r.reason }, 400);
+        if (q.status === "draft") await db.from("quotes").update({ status: "sent", updated_at: new Date().toISOString() }).eq("id", q.id);
+        return json({ ok: true });
+      }
+      case "quote_convert": { // devis accepté et payé → commande (et facture)
+        const { data: q } = await db.from("quotes").select("*").eq("id", str(body.id, 40)).maybeSingle();
+        if (!q) return json({ error: "devis_introuvable" }, 404);
+        if (q.status === "converted") return json({ error: "devis_deja_converti" }, 400);
+        if (!q.email) return json({ error: "email_invalide" }, 400);
+        const c = await createAdminOrder({
+          name: q.company ? q.customer_name + " (" + q.company + ")" : q.customer_name, email: q.email, phone: q.phone,
+          company: q.company, address: q.address, amount_fcfa: q.total_fcfa,
+          // deno-lint-ignore no-explicit-any
+          items: ((q.items ?? []) as any[]).map((i) => ({ product_id: i.product_id, qty: i.qty, unit_price: i.unit_price })),
+          payment_method: body.payment_method, payment_ref: body.payment_ref, channel: body.channel, note: "Devis " + q.quote_no,
+        });
+        if (c instanceof Response) return c;
+        await db.from("quotes").update({ status: "converted", order_id: c.o.id, updated_at: new Date().toISOString() }).eq("id", q.id);
+        // livrer tout de suite (clés du stock, liens) ou laisser la commande à valider
+        const result = body.deliver === true ? await deliver(c.o.id, true, body.send_email !== false) : null;
+        const { data: o2 } = await db.from("orders").select("ref, invoice_no, public_token, status").eq("id", c.o.id).maybeSingle();
+        return json({ order: o2, result });
       }
 
       // ================= FAQ =================
