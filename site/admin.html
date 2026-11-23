@@ -431,6 +431,8 @@
           <div><label>N° de transaction</label><input id="mRef" placeholder="vide = numéro automatique"></div>
           <div><label>Le client vous a contacté par</label><select id="mChannel"><option value="wa_manuel">WhatsApp</option><option value="fb_manuel">Facebook / Messenger</option><option value="tel_manuel">Téléphone / en personne</option><option value="autre_manuel">Autre</option></select></div>
         </div>
+        <div id="mModeBox" class="hidden" style="margin:6px 0"><label>Que faut-il envoyer ?</label>
+          <select id="mMode"><option value="link">1. Le lien de téléchargement d'abord (la clé ensuite, avec un bouton)</option><option value="key">La clé directement (sans lien de téléchargement)</option></select></div>
         <label class="check"><input type="checkbox" id="mMail" checked> Envoyer l'email au client</label>
         <div class="small" id="mTplInfo" style="margin:4px 0"></div>
         <div class="bar" style="margin-top:8px"><button id="mSend" class="green">Envoyer la clé</button></div>
@@ -1239,7 +1241,7 @@ $("gSave").addEventListener("click", async () => {
 });
 
 // ---------- modèles d'email ----------
-const TPL_VARS = ["{prenom}", "{nom}", "{commande}", "{total}", "{produits}", "{cles}", "{bouton}", "{bouton_installation}", "{lien_commande}", "{whatsapp}"];
+const TPL_VARS = ["{prenom}", "{nom}", "{commande}", "{total}", "{version}", "{produit}", "{produits}", "{cles}", "{bouton}", "{bouton_installation}", "{lien_commande}", "{whatsapp}"];
 $("tVars").replaceChildren(...TPL_VARS.map((v) => { const b = el("button", v, "grey"); b.type = "button"; b.style.cssText = "padding:2px 8px;margin:2px;font-size:12px";
   b.addEventListener("click", () => { const t = $("tBody"), i = t.selectionStart ?? t.value.length; t.value = t.value.slice(0, i) + v + t.value.slice(t.selectionEnd ?? i); t.focus(); }); return b; }));
 async function loadTemplates() {
@@ -1280,7 +1282,7 @@ function fillProdSelect(id, info) {
   const s = $(id), keep = s.value;
   s.replaceChildren(...products.map((p) => new Option(p.name + " — " + fcfa(p.price_fcfa), p.id)));
   if (keep && products.some((p) => p.id === keep)) s.value = keep;
-  const show = () => { const p = products.find((x) => x.id === s.value); if (id === "mProd" && p) $("mAmount").placeholder = "prix du site : " + fcfa(p.price_fcfa); $(info).textContent = p ? (p.two_step && info === "mTplInfo" ? "Produit en 2 temps : d'abord « " + instNameOf(p) + " » (logiciel + bouton), puis « " + tplNameOf(p) + " » avec la clé quand le client a fini l'installation" : "Modèle d'email utilisé : « " + tplNameOf(p) + " »") + (STOCK_TYPES.includes(p.delivery_type) ? "" : " · ce produit n'a pas de clé en stock (" + TYPES[p.delivery_type] + ")") : ""; };
+  const show = () => { const p = products.find((x) => x.id === s.value); if (id === "mProd" && p) { $("mAmount").placeholder = "prix du site : " + fcfa(p.price_fcfa); $("mModeBox").classList.toggle("hidden", !(p.two_step && ["key", "key_file"].includes(p.delivery_type))); } $(info).textContent = p ? (p.two_step && info === "mTplInfo" ? "Produit en 2 temps : d'abord « " + instNameOf(p) + " » (logiciel + bouton), puis « " + tplNameOf(p) + " » avec la clé quand le client a fini l'installation" : "Modèle d'email utilisé : « " + tplNameOf(p) + " »") + (STOCK_TYPES.includes(p.delivery_type) ? "" : " · ce produit n'a pas de clé en stock (" + TYPES[p.delivery_type] + ")") : ""; };
   s.onchange = show; show();
 }
 async function loadSend() { await loadRefs(); fillProdSelect("mProd", "mTplInfo"); fillProdSelect("sProd", "sTplInfo"); }
@@ -1292,13 +1294,21 @@ $("mSend").addEventListener("click", async () => {
   const b = $("mSend"); b.disabled = true;
   try {
     const d = await api({ action: "manual_send", product_id: $("mProd").value, qty: Number($("mQty").value) || 1, email: $("mEmail").value, name: $("mName").value,
-      phone: $("mPhone").value, amount_fcfa: $("mAmount").value, payment_method: $("mMethod").value, payment_ref: $("mRef").value, channel: $("mChannel").value, send_email: $("mMail").checked });
+      phone: $("mPhone").value, amount_fcfa: $("mAmount").value, payment_method: $("mMethod").value, payment_ref: $("mRef").value, channel: $("mChannel").value, mode: $("mMode").value, send_email: $("mMail").checked });
     const r = $("mResult"); r.classList.remove("hidden");
     const parts = [el("strong", "Commande " + d.order.ref + " enregistrée."), el("br")];
     if (d.result && d.result.reason === "out_of_stock") parts.push(el("span", "⚠️ Plus de clé en stock pour ce produit : ajoutez-en dans l'onglet Stock, la commande partira toute seule (email compris)."));
     else {
       if (d.keys && d.keys.length) { parts.push("Clé(s) envoyée(s) :", el("br")); for (const k of d.keys) parts.push(el("span", k, "mono"), el("br")); }
-      if (d.result && d.result.reason === "awaiting_install") parts.push("Produit en 2 temps : la clé partira quand le client cliquera « J'ai fini l'installation ».", el("br"));
+      if (d.result && d.result.reason === "awaiting_install") {
+        parts.push("✔ Lien de téléchargement envoyé. La clé partira quand le client cliquera « J'ai fini l'installation », ou dès que vous cliquez ici :", el("br"));
+        const waiting = (d.items || []).filter((i) => i.status === "awaiting_install");
+        for (const i of waiting) parts.push(btn("🔑 Envoyer la clé maintenant", "green", async () => {
+          const k = await api({ action: "item_send_key_now", id: i.id });
+          toast(k.result && k.result.reason === "delivered" ? "Clé envoyée ✔" : (ERR[k.result?.reason] || "Clé : " + (k.result?.reason || "envoyée")));
+          const r2 = $("mResult"); r2.append(el("br"), el("strong", "🔑 Clé envoyée à " + d.order.email + " ✔"));
+        }), el("br"));
+      }
       parts.push(d.email ? (d.email.sent ? "✔ " + (d.email.kind === "install" ? "Email d'installation" : "Email") + " envoyé à " + d.order.email : "⚠️ Email non envoyé : " + (ERR[d.email.reason] || d.email.reason)) : "Email non envoyé (case décochée).");
     }
     r.replaceChildren(...parts);

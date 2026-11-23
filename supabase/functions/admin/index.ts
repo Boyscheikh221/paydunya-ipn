@@ -121,7 +121,10 @@ const buttonHtml = (link: string) => `<p style="text-align:center;margin:22px 0"
 
 function vars(c: Ctx) {
   const parts = String(c.o.customer_name ?? "").trim().split(/\s+/);
-  return { prenom: parts[0] || "", nom: String(c.o.customer_name ?? ""), commande: String(c.o.ref), total: fcfaTxt(c.o.amount_fcfa), lien_commande: c.link, lien_installation: c.install ?? c.link, whatsapp: "https://wa.me/" + c.wa };
+  return { prenom: parts[0] || "", nom: String(c.o.customer_name ?? ""), commande: String(c.o.ref), total: fcfaTxt(c.o.amount_fcfa), lien_commande: c.link, lien_installation: c.install ?? c.link, whatsapp: "https://wa.me/" + c.wa,
+    // {version} : 2024, 2021, 2019, 2016, 365… lue dans le nom du produit ; {produit} : nom(s) du produit
+    version: (c.items.map((i) => String(i.product_name ?? "").match(/\b(20(?:07|10|13|16|19|21|24|25|26)|365)\b/)).find(Boolean) ?? [""])[0],
+    produit: c.items.map((i) => String(i.product_name ?? "")).filter(Boolean).join(", ") };
 }
 // Texte simple → HTML : paragraphes, **gras**, listes « - », [lien](url), et les blocs {produits} {cles} {bouton}
 function renderBody(body: string, c: Ctx) {
@@ -132,7 +135,7 @@ function renderBody(body: string, c: Ctx) {
   if (!b.includes("{bouton}") && !b.includes("{lien_commande}")) b += "\n\n{bouton}";
   if (c.install && !b.includes("{bouton_installation}") && !b.includes("{lien_installation}")) b += "\n\n{bouton_installation}";
   if (!c.install) b = b.replace(/\{bouton_installation\}/g, "");
-  const sub = (s: string) => s.replace(/\{(prenom|nom|commande|total|lien_commande|lien_installation|whatsapp)\}/g, (_, k) => v[k]);
+  const sub = (s: string) => s.replace(/\{(prenom|nom|commande|total|lien_commande|lien_installation|whatsapp|version|produit)\}/g, (_, k) => v[k]).replace(/ {2,}/g, " ");
   // HTML
   const blocks = b.replace(/\r/g, "").split(/\n{2,}/).map((para) => {
     const t = para.trim();
@@ -171,7 +174,7 @@ function wrapHtml(inner: string) {
 function renderEmail(tpl: Tpl, c: Ctx) {
   const { html, text } = renderBody(tpl.body, c);
   const v = vars(c) as Record<string, string>;
-  const subject = String(tpl.subject || BUILTIN_TPL.subject).replace(/\{(prenom|nom|commande|total)\}/g, (_, k) => v[k]).slice(0, 200);
+  const subject = String(tpl.subject || BUILTIN_TPL.subject).replace(/\{(prenom|nom|commande|total|version|produit)\}/g, (_, k) => v[k]).replace(/ {2,}/g, " ").trim().slice(0, 200);
   return { subject, html: wrapHtml(html), text: text + "\n\nlicenceoff — Vos logiciels, notre engagement !" };
 }
 function siteCtx() {
@@ -685,8 +688,10 @@ Deno.serve(async (req) => {
       case "manual_send": { // vente WhatsApp : clé(s) du stock + email au modèle du produit, enregistrée comme commande
         const c = await createAdminOrder({ ...body, name: str(body.name, 100) || "Client WhatsApp", items: [{ product_id: body.product_id, qty: body.qty }] });
         if (c instanceof Response) return c;
+        // « clé directement » : on saute l'étape du lien de téléchargement (produit en 2 temps)
+        if (body.mode === "key") await db.from("order_items").update({ claim_requested_at: new Date().toISOString() }).eq("order_id", c.o.id);
         const result = await deliver(c.o.id, true, body.send_email !== false); // emails automatiques (installation ou clé)
-        const { data: o2 } = await db.from("orders").select("emailed_at, order_items(status, install_emailed_at, license_keys(key_value))").eq("id", c.o.id).maybeSingle();
+        const { data: o2 } = await db.from("orders").select("emailed_at, order_items(id, status, install_emailed_at, license_keys(key_value))").eq("id", c.o.id).maybeSingle();
         // deno-lint-ignore no-explicit-any
         const its = (o2?.order_items ?? []) as any[];
         // deno-lint-ignore no-explicit-any
@@ -694,7 +699,7 @@ Deno.serve(async (req) => {
         const email = body.send_email === false ? null
           : result?.reason === "awaiting_install" ? { sent: its.some((i) => i.install_emailed_at), kind: "install" }
           : { sent: !!o2?.emailed_at, kind: "key" };
-        return json({ order: c.o, result, keys, email });
+        return json({ order: c.o, result, keys, email, items: its.map((i) => ({ id: i.id, status: i.status })) });
       }
 
       case "template_send": { // envoyer un modèle seul à une adresse (sans clé ni commande)
