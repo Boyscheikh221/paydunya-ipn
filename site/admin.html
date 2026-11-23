@@ -1384,7 +1384,7 @@ $("gSave").addEventListener("click", async () => {
 });
 
 // ---------- modèles d'email ----------
-const TPL_VARS = ["{prenom}", "{nom}", "{commande}", "{total}", "{version}", "{produit}", "{produits}", "{cles}", "{bouton}", "{bouton_installation}", "{lien_commande}", "{whatsapp}"];
+const TPL_VARS = ["{prenom}", "{nom}", "{commande}", "{total}", "{version}", "{produit}", "{produits}", "{cles}", "{bouton}", "{bouton_installation}", "{bouton_whatsapp}", "{lien_commande}", "{whatsapp}"];
 $("tVars").replaceChildren(...TPL_VARS.map((v) => { const b = el("button", v, "grey"); b.type = "button"; b.style.cssText = "padding:2px 8px;margin:2px;font-size:12px";
   b.addEventListener("click", () => { const t = $("tBody"), i = t.selectionStart ?? t.value.length; t.value = t.value.slice(0, i) + v + t.value.slice(t.selectionEnd ?? i); t.focus(); }); return b; }));
 async function loadTemplates() {
