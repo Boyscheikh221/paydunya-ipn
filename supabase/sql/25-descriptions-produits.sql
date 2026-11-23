@@ -76,22 +76,23 @@ Assistance : besoin d'aide pour installer ou activer ? Écrivez-nous sur WhatsAp
   on conflict (slug) do nothing;
 
 insert into public.products (slug, name, category_id, delivery_type, two_step, active, price_fcfa, description, seo_description, sort, stock_qty)
-  select 'microsoft-365-12-mois', $q$Microsoft 365 — Abonnement 12 mois$q$, (select id from public.categories where slug = 'microsoft-365'), 'key_file', false, false, 0, $q$Office toujours à jour, sur tous vos appareils, avec du stockage en ligne.
+  select 'microsoft-365-12-mois', $q$Microsoft 365 — Abonnement 1 an, 5 appareils (PC et Mac)$q$, (select id from public.categories where slug = 'microsoft-365'), 'key_file', false, false, 0, $q$Office toujours à jour sur tous vos appareils, lié à votre propre compte Outlook.
 
 Ce qui est inclus :
 • Word, Excel, PowerPoint, Outlook, OneNote
-• Stockage en ligne OneDrive (1 To par utilisateur)
+• Stockage en ligne OneDrive
 • Mises à jour et nouveautés comprises pendant toute la durée
 
 Caractéristiques :
-• Durée : 12 mois
-• Fonctionne sur PC Windows, Mac, tablette et téléphone
-• Se rattache à votre compte Microsoft (gratuit)
+• Durée : 1 an
+• Activé sur votre compte Outlook (Microsoft) : vous gardez vos fichiers et vos réglages
+• Utilisable sur 5 appareils en même temps
+• Compatible PC Windows et Mac, ainsi que tablette et téléphone
 
-Livraison : après le paiement, vous recevez par email votre code et les étapes pour l'activer sur votre compte Microsoft.
+Livraison : après le paiement, vous recevez par email votre code et les étapes pour l'activer sur votre compte Outlook. Pas encore de compte ? Il se crée gratuitement en quelques minutes, on vous aide.
 
 Paiement : Wave, Orange Money ou carte bancaire.
-Assistance : on vous aide à activer, sur WhatsApp ou à contact@licenceoff.com.$q$, $q$Microsoft 365 pour 12 mois : Word, Excel, PowerPoint, Outlook toujours à jour, sur PC, Mac, tablette et téléphone, avec stockage OneDrive.$q$, 40, null
+Assistance : on vous aide à activer, sur WhatsApp ou à contact@licenceoff.com.$q$, $q$Microsoft 365 pour 1 an sur votre compte Outlook : Word, Excel, PowerPoint toujours à jour, utilisable sur 5 appareils en même temps, PC et Mac.$q$, 40, null
   on conflict (slug) do nothing;
 
 insert into public.products (slug, name, category_id, delivery_type, two_step, active, price_fcfa, description, seo_description, sort, stock_qty)
