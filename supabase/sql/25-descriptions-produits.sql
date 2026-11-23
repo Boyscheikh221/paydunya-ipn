@@ -80,7 +80,8 @@ insert into public.products (slug, name, category_id, delivery_type, two_step, a
 
 Ce qui est inclus :
 • Word, Excel, PowerPoint, Outlook, OneNote
-• Stockage en ligne OneDrive
+• 1 To de stockage en ligne OneDrive
+• Accès à Copilot, l'assistant intelligent de Microsoft
 • Mises à jour et nouveautés comprises pendant toute la durée
 
 Caractéristiques :
@@ -92,7 +93,7 @@ Caractéristiques :
 Livraison : après le paiement, vous recevez par email votre code et les étapes pour l'activer sur votre compte Outlook. Pas encore de compte ? Il se crée gratuitement en quelques minutes, on vous aide.
 
 Paiement : Wave, Orange Money ou carte bancaire.
-Assistance : on vous aide à activer, sur WhatsApp ou à contact@licenceoff.com.$q$, $q$Microsoft 365 pour 1 an sur votre compte Outlook : Word, Excel, PowerPoint toujours à jour, utilisable sur 5 appareils en même temps, PC et Mac.$q$, 40, null
+Assistance : on vous aide à activer, sur WhatsApp ou à contact@licenceoff.com.$q$, $q$Microsoft 365 pour 1 an sur votre compte Outlook : Word, Excel, PowerPoint, 1 To OneDrive et Copilot, sur 5 appareils en même temps, PC et Mac.$q$, 40, null
   on conflict (slug) do nothing;
 
 insert into public.products (slug, name, category_id, delivery_type, two_step, active, price_fcfa, description, seo_description, sort, stock_qty)
