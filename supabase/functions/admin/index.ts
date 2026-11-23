@@ -786,7 +786,8 @@ Deno.serve(async (req) => {
           db.from("customers").select("name, phone").eq("email", email).maybeSingle(),
           db.from("orders").select("customer_name, phone, billing_company, billing_address").eq("email", email).order("created_at", { ascending: false }).limit(1).maybeSingle(),
         ]);
-        const name = c?.name || o?.customer_name || "", phone = c?.phone || o?.phone || "";
+        const real = (n?: string | null) => n && !/^client (whatsapp|facebook)$/i.test(n.trim()) ? n : ""; // pas le nom par défaut
+        const name = real(c?.name) || real(o?.customer_name), phone = c?.phone || o?.phone || "";
         return json({ found: !!(name || phone), name, phone, company: o?.billing_company ?? "", address: o?.billing_address ?? "" });
       }
 
@@ -795,7 +796,7 @@ Deno.serve(async (req) => {
         if (!o) return json({ error: "not_found" }, 404);
         if (!o.invoice_no) return json({ error: "pas_de_facture" }, 400);
         const url = siteCtx().site + "/facture.html?o=" + encodeURIComponent(o.public_token);
-        const first = String(o.customer_name || "").trim().split(/\s+/)[0] || "";
+        const first = /^client (whatsapp|facebook)$/i.test(String(o.customer_name || "").trim()) ? "" : String(o.customer_name || "").trim().split(/\s+/)[0] || "";
         const html = `<p style="margin:0 0 12px">Bonjour ${esc(first)},</p>
 <p style="margin:0 0 12px">Voici la facture <b>${esc(o.invoice_no)}</b> de votre commande ${esc(o.ref)} (${esc(fcfaTxt(o.amount_fcfa))}).</p>
 <p style="margin:0 0 16px">Vous pouvez l'afficher, l'imprimer ou l'enregistrer en PDF avec le bouton « Télécharger en PDF / Imprimer ».</p>
@@ -805,6 +806,17 @@ Deno.serve(async (req) => {
         const r = await resendSend(o.email, { subject: "Votre facture " + o.invoice_no + " — commande " + o.ref + " — licenceoff.com", html: wrapHtml(html, o.ref), text, headers: { "X-Entity-Ref-ID": o.ref } });
         if (!r.ok) return json({ error: r.reason }, 400);
         return json({ ok: true, to: o.email });
+      }
+
+      case "order_update_client": { // corriger le nom / la société / l'adresse du client (facture)
+        const patch: Record<string, string | null> = {};
+        if (body.name != null) { const n = str(body.name, 100); if (n.length < 2) return json({ error: "nom_invalide" }, 400); patch.customer_name = n; }
+        if (body.company != null) patch.billing_company = str(body.company, 120) || null;
+        if (body.address != null) patch.billing_address = str(body.address, 300) || null;
+        if (body.phone != null) patch.phone = str(body.phone, 30).replace(/[^\d+]/g, "") || null;
+        const { error } = await db.from("orders").update(patch).eq("id", str(body.id, 40));
+        if (error) return json({ error: error.message }, 500);
+        return json({ ok: true });
       }
 
       case "order_cancel": { // n'importe quel état ; restock = remettre les clés envoyées dans le stock

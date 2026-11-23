@@ -1091,6 +1091,12 @@ async function loadOrders() {
     if (o.invoice_no && o.status !== "cancelled") acts.append(btn("✉ Envoyer la facture", "grey", async () => {
       if (confirm("Envoyer la facture " + o.invoice_no + " à " + o.email + " ?")) await run({ action: "order_invoice_send", id: o.id }, "Facture envoyée à " + o.email + " ✔", reload)();
     }));
+    acts.append(btn("✏️ Client", "grey", async () => {
+      const name = prompt("Nom du client (affiché sur la facture) :", o.customer_name || ""); if (name === null) return;
+      const company = prompt("Société (facultatif) :", o.billing_company || ""); if (company === null) return;
+      const address = prompt("Adresse (facultatif) :", o.billing_address || ""); if (address === null) return;
+      await run({ action: "order_update_client", id: o.id, name, company, address }, "Client mis à jour ✔", reload)();
+    }));
     if (o.status !== "cancelled") acts.append(btn("✖ Annuler la commande", "red", () => cancelOrder(o, items, reload)));
     tb.append(tr(
       td(el("strong", o.ref), el("br"), el("span", dt(o.created_at), "small"), el("br"), el("span", o.source === "admin" ? "vente manuelle" : "site", "small"), el("br"), el("span", "Origine : " + chLabel(o.channel) + (o.campaign ? " · " + o.campaign : ""), "small"), o.invoice_no ? el("br") : null, o.invoice_no ? el("span", "Facture " + o.invoice_no, "small") : null),
