@@ -593,9 +593,21 @@ Deno.serve(async (req) => {
 
   const expected = (Deno.env.get("ADMIN_PASSWORD") ?? "").trim();
   const given = (req.headers.get("x-admin-password") ?? "").trim();
+  const ip = (req.headers.get("cf-connecting-ip") ?? req.headers.get("x-forwarded-for")?.split(",")[0] ?? "").trim().slice(0, 64);
+  // Anti-essais en rafale : 10 mauvais mots de passe en 15 min depuis une adresse → cette adresse est bloquée 15 min ;
+  // 100 en 1 h au total (attaque depuis beaucoup d'adresses) → l'admin est fermé 1 h pour tout le monde.
+  // Même le bon mot de passe est refusé pendant le blocage (sinon le blocage ne servirait à rien).
+  const [{ count: ipFails }, { count: allFails }] = await Promise.all([
+    db.from("admin_login_failures").select("id", { count: "exact", head: true }).eq("ip", ip || "?").gte("created_at", new Date(Date.now() - 15 * 60_000).toISOString()),
+    db.from("admin_login_failures").select("id", { count: "exact", head: true }).gte("created_at", new Date(Date.now() - 3600_000).toISOString()),
+  ]);
+  if ((ipFails ?? 0) >= 10 || (allFails ?? 0) >= 100) {
+    await new Promise((r) => setTimeout(r, 800));
+    return json({ error: "bloque", detail: (allFails ?? 0) >= 100 ? "global" : "adresse" }, 429);
+  }
   if (!expected || !safeEqual(given, expected)) {
+    if (given) await db.from("admin_login_failures").insert({ ip: ip || "?" }).then(() => {}, () => {});
     // on note les mauvais mots de passe (au plus 1 ligne par minute pour ne pas remplir le journal)
-    const ip = (req.headers.get("cf-connecting-ip") ?? req.headers.get("x-forwarded-for")?.split(",")[0] ?? "").trim().slice(0, 64);
     if (given) {
       const { count } = await db.from("app_logs").select("id", { count: "exact", head: true }).eq("source", "connexion").eq("level", "warn")
         .like("message", "Mot de passe admin%").gte("created_at", new Date(Date.now() - 60_000).toISOString());

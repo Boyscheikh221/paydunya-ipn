@@ -1739,7 +1739,7 @@ async function login() {
     $("login").classList.add("hidden"); $("app").classList.remove("hidden");
     openTab("dash");
   } catch (e) {
-    $("loginMsg").textContent = e.message === "unauthorized" ? "Mot de passe incorrect." : "Erreur : " + e.message;
+    $("loginMsg").textContent = e.message === "unauthorized" ? "Mot de passe incorrect." : e.message === "bloque" ? "Trop d'essais ratés : connexion bloquée pour l'instant (15 min à 1 h). Réessayez plus tard." : "Erreur : " + e.message;
     pw = "";
   }
 }

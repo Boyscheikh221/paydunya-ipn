@@ -39,7 +39,8 @@ function loginView(msg) {
   b.addEventListener("click", async () => {
     if (!/^\S+@\S+\.\S+$/.test(email.value.trim())) { info.textContent = "Indiquez une adresse email valide."; return; }
     b.disabled = true;
-    await LO.boutique({ action: "account_login", email: email.value.trim() }).catch(() => {});
+    const r = await LO.boutique({ action: "account_login", email: email.value.trim() }).catch(() => ({}));
+    if (r && r.error === "trop_de_demandes") { info.textContent = "Trop de demandes en ce moment. Réessayez dans une heure, ou écrivez-nous sur WhatsApp."; b.disabled = false; return; }
     info.textContent = "📩 C'est envoyé ! Ouvrez l'email reçu sur " + email.value.trim() + " et cliquez sur « Ouvrir mon compte » (valable 30 minutes). Pensez aux spams.";
     b.disabled = false;
   });
@@ -133,7 +134,7 @@ async function load() {
     if (!d.s) return loginView(d.error === "lien_expire" ? "Ce lien a expiré ou a déjà servi. Demandez-en un nouveau." : "Erreur, réessayez.");
     LO.setAcct(d.s);
     let back = ""; try { back = sessionStorage.getItem("lo_retour") || ""; sessionStorage.removeItem("lo_retour"); } catch (_) {}
-    if (back.startsWith("/") && !back.startsWith("//")) { location.href = back; return; }
+    if (/^\/(?![\/\\])/.test(back) && !/[\\\s]/.test(back)) { location.href = back; return; }
   }
   load();
 })();
