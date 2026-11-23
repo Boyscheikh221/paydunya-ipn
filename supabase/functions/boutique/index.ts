@@ -408,13 +408,15 @@ async function productFeed(kind: string) {
     const pub = publicProduct(p, counts, {});
     const img = String(p.image_url).startsWith("http") ? String(p.image_url) : site + "/" + String(p.image_url).replace(/^\//, "");
     const promo = p.compare_price_fcfa && p.compare_price_fcfa > p.price_fcfa;
-    const brand = /windows|office|microsoft|365|visio|project|outlook|word|excel/i.test(p.name + " " + type) ? "Microsoft" : "Licenceoff";
+    const brand = /cam[ée]ra|surveillance/i.test(p.name + " " + type) ? (String(p.name).match(/\b(Hikvision|Dahua|Ezviz|Imou|TP-?Link|Tapo|Xiaomi|Reolink|Uniview|Ring|Arlo)\b/i)?.[1] ?? "Licenceoff")
+      : /windows|office|microsoft|365|visio|project|outlook|word|excel/i.test(p.name + " " + type) ? "Microsoft" : "Licenceoff";
     return {
       id: p.slug, title: String(p.name).slice(0, 150), description: plain(p.description || p.seo_description || p.name) || p.name,
       availability: pub.in_stock ? "in stock" : "out of stock", condition: "new",
       price: (promo ? p.compare_price_fcfa : p.price_fcfa) + " XOF", sale_price: promo ? p.price_fcfa + " XOF" : "",
       link: site + "/produit/" + encodeURIComponent(p.slug), image_link: img, brand, product_type: type,
-      google_product_category: p.delivery_type === "physical" ? "" : "313", // Logiciels > Logiciels informatiques
+      // logiciels : 313 ; caméras : chemin texte de la taxonomie Google (accepté par Google et Meta)
+      google_product_category: /cam[ée]ra|surveillance/i.test(p.name + " " + type) ? "Cameras & Optics > Cameras > Surveillance Cameras" : p.delivery_type === "physical" ? "" : "313",
       mpn: p.sku ?? "", identifier_exists: "no",
     };
   });
