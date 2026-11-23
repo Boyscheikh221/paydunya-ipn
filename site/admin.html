@@ -192,7 +192,7 @@
           <option value="">Toutes</option>
           <option value="pending">En attente de paiement</option>
           <option value="processing">À traiter (service ou livraison manuelle)</option>
-          <option value="installing">Le client installe (2 temps)</option>
+          <option value="installing">📩 Lien envoyé, clé pas encore envoyée</option>
           <option value="paid">Payées, en attente de stock</option>
           <option value="delivered">Livrées</option>
           <option value="cancelled">Annulées</option>
@@ -655,7 +655,7 @@ const ERR = {
   to_process: "Commande payée. Certains articles sont à traiter par vous (voir « À traiter »).",
   modele_incomplet: "Remplissez le nom, l'objet et le texte du modèle.", modele_par_defaut: "Choisissez d'abord un autre modèle par défaut.", email_invalide: "Adresse email invalide.",
   resend_non_configure: "Email pas encore configuré (clé Resend manquante dans Supabase).", envoi_echoue: "L'email n'a pas pu partir. Vérifiez le domaine dans Resend.",
-  commande_deja_payee: "Commande déjà payée, impossible de l'annuler.", cle_deja_envoyee: "Cette clé a déjà été envoyée.",
+  commande_deja_payee: "Commande déjà payée, impossible de l'annuler.", deja_annulee: "Cette commande est déjà annulée.", cle_deja_envoyee: "Cette clé a déjà été envoyée.",
   not_delivered: "L'article n'est pas encore livré.", no_installer: "Ce produit n'a pas de fichier.", not_to_process: "Cet article n'est pas à traiter.",
   produit_sans_stock: "Ce produit n'utilise pas de stock (type logiciel ou service).", fichier_obligatoire: "Choisissez ou envoyez le fichier du logiciel.",
   code_deja_utilise: "Ce nom est déjà utilisé, choisissez-en un autre.", nom_obligatoire: "Le nom est obligatoire.", panier_vide: "Ajoutez au moins un produit.", parent_invalide: "Une sous-catégorie doit être rangée dans une catégorie principale (un seul niveau).", email_deja_utilise: "Cet email est déjà celui d'un autre parrain.", deja_traite: "Ce versement a déjà été traité.", pas_en_installation: "Cet article n'attend plus l'installation.", rien_a_envoyer: "Rien à envoyer pour cette commande.", nom_invalide: "Nom du client trop court.", produit_introuvable: "Produit introuvable.",
@@ -993,9 +993,28 @@ function clientMessage(o) {
     "", "Le lien de téléchargement ne fonctionne qu'une seule fois.", "", "licenceoff.com — merci de votre confiance");
   return lines.join("\n");
 }
+async function cancelOrder(o, items, reload) {
+  const paid = o.status !== "pending";
+  const nKeys = items.reduce((n, i) => n + (i.license_keys || []).length, 0);
+  if (!confirm("Annuler la commande " + o.ref + " (" + fcfa(o.amount_fcfa) + ", " + o.customer_name + ") ?\n\n"
+    + (paid ? "Elle ne comptera plus dans les ventes, les statistiques ni le gain du parrain. La facture reste numérotée et affichera « ANNULÉE ».\n" : "")
+    + "Les liens de téléchargement encore valables seront désactivés.\n\nAttention : les emails déjà envoyés au client ne peuvent pas être repris.")) return;
+  const restock = nKeys > 0 && confirm(nKeys + " clé(s) ont déjà été envoyée(s) pour cette commande.\n\nOK = les remettre dans le stock (seulement si le client ne les a pas utilisées)\nAnnuler = les laisser comme « envoyées »");
+  try {
+    const r = await api({ action: "order_cancel", id: o.id, restock });
+    toast("Commande annulée" + (r.restocked ? " · " + r.restocked + " clé(s) remise(s) en stock" : "") + " ✔");
+    reload();
+  } catch (e) { toast(errMsg(e)); }
+}
+
 async function loadOrders() {
   if (!products.length) await loadRefs();
-  const { rows } = await api({ action: "orders_list", status: $("oStatus").value, q: $("oSearch").value });
+  const { rows, counts } = await api({ action: "orders_list", status: $("oStatus").value, q: $("oSearch").value });
+  if (counts) for (const op of $("oStatus").options) {
+    op.dataset.l ??= op.textContent;
+    const n = op.value ? counts[op.value] || 0 : Object.values(counts).reduce((a, b) => a + b, 0);
+    op.textContent = op.dataset.l + " (" + n + ")";
+  }
   const tb = $("oRows");
   tb.replaceChildren();
   if (!rows.length) { const c = td("Aucune commande."); c.colSpan = 6; tb.append(tr(c)); return; }
@@ -1023,7 +1042,6 @@ async function loadOrders() {
         if (!confirm("Avez-vous bien reçu " + fcfa(o.amount_fcfa) + " de " + o.customer_name + " ?")) return;
         await run({ action: "order_validate", id: o.id }, "Paiement validé, commande livrée ✔", reload)();
       }));
-      acts.append(btn("Annuler", "red", async () => { if (confirm("Annuler la commande " + o.ref + " ?")) await run({ action: "order_cancel", id: o.id }, "Commande annulée", reload)(); }));
     }
     if (items.some((i) => i.status === "to_process" && i.delivery_type !== "manual")) acts.append(btn("🚚 Livrer maintenant", "green", run({ action: "order_deliver_now", id: o.id }, "Commande livrée ✔", reload)));
     if (o.status === "paid") acts.append(btn("Réessayer la livraison", "grey", run({ action: "order_validate", id: o.id }, "Commande livrée ✔", reload)));
@@ -1036,6 +1054,7 @@ async function loadOrders() {
     }));
     acts.append(btn("Page client", "grey", () => copy(ORDER_PAGE + "?o=" + o.public_token, "Lien de la page client copié ✔")));
     if (o.invoice_no) acts.append(btn("🧾 Facture", "grey", () => window.open(SITE + "/facture?o=" + encodeURIComponent(o.public_token), "_blank", "noopener")));
+    if (o.status !== "cancelled") acts.append(btn("✖ Annuler la commande", "red", () => cancelOrder(o, items, reload)));
     tb.append(tr(
       td(el("strong", o.ref), el("br"), el("span", dt(o.created_at), "small"), el("br"), el("span", o.source === "admin" ? "vente manuelle" : "site", "small"), el("br"), el("span", "Origine : " + chLabel(o.channel) + (o.campaign ? " · " + o.campaign : ""), "small"), o.invoice_no ? el("br") : null, o.invoice_no ? el("span", "Facture " + o.invoice_no, "small") : null),
       td(el("strong", o.customer_name), el("br"), el("span", o.email, "small"), el("br"), el("span", o.phone || "", "small"),

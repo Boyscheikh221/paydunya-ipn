@@ -716,9 +716,11 @@ Deno.serve(async (req) => {
         if (body.status) q = q.eq("status", str(body.status, 20));
         const s = str(body.q, 80).replace(/[,()*]/g, " ").trim();
         if (s) q = q.or(`ref.ilike.*${s}*,customer_name.ilike.*${s}*,email.ilike.*${s}*,phone.ilike.*${s}*`);
-        const { data, error } = await q;
+        const [{ data, error }, { data: all }] = await Promise.all([q, db.from("orders").select("status").limit(50000)]);
         if (error) return json({ error: error.message }, 500);
-        return json({ rows: data });
+        const counts: Record<string, number> = {};
+        for (const r of all ?? []) counts[r.status] = (counts[r.status] ?? 0) + 1;
+        return json({ rows: data, counts });
       }
 
       case "order_create": { // vente faite par WhatsApp / en direct (plusieurs articles possibles)
@@ -775,13 +777,11 @@ Deno.serve(async (req) => {
         return json({ result: await deliver(body.id, true) });
       }
 
-      case "order_cancel": {
-        const { data, error } = await db.from("orders").update({ status: "cancelled" })
-          .eq("id", body.id).eq("status", "pending").select("id");
+      case "order_cancel": { // n'importe quel état ; restock = remettre les clés envoyées dans le stock
+        const { data, error } = await db.rpc("cancel_order", { p_order_id: str(body.id, 40), p_restock: body.restock === true });
         if (error) return json({ error: error.message }, 500);
-        if (!data?.length) return json({ error: "commande_deja_payee" }, 400);
-        await db.from("order_items").update({ status: "cancelled" }).eq("order_id", body.id);
-        return json({ ok: true });
+        if (!data?.ok) return json({ error: data?.reason ?? "erreur" }, 400);
+        return json(data);
       }
 
       case "item_complete": { // service traité à la main → livré
