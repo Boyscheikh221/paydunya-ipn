@@ -151,26 +151,33 @@ function renderBody(body: string, c: Ctx) {
     .replace(/\{bouton_installation\}/g, "Installation terminée ? Recevez votre clé (lien à usage unique) : " + (c.install ?? c.link));
   return { html, text };
 }
-function wrapHtml(inner: string) {
-  const { B, N, O, C } = EM;
-  return `<!doctype html><html lang="fr"><body style="margin:0;background:${C};font-family:Nunito,Segoe UI,Arial,sans-serif;color:${N}">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${C};padding:24px 12px"><tr><td align="center">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#fff;border-radius:16px;overflow:hidden">
-<tr><td style="background:${B};padding:18px 24px"><table role="presentation" cellpadding="0" cellspacing="0"><tr>
-  <td style="padding-right:14px;vertical-align:middle"><img src="https://www.licenceoff.com/img/profil-192.png" width="72" height="72" alt="licenceoff" style="display:block;border:0;border-radius:50%;width:72px;height:72px"></td>
-  <td style="vertical-align:middle"><div style="font-size:28px;font-weight:900;letter-spacing:-1px;color:#fff">licence<span style="color:${O}">off</span></div>
-  <div style="color:#dbe6fb;font-size:14px">Licences &amp; solutions numériques</div></td></tr></table></td></tr>
-<tr><td style="padding:24px;font-size:15px">${inner}</td></tr>
-<tr><td style="background:${N};color:#d6e0f5;padding:14px 24px;font-size:13px;text-align:center">
-  Au Sénégal 🇸🇳 · Des licences authentiques · Votre satisfaction, notre priorité<br>
-  <span style="color:${O};font-weight:800;font-style:italic">Vos logiciels, notre engagement !</span></td></tr>
+// Email « transactionnel » sobre (fond blanc, peu d'images, pas de slogan) : Gmail le classe
+// plus souvent dans « Principal » que dans « Promotions ».
+function wrapHtml(inner: string, ref?: string) {
+  const { B, N, O } = EM;
+  const why = ref ? `Cet email concerne votre commande <b>${esc(ref)}</b> sur licenceoff.com.<br>` : "";
+  return `<!doctype html><html lang="fr"><body style="margin:0;background:#ffffff;font-family:Segoe UI,Arial,sans-serif;color:${N}">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:20px 12px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px">
+<tr><td style="padding:0 0 12px;border-bottom:2px solid ${O}"><table role="presentation" cellpadding="0" cellspacing="0"><tr>
+  <td style="padding-right:10px;vertical-align:middle"><img src="https://www.licenceoff.com/img/profil-64.png" width="40" height="40" alt="" style="display:block;border:0;width:40px;height:40px"></td>
+  <td style="vertical-align:middle;font-size:20px;font-weight:800;color:${B}">licence<span style="color:${O}">off</span></td></tr></table></td></tr>
+<tr><td style="padding:20px 0;font-size:15px;line-height:1.5">${inner}</td></tr>
+<tr><td style="border-top:1px solid #e3e8f0;padding:12px 0;color:#6b7690;font-size:12px">
+  ${why}Une question ? Répondez simplement à cet email.<br>licenceoff — Dakar, Sénégal · www.licenceoff.com</td></tr>
 </table></td></tr></table></body></html>`;
 }
 function renderEmail(tpl: Tpl, c: Ctx) {
   const { html, text } = renderBody(tpl.body, c);
   const v = vars(c) as Record<string, string>;
   const subject = String(tpl.subject || BUILTIN_TPL.subject).replace(/\{(prenom|nom|commande|total|version|produit)\}/g, (_, k) => v[k]).replace(/ {2,}/g, " ").trim().slice(0, 200);
-  return { subject, html: wrapHtml(html), text: text + "\n\nlicenceoff — Vos logiciels, notre engagement !" };
+  const ref = String(c.o.ref || "");
+  const subj = ref && ref !== "—" && !subject.includes(ref) ? (subject + " — commande " + ref).slice(0, 200) : subject;
+  return {
+    subject: subj, html: wrapHtml(html, ref && ref !== "—" ? ref : undefined),
+    text: text + (ref && ref !== "—" ? "\n\nCet email concerne votre commande " + ref + " sur licenceoff.com." : "") + "\nUne question ? Répondez simplement à cet email.\nlicenceoff — www.licenceoff.com",
+    headers: ref && ref !== "—" ? { "X-Entity-Ref-ID": ref } : undefined,
+  };
 }
 function siteCtx() {
   return {
