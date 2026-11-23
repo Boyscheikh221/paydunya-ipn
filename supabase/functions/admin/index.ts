@@ -851,6 +851,17 @@ Deno.serve(async (req) => {
         if (error) return json({ error: error.message }, 500);
         return json({ rows: data });
       }
+      case "product_status": { // publier / remettre en brouillon depuis la liste
+        const id = str(body.id, 40);
+        const { data: cur, error: e0 } = await db.from("products").select("id, price_fcfa").eq("id", id).maybeSingle();
+        if (e0) return json({ error: e0.message }, 500);
+        if (!cur) return json({ error: "introuvable" }, 404);
+        const active = body.active === true;
+        if (active && !(Number(cur.price_fcfa) > 0)) return json({ error: "prix_manquant" }, 400);
+        const { error } = await db.from("products").update({ active }).eq("id", id);
+        if (error) return json({ error: error.message }, 500);
+        return json({ ok: true, active });
+      }
       case "product_save": {
         const dtype = DELIVERY_TYPES.includes(body.delivery_type) ? body.delivery_type : "key";
         const row = {
