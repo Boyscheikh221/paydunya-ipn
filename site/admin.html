@@ -464,6 +464,7 @@
         </div>
         <div id="mModeBox" class="hidden" style="margin:6px 0"><label>Que faut-il envoyer ?</label>
           <select id="mMode"><option value="link">1. Le lien de téléchargement d'abord (la clé ensuite, avec un bouton)</option><option value="key">La clé directement (sans lien de téléchargement)</option></select></div>
+        <label class="check"><input type="checkbox" id="mLock"> 🔒 Clé verrouillée jusqu'au paiement : le client reçoit un email « votre clé vous attend » sans la clé ; vous la débloquez dans Commandes quand il a payé</label>
         <label class="check"><input type="checkbox" id="mMail" checked> Envoyer l'email au client</label>
         <div class="small" id="mTplInfo" style="margin:4px 0"></div>
         <div class="bar" style="margin-top:8px"><button id="mSend" class="green">Envoyer la clé</button></div>
@@ -1072,8 +1073,8 @@ async function loadOrders() {
     }
     const acts = el("div", null, "acts");
     if (o.status === "pending") {
-      acts.append(btn("✔ Valider le paiement", "green", async () => {
-        if (!confirm("Avez-vous bien reçu " + fcfa(o.amount_fcfa) + " de " + o.customer_name + " ?")) return;
+      acts.append(btn(o.key_locked ? "🔓 Débloquer la clé (paiement reçu)" : "✔ Valider le paiement", "green", async () => {
+        if (!confirm("Avez-vous bien reçu " + fcfa(o.amount_fcfa) + " de " + o.customer_name + " ?" + (o.key_locked ? "\nLa clé sera envoyée par email au client et affichée sur sa page." : ""))) return;
         await run({ action: "order_validate", id: o.id }, "Paiement validé, commande livrée ✔", reload)();
       }));
     }
@@ -1106,7 +1107,7 @@ async function loadOrders() {
         o.shipping_method ? shipInfo(o) : null),
       cItems,
       td(el("strong", fcfa(o.amount_fcfa)), el("br"), el("span", METHOD[o.payment_method] || o.payment_method || "—", "small"), el("br"), el("span", o.payment_ref || "", "small mono")),
-      td(tag(o.status), o.emailed_at ? el("div", "✉ email envoyé " + dt(o.emailed_at), "small") : null, o.note ? el("div", o.note, "small") : null),
+      td(tag(o.status), o.key_locked && o.status === "pending" ? el("div", "🔒 Clé verrouillée", "small") : null, o.emailed_at ? el("div", "✉ email envoyé " + dt(o.emailed_at), "small") : null, o.note ? el("div", o.note, "small") : null),
       td(acts)));
   }
 }
@@ -1496,14 +1497,19 @@ $("mSend").addEventListener("click", async () => {
   const p = products.find((x) => x.id === $("mProd").value);
   if (!$("mEmail").value.trim()) return $("mEmail").focus();
   const amt = $("mAmount").value.trim() === "" ? (p ? p.price_fcfa * (Number($("mQty").value) || 1) : 0) : Number($("mAmount").value);
-  if (!confirm("Envoyer " + $("mQty").value + " × " + (p ? p.name : "") + " à " + $("mEmail").value + " ?\nVente enregistrée : " + fcfa(amt))) return;
+  if (!confirm(($("mLock").checked ? "🔒 Réserver (clé verrouillée) " : "Envoyer ") + $("mQty").value + " × " + (p ? p.name : "") + " à " + $("mEmail").value + " ?\n" + ($("mLock").checked ? "En attente de paiement : " : "Vente enregistrée : ") + fcfa(amt))) return;
   const b = $("mSend"); b.disabled = true;
   try {
     const d = await api({ action: "manual_send", product_id: $("mProd").value, qty: Number($("mQty").value) || 1, email: $("mEmail").value, name: $("mName").value,
-      phone: $("mPhone").value, amount_fcfa: $("mAmount").value, fees_fcfa: $("mFees").value, payment_method: $("mMethod").value, payment_ref: $("mRef").value, channel: $("mChannel").value, mode: $("mMode").value, send_email: $("mMail").checked });
+      phone: $("mPhone").value, amount_fcfa: $("mAmount").value, fees_fcfa: $("mFees").value, payment_method: $("mMethod").value, payment_ref: $("mRef").value, channel: $("mChannel").value, mode: $("mLock").checked ? "locked" : $("mMode").value, send_email: $("mMail").checked });
     const r = $("mResult"); r.classList.remove("hidden");
     const parts = [el("strong", "Commande " + d.order.ref + " enregistrée."), el("br")];
-    if (d.result && d.result.reason === "out_of_stock") parts.push(el("span", "⚠️ Plus de clé en stock pour ce produit : ajoutez-en dans l'onglet Stock, la commande partira toute seule (email compris)."));
+    if (d.locked) {
+      parts.push("🔒 Clé verrouillée : la commande reste « en attente de paiement ». Quand le client a payé, allez dans Commandes et cliquez « 🔓 Débloquer la clé » : la clé part par email.", el("br"));
+      if (d.stock < (Number($("mQty").value) || 1)) parts.push(el("span", "⚠️ Pas assez de clés en stock pour ce produit en ce moment : ajoutez-en avant de débloquer."), el("br"));
+      parts.push(d.email ? (d.email.sent ? "✔ Email « votre clé vous attend » envoyé à " + d.order.email : "⚠️ Email non envoyé : " + (ERR[d.email.reason] || d.email.reason)) : "Email non envoyé (case décochée).");
+      $("mLock").checked = false;
+    } else if (d.result && d.result.reason === "out_of_stock") parts.push(el("span", "⚠️ Plus de clé en stock pour ce produit : ajoutez-en dans l'onglet Stock, la commande partira toute seule (email compris)."));
     else {
       if (d.keys && d.keys.length) { parts.push("Clé(s) envoyée(s) :", el("br")); for (const k of d.keys) parts.push(el("span", k, "mono"), el("br")); }
       if (d.result && d.result.reason === "awaiting_install") {

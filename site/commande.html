@@ -165,7 +165,13 @@ async function load() {
     o.invoice ? el("p", { style: "margin:10px 0 0" }, el("a", { class: "btn light", href: "/facture?o=" + encodeURIComponent(token), target: "_blank", rel: "noopener", text: "🧾 Ma facture (PDF)" })) : null);
 
   const parts = [head];
-  if (o.status === "pending") {
+  if (o.status === "pending" && o.key_locked) {
+    parts.push(el("div", { class: "panel", style: "margin-bottom:14px;border:2px solid var(--orange,#F5A21B)" },
+      el("h2", { style: "margin:0 0 6px;font-size:18px", text: "🔒 Votre clé est réservée" }),
+      el("p", { style: "margin:0 0 8px", text: "Elle s'affichera ici dès que votre paiement de " + fcfa(o.amount_fcfa) + " sera confirmé. Vous recevrez aussi un email avec la clé." }),
+      el("button", { class: "btn block", disabled: true, style: "opacity:.6;cursor:not-allowed", text: "🔒 Voir ma clé · en attente de confirmation du paiement" }),
+      el("p", { class: "note", style: "margin:8px 0 0", text: "Vous avez déjà payé ? Envoyez-nous la preuve sur WhatsApp, avec la référence " + o.ref + "." })));
+  } else if (o.status === "pending") {
     const msg = el("p", { class: "msg" });
     const pay = el("button", { class: "btn orange block", text: "Payer maintenant" });
     pay.addEventListener("click", () => startPay(pay, msg));
@@ -197,7 +203,7 @@ async function load() {
   parts.push(el("p", { class: "note", style: "margin-top:12px", text: "Gardez précieusement le lien de cette page : c'est ici que vous retrouvez vos clés et téléchargements." }));
   view.replaceChildren(...parts);
 
-  if ((o.status === "pending" && (o.has_paydunya || o.has_payment_ref)) || o.status === "paid" || o.status === "processing" || (o.status === "installing" && o.items.some((i) => i.claimed))) timer = setTimeout(load, 15000);
+  if ((o.status === "pending" && (o.has_paydunya || o.has_payment_ref || o.key_locked)) || o.status === "paid" || o.status === "processing" || (o.status === "installing" && o.items.some((i) => i.claimed))) timer = setTimeout(load, 15000);
   if (fromInstallEmail) { const c = document.querySelector(".claim"); if (c) c.scrollIntoView({ behavior: "smooth", block: "center" }); }
 }
 load();

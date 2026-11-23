@@ -396,6 +396,29 @@ async function createAdminOrder(body: any): Promise<Response | { o: any }> {
   return { o };
 }
 
+// Clé verrouillée : email « votre clé vous attend » (la clé n'y figure pas), bouton vers la page de commande
+async function sendLockedEmail(orderId: string): Promise<{ sent: boolean; kind: string; reason?: string }> {
+  const { data: o } = await db.from("orders").select("ref, public_token, customer_name, email, amount_fcfa, order_items(product_name, quantity)").eq("id", orderId).maybeSingle();
+  if (!o) return { sent: false, kind: "locked", reason: "not_found" };
+  const { site, wa } = siteCtx();
+  const link = site + "/commande.html?o=" + encodeURIComponent(o.public_token);
+  const nm = String(o.customer_name || "").trim();
+  const first = /^client (whatsapp|facebook)$/i.test(nm) ? "" : nm.split(/\s+/)[0] || "";
+  // deno-lint-ignore no-explicit-any
+  const prods = ((o.order_items ?? []) as any[]).map((i) => (i.quantity > 1 ? i.quantity + " × " : "") + i.product_name);
+  const html = `<p style="margin:0 0 12px">Bonjour${first ? " " + esc(first) : ""},</p>
+<p style="margin:0 0 12px">Votre clé de licence est prête et réservée pour vous :</p>
+<p style="margin:0 0 12px"><b>${prods.map(esc).join("<br>")}</b></p>
+<p style="margin:0 0 16px">Elle s'affichera sur votre page de commande dès que votre paiement de <b>${esc(fcfaTxt(o.amount_fcfa))}</b> sera confirmé. Vous recevrez aussi un email avec la clé à ce moment-là.</p>
+<p style="margin:0 0 16px"><a href="${esc(link)}" style="display:inline-block;background:${EM.B};color:#ffffff;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:8px">🔒 Voir ma clé</a></p>
+${waButtonHtml(wa)}`;
+  const text = "Bonjour" + (first ? " " + first : "") + ",\n\nVotre clé de licence est prête et réservée pour vous :\n" + prods.join("\n") +
+    "\n\nElle s'affichera sur votre page de commande dès que votre paiement de " + fcfaTxt(o.amount_fcfa) + " sera confirmé. Vous recevrez aussi un email avec la clé à ce moment-là.\nVoir ma clé : " + link +
+    "\nAssistance WhatsApp : https://wa.me/" + wa + "\n\nCet email concerne votre commande " + o.ref + " sur licenceoff.com.\nlicenceoff.com — Dakar, Sénégal";
+  const r = await resendSend(o.email, { subject: "Votre clé vous attend — commande " + o.ref + " — licenceoff.com", html: wrapHtml(html, o.ref), text, headers: { "X-Entity-Ref-ID": o.ref } });
+  return r.ok ? { sent: true, kind: "locked" } : { sent: false, kind: "locked", reason: r.reason };
+}
+
 // Livre une commande : clés / identifiants du stock + liens à usage unique + services à traiter
 async function deliver(orderId: string, force = false, emails = true) {
   const tokens = Array.from({ length: 30 }, () => newToken());
@@ -735,6 +758,15 @@ Deno.serve(async (req) => {
       case "manual_send": { // vente WhatsApp : clé(s) du stock + email au modèle du produit, enregistrée comme commande
         const c = await createAdminOrder({ ...body, name: str(body.name, 100) || "Client WhatsApp", items: [{ product_id: body.product_id, qty: body.qty }] });
         if (c instanceof Response) return c;
+        if (body.mode === "locked") { // clé verrouillée : commande en attente, email sans la clé
+          await db.from("order_items").update({ claim_requested_at: new Date().toISOString() }).eq("order_id", c.o.id); // au déblocage : la clé directement
+          await db.from("orders").update({ key_locked: true, payment_ref: str(body.payment_ref, 100) || null }).eq("id", c.o.id);
+          const units = await keyUnits([str(body.product_id, 40)]);
+          const u = units[str(body.product_id, 40)];
+          const stock = u?.unlimited ? 9999 : u?.units ?? 0;
+          const email = body.send_email === false ? null : await sendLockedEmail(c.o.id);
+          return json({ order: c.o, locked: true, stock, email });
+        }
         // « clé directement » : on saute l'étape du lien de téléchargement (produit en 2 temps)
         if (body.mode === "key") await db.from("order_items").update({ claim_requested_at: new Date().toISOString() }).eq("order_id", c.o.id);
         const result = await deliver(c.o.id, true, body.send_email !== false); // emails automatiques (installation ou clé)
@@ -769,6 +801,7 @@ Deno.serve(async (req) => {
       }
 
       case "order_validate": { // "J'ai reçu le paiement" → livraison automatique
+        await db.from("orders").update({ key_locked: false }).eq("id", body.id).eq("status", "pending");
         if (body.payment_ref) {
           await db.from("orders").update({ payment_ref: str(body.payment_ref, 100) }).eq("id", body.id).eq("status", "pending");
         }
