@@ -65,6 +65,23 @@
   .logrow { cursor:pointer; }
   .logrow.unseen td:first-child { box-shadow:inset 3px 0 0 var(--rouge); }
   .logdetail td { background:#f8fafc; }
+  .inbox { display:grid; grid-template-columns:minmax(260px,360px) 1fr; gap:16px; align-items:start; }
+  @media (max-width:900px) { .inbox { grid-template-columns:1fr; } }
+  #mList { display:flex; flex-direction:column; gap:6px; max-height:75vh; overflow:auto; }
+  .mconv { display:block; width:100%; text-align:left; background:#fff; color:var(--nuit); border:1px solid var(--ligne); border-radius:10px; padding:10px 12px; font-weight:400; }
+  .mconv.unread { border-color:var(--orange); background:#fff8ec; }
+  .mconv.on { outline:2px solid var(--bleu); }
+  .mconv .mtop { display:flex; justify-content:space-between; gap:8px; }
+  .mconv .msub { font-weight:700; margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .mconv .mprev { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .mhead { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start; margin-bottom:8px; }
+  .mmsgs { display:flex; flex-direction:column; gap:10px; margin:14px 0; max-height:55vh; overflow:auto; }
+  .mmsg { max-width:88%; border-radius:12px; padding:10px 12px; border:1px solid var(--ligne); }
+  .mmsg.in { background:#fff; align-self:flex-start; }
+  .mmsg.out { background:#eff5ff; border-color:#c7d7f5; align-self:flex-end; }
+  .mmsg .msubj { font-weight:700; margin:2px 0 4px; }
+  .mbody { white-space:pre-wrap; word-break:break-word; }
+  .btnlink { display:inline-block; background:#25d366; color:#fff; font-weight:700; padding:8px 12px; border-radius:8px; text-decoration:none; }
   .logdetail pre { margin:0; white-space:pre-wrap; word-break:break-word; font-size:12px; max-height:320px; overflow:auto; }
   .acts { display:flex; flex-wrap:wrap; gap:4px; }
   .small { font-size:12px; color:var(--gris); }
@@ -112,6 +129,7 @@
     <button data-tab="emails">✉️ Emails</button>
     <button data-tab="send">📤 Envoi manuel</button>
     <button data-tab="parrains">🤝 Parrains <span id="badgePay" class="badge hidden"></span></button>
+    <button data-tab="messages">📥 Messages <span id="badgeMsg" class="badge hidden"></span></button>
     <button data-tab="clients">👥 Clients</button>
     <button data-tab="reviews">⭐ Avis <span id="badgeRev" class="badge hidden"></span></button>
     <button data-tab="faq">❓ FAQ</button>
@@ -429,10 +447,21 @@
       <div class="box"><div class="tablewrap"><table><thead><tr><th>Parrain</th><th>Liens / codes</th><th>Ventes</th><th>Gains</th><th>Solde</th><th></th></tr></thead><tbody id="rRows"></tbody></table></div></div>
     </section>
 
+    <section id="tab-messages" class="hidden">
+      <h1>Messages des clients</h1>
+      <p class="small">Quand un client répond à un email du site, ou écrit à contact@licenceoff.com, son message arrive ici. Vos réponses partent de contact@licenceoff.com et restent dans la conversation.</p>
+      <div class="bar" style="flex-wrap:wrap;gap:8px;margin-bottom:12px">
+        <select id="mBox"><option value="all">En cours</option><option value="new">Non lus</option><option value="archived">Archivés</option></select>
+        <input id="mQ" type="search" class="grow" placeholder="Rechercher : nom, email, n° de commande">
+        <button id="mNew" class="org">✏️ Écrire à un client</button>
+      </div>
+      <div class="inbox"><div id="mList" class="box"></div><div id="mThread" class="box hidden"></div></div>
+    </section>
+
     <section id="tab-clients" class="hidden">
       <h1>Clients</h1>
       <div class="bar"><input id="clSearch" class="grow" placeholder="Rechercher : nom, email, téléphone, code parrain"><button id="clCsv" class="grey">Exporter (CSV)</button></div>
-      <div class="box"><div class="tablewrap"><table><thead><tr><th>Client</th><th>Commandes</th><th>Dépensé</th><th>Première / dernière</th><th>Parrain</th><th>IP</th></tr></thead><tbody id="clRows"></tbody></table></div></div>
+      <div class="box"><div class="tablewrap"><table><thead><tr><th>Client</th><th>Commandes</th><th>Dépensé</th><th>Première / dernière</th><th>Parrain</th><th>IP</th><th>Messages</th></tr></thead><tbody id="clRows"></tbody></table></div></div>
     </section>
 
     <section id="tab-reviews" class="hidden">
@@ -470,7 +499,7 @@
       <p class="small">Ce qui se passe en coulisses : paiements PayDunya, emails, livraisons, téléchargements, connexions et erreurs. Cliquez sur une ligne pour voir le détail technique. Aucune clé ni mot de passe n'est enregistré ici. On garde 90 jours.</p>
       <div class="bar" style="flex-wrap:wrap;gap:8px;margin-bottom:12px">
         <select id="lLevel"><option value="">Tout</option><option value="error">Erreurs</option><option value="warn">Avertissements</option><option value="info">Infos</option></select>
-        <select id="lSource"><option value="">Toutes les origines</option><option value="paiement">Paiement</option><option value="email">Emails</option><option value="livraison">Livraison</option><option value="telechargement">Téléchargements</option><option value="connexion">Connexions</option><option value="boutique">Boutique</option><option value="parrainage">Parrainage</option><option value="rapport">Rapport</option><option value="admin">Admin</option></select>
+        <select id="lSource"><option value="">Toutes les origines</option><option value="paiement">Paiement</option><option value="email">Emails</option><option value="livraison">Livraison</option><option value="telechargement">Téléchargements</option><option value="connexion">Connexions</option><option value="boutique">Boutique</option><option value="messages">Messages</option><option value="parrainage">Parrainage</option><option value="rapport">Rapport</option><option value="admin">Admin</option></select>
         <input id="lQ" type="search" placeholder="Rechercher (message, n° de commande)" style="flex:1;min-width:180px">
         <button id="lSeen" class="grey">Tout marquer comme lu</button>
       </div>
@@ -539,6 +568,7 @@ let stock = []; // stock de clés par produit (rempli par le tableau de bord)
 const METHOD = { wave: "Wave", orange_money: "Orange Money", free_money: "Free Money", especes: "Espèces", paydunya: "PayDunya", manuel: "Transfert manuel", autre: "Autre" };
 const ERR = {
   titre_obligatoire: "Le titre est obligatoire.",
+  message_vide: "Écrivez d'abord votre message.",
   pas_d_email: "Ajoutez d'abord votre email d'alerte (Réglages > Parrainage), puis enregistrez.",
   adresse_deja_utilisee: "Cette adresse de page est déjà utilisée. Choisissez-en une autre.",
   sku_deja_utilise: "Cette référence (SKU) est déjà utilisée par un autre produit.",
@@ -607,7 +637,7 @@ async function uploadImage(input, hidden, preview, msg) {
 }
 
 // ---------- navigation ----------
-const loaders = { dash: loadDash, orders: loadOrders, products: loadProducts, keys: loadKeys, blog: loadBlog, pages: loadPages, emails: loadTemplates, send: loadSend, parrains: loadParrains, clients: loadClients, reviews: loadReviews, faq: loadFaq, links: loadLinks, logs: loadLogs, settings: loadSettings };
+const loaders = { dash: loadDash, orders: loadOrders, products: loadProducts, keys: loadKeys, blog: loadBlog, pages: loadPages, emails: loadTemplates, send: loadSend, parrains: loadParrains, clients: loadClients, messages: loadMessages, reviews: loadReviews, faq: loadFaq, links: loadLinks, logs: loadLogs, settings: loadSettings };
 document.querySelectorAll("nav [data-tab]").forEach((b) => b.addEventListener("click", () => openTab(b.dataset.tab)));
 function openTab(t) {
   document.querySelectorAll("nav [data-tab]").forEach((b) => b.classList.toggle("on", b.dataset.tab === t));
@@ -672,6 +702,8 @@ function renderTodo(list) {
   const urgent = list.filter((x) => x.level === "urgent").length;
   const b = $("badgeTodo"); b.textContent = urgent; b.classList.toggle("hidden", !urgent);
   document.title = (urgent ? "(" + urgent + ") " : "") + "licenceoff — Administration";
+  const msg = list.find((x) => x.kind === "messages");
+  $("badgeMsg").textContent = msg ? msg.count : ""; $("badgeMsg").classList.toggle("hidden", !msg);
   const err = list.find((x) => x.kind === "errors");
   $("badgeLog").textContent = err ? err.count : ""; $("badgeLog").classList.toggle("hidden", !err);
   $("todoBox").style.borderColor = urgent ? "" : "#86efac";
@@ -688,8 +720,90 @@ async function refreshTodo() {
 setInterval(refreshTodo, 120000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshTodo(); });
 
+// ---------- messages des clients ----------
+let inboxRows = [], curThread = null;
+async function loadMessages() {
+  const d = await api({ action: "inbox_list", box: $("mBox").value, q: $("mQ").value });
+  inboxRows = d.rows || [];
+  $("mList").replaceChildren(...(inboxRows.length ? inboxRows.map((c) => {
+    const b = el("button", null, "mconv" + (c.unread ? " unread" : "") + (curThread === c.email ? " on" : ""));
+    const top = el("div", null, "mtop");
+    top.append(el("strong", c.name || c.email), el("span", dt(c.last.created_at), "small"));
+    b.append(top, el("div", (c.last.direction === "out" ? "Vous : " : "") + (c.last.subject || "Sans objet"), "small msub"),
+      el("div", c.last.body_text || "", "small mprev"));
+    if (c.unread) b.append(el("span", c.unread + " nouveau" + (c.unread > 1 ? "x" : ""), "tag s-error"));
+    if (c.order_ref) b.append(el("span", " " + c.order_ref, "small"));
+    b.addEventListener("click", () => openThread(c.email).catch((e) => toast(errMsg(e))));
+    return b;
+  }) : [el("p", $("mBox").value === "new" ? "Aucun nouveau message ✔" : "Aucun message pour l'instant. Les réponses de vos clients aux emails du site, et les emails envoyés à contact@licenceoff.com, arrivent ici.", "small")]));
+}
+function splitQuote(t) {
+  const i = t.search(/\n\s*(Le .{3,120}a écrit\s*:|On .{3,120}wrote\s*:|-{2,}\s*(Original|Message d'origine)|De\s*:.*\n|From\s*:.*\n|>)/);
+  return i > 20 ? [t.slice(0, i).trim(), t.slice(i).trim()] : [t, ""];
+}
+async function openThread(email, opts = {}) {
+  curThread = email;
+  const d = await api({ action: "inbox_thread", email });
+  const msgs = d.messages || [];
+  const box = $("mThread"); box.classList.remove("hidden");
+  const head = el("div", null, "mhead");
+  const name = (d.customer && d.customer.name) || (msgs.find((m) => m.customer_name) || {}).customer_name || (d.orders[0] || {}).customer_name || "";
+  const phone = (d.customer && d.customer.phone) || (d.orders.find((o) => o.phone) || {}).phone || "";
+  const who = el("div"); who.append(el("strong", name || email), el("br"), el("span", email + (phone ? " · " + phone : ""), "small"));
+  const acts = el("div", null, "bar"); acts.style.flexWrap = "wrap";
+  if (phone) { const a = el("a", "WhatsApp", "btnlink"); a.href = "https://wa.me/" + waNumber(phone); a.target = "_blank"; a.rel = "noopener"; acts.append(a); }
+  if (msgs.some((m) => m.direction === "in")) {
+    acts.append(btn("Archiver", "grey", async () => { await api({ action: "inbox_status", email, status: "archived" }); toast("Conversation archivée ✔"); await loadMessages(); refreshTodo(); }),
+      btn("Marquer non lu", "grey", async () => { await api({ action: "inbox_status", email, status: "new" }); toast("Marquée non lue"); await loadMessages(); refreshTodo(); }));
+  }
+  acts.append(btn("Fermer", "grey", async () => { curThread = null; box.classList.add("hidden"); await loadMessages(); }));
+  head.append(who, acts);
+  const ords = el("div", null, "small");
+  ords.append(el("b", "Commandes : "), d.orders.length ? "" : "aucune avec cet email");
+  for (const o of d.orders.slice(0, 6)) {
+    const a = el("a", o.ref); a.href = "#"; a.addEventListener("click", (e) => { e.preventDefault(); $("oSearch").value = o.ref; openTab("orders"); });
+    ords.append(el("br"), a, " · " + (ST[o.status] || o.status) + " · " + fcfa(o.amount_fcfa) + " · " + dt(o.created_at) + " · " + (o.order_items || []).map((i) => i.product_name).join(", "));
+  }
+  const list = el("div", null, "mmsgs");
+  for (const m of msgs) {
+    const b = el("div", null, "mmsg " + m.direction);
+    b.append(el("div", (m.direction === "out" ? "Vous" : (m.customer_name || m.customer_email)) + " · " + dt(m.created_at) + (m.auto_reply ? " · réponse automatique" : "") + (m.order_ref ? " · " + m.order_ref : ""), "small mmeta"));
+    if (m.subject) b.append(el("div", m.subject, "msubj"));
+    const [main, quote] = splitQuote(m.body_text || "");
+    b.append(el("div", main, "mbody"));
+    if (quote) { const q = el("details"); q.append(el("summary", "Message cité"), el("div", quote, "mbody small")); b.append(q); }
+    if (m.attachments && m.attachments.length) b.append(el("div", "📎 " + m.attachments.map((a) => a.nom).join(", ") + " (pièces jointes non conservées : demandez-les sur WhatsApp si besoin)", "small"));
+    list.append(b);
+  }
+  if (!msgs.length) list.append(el("p", "Nouveau message à " + email, "small"));
+  const form = el("div", null, "mform");
+  const subj = el("input"); subj.placeholder = "Objet"; subj.className = "full"; subj.id = "mSubj";
+  if (msgs.length) subj.classList.add("hidden");
+  const ta = el("textarea"); ta.id = "mText"; ta.rows = 5; ta.className = "full"; ta.placeholder = "Votre réponse… (envoyée depuis contact@licenceoff.com)";
+  const send = btn("Envoyer", "green", async () => {
+    if (!ta.value.trim()) { toast("Écrivez d'abord votre message."); return; }
+    await api({ action: "inbox_send", email, text: ta.value, subject: msgs.length ? "" : subj.value, order_ref: (d.orders[0] || {}).ref || "" });
+    toast("Message envoyé ✔"); await openThread(email); await loadMessages(); refreshTodo();
+  });
+  form.append(subj, ta, el("div", null, "bar"));
+  form.lastChild.append(send);
+  box.replaceChildren(head, ords, list, form);
+  list.scrollTop = list.scrollHeight;
+  if (opts.focus) ta.focus();
+  if (window.innerWidth < 900) box.scrollIntoView({ behavior: "smooth" });
+  await loadMessages();
+}
+async function openMessages(email) { await openTab("messages"); await openThread(email, { focus: true }); }
+$("mBox").addEventListener("change", () => loadMessages().catch((e) => toast(errMsg(e))));
+let mqT; $("mQ").addEventListener("input", () => { clearTimeout(mqT); mqT = setTimeout(() => loadMessages().catch((e) => toast(errMsg(e))), 300); });
+$("mNew").addEventListener("click", () => {
+  const e = (prompt("Email du client :") || "").trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(e)) { if (e) toast("Adresse email invalide."); return; }
+  openThread(e, { focus: true }).catch((x) => toast(errMsg(x)));
+});
+
 // ---------- journal ----------
-const SRC = { paiement: "Paiement", email: "Email", livraison: "Livraison", telechargement: "Téléchargement", connexion: "Connexion", boutique: "Boutique", parrainage: "Parrainage", rapport: "Rapport", admin: "Admin" };
+const SRC = { messages: "Message client", paiement: "Paiement", email: "Email", livraison: "Livraison", telechargement: "Téléchargement", connexion: "Connexion", boutique: "Boutique", parrainage: "Parrainage", rapport: "Rapport", admin: "Admin" };
 const LVL = { error: "Erreur", warn: "Attention", info: "Info" };
 let logRows = [];
 async function loadLogs(more) {
@@ -1259,7 +1373,8 @@ function renderClients() {
         el("div", "Recherches : " + (a.searches.join(", ") || "—"), "small"));
     }
     return tr(td(el("strong", c.name || "—"), c.account ? el("span", " 👤", "small") : null, el("br"), el("span", c.email, "small"), el("br"), el("span", c.phone || "", "small")), td(det, acc), td(el("strong", fcfa(c.spent)), el("br"), el("span", c.paid_orders + " payée(s)", "small")),
-      td(el("span", dt(c.first) + " / " + dt(c.last), "small")), td((c.codes || []).join(", ") || "—"), td(el("span", c.ip || "—", "small mono")));
+      td(el("span", dt(c.first) + " / " + dt(c.last), "small")), td((c.codes || []).join(", ") || "—"), td(el("span", c.ip || "—", "small mono")),
+      td(btn(c.messages ? "✉️ " + c.messages + " message(s)" : "✉️ Écrire", "grey", () => openMessages(c.email))));
   }));
   if (!list.length) $("clRows").append(tr(td("Aucun client.")));
 }

@@ -175,16 +175,17 @@ function siteCtx() {
     wa: (Deno.env.get("WHATSAPP_NUMBER") ?? "221777860777").replace(/\D/g, ""),
   };
 }
-async function resendSend(to: string, mail: { subject: string; html: string; text: string }) {
+async function resendSend(to: string, mail: { subject: string; html: string; text: string; headers?: Record<string, string> }, replyTo?: string, from?: string) {
   const key = (Deno.env.get("RESEND_API_KEY") ?? "").trim();
   if (!key) { await logEvent("warn", "email", "Email non envoyé : clé Resend absente dans Supabase (secret RESEND_API_KEY)", { destinataire: to }); return { ok: false, reason: "resend_non_configure" }; }
   const r = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" },
     body: JSON.stringify({
-      from: (Deno.env.get("RESEND_FROM") ?? "licenceoff <commandes@licenceoff.com>").trim(),
-      to: [to], reply_to: (Deno.env.get("RESEND_REPLY_TO") ?? "").trim() || undefined,
-      subject: mail.subject, html: mail.html, text: mail.text,
+      from: from ?? (Deno.env.get("RESEND_FROM") ?? "licenceoff <commandes@licenceoff.com>").trim(),
+      // les réponses des clients arrivent dans l'admin (onglet Messages) via contact@licenceoff.com
+      to: [to], reply_to: replyTo ?? ((Deno.env.get("RESEND_REPLY_TO") ?? "").trim() || "contact@licenceoff.com"),
+      subject: mail.subject, html: mail.html, text: mail.text, headers: mail.headers,
     }),
   }).catch(() => null);
   if (!r || !r.ok) {

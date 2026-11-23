@@ -180,16 +180,17 @@ function siteCtx() {
     wa: (Deno.env.get("WHATSAPP_NUMBER") ?? "221777860777").replace(/\D/g, ""),
   };
 }
-async function resendSend(to: string, mail: { subject: string; html: string; text: string }) {
+async function resendSend(to: string, mail: { subject: string; html: string; text: string; headers?: Record<string, string> }, replyTo?: string, from?: string) {
   const key = (Deno.env.get("RESEND_API_KEY") ?? "").trim();
   if (!key) { await logEvent("warn", "email", "Email non envoyé : clé Resend absente dans Supabase (secret RESEND_API_KEY)", { destinataire: to }); return { ok: false, reason: "resend_non_configure" }; }
   const r = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" },
     body: JSON.stringify({
-      from: (Deno.env.get("RESEND_FROM") ?? "licenceoff <commandes@licenceoff.com>").trim(),
-      to: [to], reply_to: (Deno.env.get("RESEND_REPLY_TO") ?? "").trim() || undefined,
-      subject: mail.subject, html: mail.html, text: mail.text,
+      from: from ?? (Deno.env.get("RESEND_FROM") ?? "licenceoff <commandes@licenceoff.com>").trim(),
+      // les réponses des clients arrivent dans l'admin (onglet Messages) via contact@licenceoff.com
+      to: [to], reply_to: replyTo ?? ((Deno.env.get("RESEND_REPLY_TO") ?? "").trim() || "contact@licenceoff.com"),
+      subject: mail.subject, html: mail.html, text: mail.text, headers: mail.headers,
     }),
   }).catch(() => null);
   if (!r || !r.ok) {
@@ -429,6 +430,9 @@ async function buildNotifications(): Promise<Notif[]> {
   if (low.length) n.push({ kind: "low_stock", level: "urgent", count: low.length, tab: "keys", text: "Stock bas : " + low.join(", ") });
   if (pays?.length) n.push({ kind: "payouts", level: "urgent", count: pays.length, tab: "parrains",
     text: pays.length + " versement(s) parrain à faire : " + fcfaTxt(pays.reduce((s, p) => s + (p.amount_fcfa || 0), 0)) });
+  const { data: unread } = await db.from("inbox_messages").select("customer_email").eq("direction", "in").eq("status", "new").limit(1000);
+  const who = new Set((unread ?? []).map((m) => m.customer_email));
+  if (who.size) n.push({ kind: "messages", level: "urgent", count: who.size, tab: "messages", text: who.size + " client(s) vous ont écrit : message(s) non lu(s)" });
   if (revs) n.push({ kind: "reviews", level: "info", count: revs, tab: "reviews", text: revs + " avis client(s) à valider" });
   if (errs) n.push({ kind: "errors", level: "urgent", count: errs, tab: "logs", text: errs + " erreur(s) non lue(s) dans le journal" });
   if (!(Deno.env.get("PAYDUNYA_MASTER_KEY") ?? "").trim()) n.push({ kind: "paydunya", level: "info", count: 1, tab: "settings",
@@ -551,6 +555,71 @@ Deno.serve(async (req) => {
       }
       case "notifications": {
         return json({ notifications: await buildNotifications() });
+      }
+
+      // ================= Messages des clients =================
+      case "inbox_list": { // une ligne par client (dernier message), filtre : nouveaux / tous / archivés
+        const box = ["new", "all", "archived"].includes(body.box) ? body.box : "all";
+        const { data, error } = await db.from("inbox_messages").select("id, created_at, direction, status, customer_email, customer_name, subject, body_text, order_ref, auto_reply")
+          .order("created_at", { ascending: false }).limit(2000);
+        if (error) return json({ error: error.message }, 500);
+        const s = str(body.q, 80).toLowerCase();
+        // deno-lint-ignore no-explicit-any
+        const conv: Record<string, any> = {};
+        for (const m of data ?? []) {
+          const c = conv[m.customer_email] ??= { email: m.customer_email, name: null, last: m, unread: 0, count: 0, archived: true, order_ref: null };
+          c.count++;
+          if (!c.name && m.customer_name) c.name = m.customer_name;
+          if (!c.order_ref && m.order_ref) c.order_ref = m.order_ref;
+          if (m.direction === "in" && m.status === "new") c.unread++;
+          if (m.direction === "in" && m.status !== "archived") c.archived = false;
+        }
+        let rows = Object.values(conv).map((c) => ({ ...c, last: { ...c.last, body_text: String(c.last.body_text ?? "").slice(0, 160) } }));
+        if (box === "new") rows = rows.filter((c) => c.unread > 0);
+        else if (box === "archived") rows = rows.filter((c) => c.archived);
+        else rows = rows.filter((c) => !c.archived);
+        if (s) rows = rows.filter((c) => (c.email + " " + (c.name ?? "") + " " + (c.order_ref ?? "") + " " + (c.last.subject ?? "")).toLowerCase().includes(s));
+        return json({ rows: rows.slice(0, 300) });
+      }
+      case "inbox_thread": {
+        const email = str(body.email, 200).toLowerCase();
+        const [{ data: msgs }, { data: orders }, { data: cust }] = await Promise.all([
+          db.from("inbox_messages").select("*").eq("customer_email", email).order("created_at").limit(500),
+          db.from("orders").select("ref, status, amount_fcfa, created_at, phone, customer_name, order_items(product_name, quantity)").eq("email", email).order("created_at", { ascending: false }).limit(20),
+          db.from("customers").select("name, phone, created_at, last_login_at").eq("email", email).maybeSingle(),
+        ]);
+        await db.from("inbox_messages").update({ status: "read" }).eq("customer_email", email).eq("direction", "in").eq("status", "new");
+        return json({ messages: msgs ?? [], orders: orders ?? [], customer: cust ?? null });
+      }
+      case "inbox_status": { // archiver / remettre en non lu une conversation
+        const email = str(body.email, 200).toLowerCase();
+        const status = ["new", "read", "archived"].includes(body.status) ? body.status : "read";
+        let q = db.from("inbox_messages").update({ status }).eq("customer_email", email).eq("direction", "in");
+        if (status === "new") q = q.neq("status", "replied");
+        const { error } = await q;
+        if (error) return json({ error: error.message }, 500);
+        return json({ ok: true });
+      }
+      case "inbox_send": { // répondre (ou écrire) au client depuis contact@licenceoff.com
+        const email = str(body.email, 200).toLowerCase();
+        const text = String(body.text ?? "").replace(/\r/g, "").trim().slice(0, 10000);
+        if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(email)) return json({ error: "email_invalide" }, 400);
+        if (!text) return json({ error: "message_vide" }, 400);
+        const { data: lastIn } = await db.from("inbox_messages").select("subject, message_id, order_ref, customer_name").eq("customer_email", email).eq("direction", "in")
+          .order("created_at", { ascending: false }).limit(1).maybeSingle();
+        let subject = str(body.subject, 200) || (lastIn?.subject ? (/^re\s*:/i.test(lastIn.subject) ? lastIn.subject : "Re: " + lastIn.subject) : "Message de licenceoff");
+        subject = subject.slice(0, 250);
+        const headers: Record<string, string> = {};
+        if (lastIn?.message_id) { headers["In-Reply-To"] = lastIn.message_id; headers["References"] = lastIn.message_id; }
+        const paras = text.split(/\n{2,}/).map((p) => `<p style="margin:0 0 12px;line-height:1.6">${esc(p).replace(/\n/g, "<br>")}</p>`).join("");
+        const r = await resendSend(email, { subject, html: wrapHtml(paras), text: text + "\n\nlicenceoff — Vos logiciels, notre engagement !", headers },
+          "contact@licenceoff.com", "licenceoff <contact@licenceoff.com>");
+        if (!r.ok) return json({ error: r.reason }, 502);
+        const { data: cust } = await db.from("customers").select("id").eq("email", email).maybeSingle();
+        await db.from("inbox_messages").insert({ direction: "out", status: "read", customer_email: email, customer_name: lastIn?.customer_name ?? null, customer_id: cust?.id ?? null,
+          to_email: email, subject, body_text: text, in_reply_to: lastIn?.message_id ?? null, order_ref: str(body.order_ref, 30) || lastIn?.order_ref || null });
+        await db.from("inbox_messages").update({ status: "replied" }).eq("customer_email", email).eq("direction", "in").in("status", ["new", "read"]);
+        return json({ ok: true });
       }
 
       // ================= Journal =================
@@ -954,6 +1023,12 @@ Deno.serve(async (req) => {
             favorites: (favs ?? []).filter((f) => f.customer_id === a.id).map((f) => pName[f.product_id]).filter(Boolean),
             viewed: [...new Set(ev.filter((e) => e.kind === "view").map((e) => pName[e.product_id]).filter(Boolean))].slice(0, 10),
             searches: [...new Set(ev.filter((e) => e.kind === "search").map((e) => e.query))].slice(0, 10) };
+        }
+        // messages échangés (onglet Messages)
+        const { data: msgs } = await db.from("inbox_messages").select("customer_email, customer_name, created_at").limit(20000);
+        for (const m of msgs ?? []) {
+          if (!by.has(m.customer_email)) by.set(m.customer_email, { email: m.customer_email, name: m.customer_name ?? "", phone: null, ip: null, orders: [], spent: 0, paid_orders: 0, codes: new Set(), first: m.created_at, last: m.created_at });
+          const c = by.get(m.customer_email); c.messages = (c.messages ?? 0) + 1;
         }
         return json({ rows: [...by.values()].map((c) => ({ ...c, codes: [...c.codes] })) });
       }

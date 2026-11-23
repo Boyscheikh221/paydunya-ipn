@@ -165,16 +165,17 @@ function siteCtx() {
     wa: (Deno.env.get("WHATSAPP_NUMBER") ?? "221777860777").replace(/\D/g, ""),
   };
 }
-async function resendSend(to: string, mail: { subject: string; html: string; text: string }) {
+async function resendSend(to: string, mail: { subject: string; html: string; text: string; headers?: Record<string, string> }, replyTo?: string, from?: string) {
   const key = (Deno.env.get("RESEND_API_KEY") ?? "").trim();
   if (!key) { await logEvent("warn", "email", "Email non envoyé : clé Resend absente dans Supabase (secret RESEND_API_KEY)", { destinataire: to }); return { ok: false, reason: "resend_non_configure" }; }
   const r = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: "Bearer " + key, "Content-Type": "application/json" },
     body: JSON.stringify({
-      from: (Deno.env.get("RESEND_FROM") ?? "licenceoff <commandes@licenceoff.com>").trim(),
-      to: [to], reply_to: (Deno.env.get("RESEND_REPLY_TO") ?? "").trim() || undefined,
-      subject: mail.subject, html: mail.html, text: mail.text,
+      from: from ?? (Deno.env.get("RESEND_FROM") ?? "licenceoff <commandes@licenceoff.com>").trim(),
+      // les réponses des clients arrivent dans l'admin (onglet Messages) via contact@licenceoff.com
+      to: [to], reply_to: replyTo ?? ((Deno.env.get("RESEND_REPLY_TO") ?? "").trim() || "contact@licenceoff.com"),
+      subject: mail.subject, html: mail.html, text: mail.text, headers: mail.headers,
     }),
   }).catch(() => null);
   if (!r || !r.ok) {
@@ -418,9 +419,74 @@ Deno.serve(async (req) => {
     return json({ error: "erreur_serveur" }, 500);
   }
 });
+// ================= Messages reçus (Cloudflare Email Routing → Worker → ici) =================
+// Le Worker envoie l'email brut. Un email n'est jamais une preuve d'identité : on le traite comme
+// un simple message (taille limitée, nombre limité par heure, texte seulement, aucun lien exécuté).
+async function inbound(req: Request): Promise<Response> {
+  const buf = new Uint8Array(await req.arrayBuffer());
+  if (!buf.length || buf.length > 5 * 1048576) return json({ error: "taille" }, 413);
+  const { count } = await db.from("inbox_messages").select("id", { count: "exact", head: true }).eq("direction", "in")
+    .gte("created_at", new Date(Date.now() - 3600_000).toISOString());
+  if ((count ?? 0) >= 200) { await logEvent("warn", "messages", "Plus de 200 emails reçus en une heure : les suivants sont refusés pour l'instant"); return json({ error: "trop" }, 429); }
+  const { default: PostalMime } = await import("npm:postal-mime@2.4.4");
+  // deno-lint-ignore no-explicit-any
+  let m: any;
+  try { m = await PostalMime.parse(buf); } catch (e) { await logEvent("error", "messages", "Email reçu illisible", e); return json({ error: "illisible" }, 400); }
+  const email = String(m.from?.address ?? req.headers.get("x-envelope-from") ?? "").trim().toLowerCase().slice(0, 200);
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json({ ok: true, ignored: "expediteur" });
+  if (email.endsWith("@licenceoff.com")) return json({ ok: true, ignored: "boucle" });
+  const subject = String(m.subject ?? "").slice(0, 300);
+  let text = String(m.text ?? "").trim();
+  if (!text && m.html) text = String(m.html).replace(/<style[\s\S]*?<\/style>|<script[\s\S]*?<\/script>/gi, "").replace(/<br\s*\/?>|<\/p>|<\/div>/gi, "\n").replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\n{3,}/g, "\n\n").trim();
+  text = text.slice(0, 20000);
+  // deno-lint-ignore no-explicit-any
+  const headers = (m.headers ?? []) as any[];
+  const auto = headers.some((h) => (h.key === "auto-submitted" && !/^no$/i.test(String(h.value))) || h.key === "x-autoreply" || (h.key === "precedence" && /bulk|junk|auto_reply/i.test(String(h.value))));
+  // commande : n° cité dans l'objet ou le texte, sinon la dernière commande de cet email
+  let orderRef = (subject + "\n" + text).match(/LO-\d{4}-[A-Z0-9]{5}/)?.[0] ?? null;
+  if (!orderRef) {
+    const { data: last } = await db.from("orders").select("ref").eq("email", email).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    orderRef = last?.ref ?? null;
+  }
+  const { data: cust } = await db.from("customers").select("id, name").eq("email", email).maybeSingle();
+  let name = String(m.from?.name ?? "").trim().slice(0, 120) || cust?.name || null;
+  if (!name) { const { data: o } = await db.from("orders").select("customer_name").eq("email", email).limit(1).maybeSingle(); name = o?.customer_name ?? null; }
+  const row = {
+    direction: "in", status: auto ? "read" : "new", customer_email: email, customer_name: name, customer_id: cust?.id ?? null,
+    to_email: String(req.headers.get("x-envelope-to") ?? m.to?.[0]?.address ?? "").slice(0, 200) || null,
+    subject: subject || null, body_text: text || "(message vide)",
+    // deno-lint-ignore no-explicit-any
+    attachments: (m.attachments ?? []).length ? (m.attachments as any[]).slice(0, 20).map((a) => ({ nom: String(a.filename ?? "fichier").slice(0, 120), taille: a.content?.byteLength ?? 0 })) : null,
+    message_id: String(m.messageId ?? "").slice(0, 300) || null, in_reply_to: String(m.inReplyTo ?? "").slice(0, 300) || null,
+    order_ref: orderRef, auto_reply: auto,
+  };
+  const { error } = await db.from("inbox_messages").insert(row);
+  if (error) {
+    if (String(error.message).includes("duplicate")) return json({ ok: true, ignored: "doublon" });
+    await logEvent("error", "messages", "Message de " + email + " non enregistré", { erreur: error.message }, orderRef);
+    return json({ error: "error" }, 500);
+  }
+  await logEvent("info", "messages", (auto ? "Réponse automatique reçue de " : "Nouveau message de ") + (name ? name + " " : "") + "<" + email + "> : « " + (subject || "sans objet") + " »", { pieces_jointes: row.attachments?.length ?? 0 }, orderRef);
+  // alerte par email à l'admin (si l'email d'alerte est réglé). « Répondre » dans Gmail écrit directement au client.
+  if (!auto) {
+    const { data: st } = await db.from("settings").select("value").eq("key", "admin_email").maybeSingle();
+    const to = String(st?.value ?? "").trim();
+    if (to) {
+      const { site } = siteCtx();
+      await resendSend(to, {
+        subject: "✉️ Message de " + (name || email) + (subject ? " : " + subject : ""),
+        html: wrapHtml(`<p style="margin:0 0 6px"><b>${esc(name || "")}</b> &lt;${esc(email)}&gt;${orderRef ? " · commande " + esc(orderRef) : ""}</p><p style="margin:0 0 12px;color:#5b6b86">${esc(subject || "Sans objet")}</p><div style="white-space:pre-wrap;background:#f6f8fc;border-radius:10px;padding:12px;font-size:14px">${esc(text.slice(0, 3000))}</div><p style="text-align:center;margin:20px 0 0"><a href="${esc(site)}/admin" style="display:inline-block;background:${EM.O};color:#fff;font-weight:800;text-decoration:none;padding:12px 20px;border-radius:10px">Répondre depuis l'admin</a></p>`),
+        text: "Message de " + (name || "") + " <" + email + ">" + (orderRef ? " (commande " + orderRef + ")" : "") + "\n" + subject + "\n\n" + text.slice(0, 3000) + "\n\nRépondre depuis l'admin : " + site + "/admin",
+      }, email).catch(() => null);
+    }
+  }
+  return json({ ok: true });
+}
+
 async function handle(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method === "GET" && new URL(req.url).searchParams.has("sitemap")) return sitemap();
+  if (req.method === "POST" && new URL(req.url).searchParams.has("inbound")) return inbound(req);
   if (req.method !== "POST") return json({ error: "method" }, 405);
 
   // deno-lint-ignore no-explicit-any
