@@ -453,6 +453,7 @@
       <div class="bar" style="flex-wrap:wrap;gap:8px;margin-bottom:12px">
         <select id="mBox"><option value="all">En cours</option><option value="new">Non lus</option><option value="archived">Archivés</option></select>
         <input id="mQ" type="search" class="grow" placeholder="Rechercher : nom, email, n° de commande">
+        <button id="mRefresh" class="grey">🔄 Actualiser</button>
         <button id="mNew" class="org">✏️ Écrire à un client</button>
       </div>
       <div class="inbox"><div id="mList" class="box"></div><div id="mThread" class="box hidden"></div></div>
@@ -723,8 +724,10 @@ function renderTodo(list) {
 async function refreshTodo() {
   if (!pw || document.hidden) return;
   try { renderTodo((await api({ action: "notifications" })).notifications || []); } catch (_) { /* ignoré */ }
+  // onglet Messages ouvert : on recharge la liste pour voir les nouveaux emails sans recharger la page
+  if (!$("tab-messages").classList.contains("hidden")) { try { await loadMessages(); } catch (_) { /* ignoré */ } }
 }
-setInterval(refreshTodo, 120000);
+setInterval(refreshTodo, 60000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshTodo(); });
 
 // ---------- messages des clients ----------
@@ -802,6 +805,7 @@ async function openThread(email, opts = {}) {
 }
 async function openMessages(email) { await openTab("messages"); await openThread(email, { focus: true }); }
 $("mBox").addEventListener("change", () => loadMessages().catch((e) => toast(errMsg(e))));
+$("mRefresh").addEventListener("click", () => { loadMessages().then(() => toast("Liste à jour ✔")).catch((e) => toast(errMsg(e))); refreshTodo(); });
 let mqT; $("mQ").addEventListener("input", () => { clearTimeout(mqT); mqT = setTimeout(() => loadMessages().catch((e) => toast(errMsg(e))), 300); });
 $("mNew").addEventListener("click", () => {
   const e = (prompt("Email du client :") || "").trim().toLowerCase();
