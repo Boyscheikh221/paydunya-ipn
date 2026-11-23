@@ -6,13 +6,13 @@
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
 <title>Ma commande — licenceoff</title>
-<link rel="stylesheet" href="/shop.css?v=12">
+<link rel="stylesheet" href="/shop.css?v=13">
 </head>
 <body>
 <main class="wrap" style="max-width:820px">
   <div id="view" style="padding:24px 0"><div class="skeleton"></div></div>
 </main>
-<script src="/shop.js?v=12"></script>
+<script src="/shop.js?v=13"></script>
 <script>
 LO.page("shop");
 const { el, $, fcfa } = LO;
@@ -40,7 +40,11 @@ async function startPay(btn, msg) {
   btn.disabled = true; btn.textContent = "Ouverture du paiement…";
   try {
     const d = await LO.api("paydunya", { action: "create", o: token });
-    if (d.url) { location.href = d.url; return; }
+    if (d.url) {
+      const o = window.__order;
+      if (o) LO.px("InitiateCheckout", { content_ids: o.items.map((i) => i.slug).filter(Boolean), content_type: "product", num_items: o.items.reduce((s, i) => s + i.quantity, 0), value: o.amount_fcfa, currency: "XOF" });
+      setTimeout(() => { location.href = d.url; }, 400); return;
+    }
     msg.textContent = d.error === "paydunya_non_configure"
       ? "Le paiement en ligne n'est pas encore disponible. Utilisez le paiement manuel ci-dessous."
       : "Le paiement en ligne n'a pas pu s'ouvrir. Réessayez ou utilisez le paiement manuel ci-dessous.";
@@ -139,6 +143,15 @@ async function load() {
     view.replaceChildren(el("div", { class: "panel empty" }, el("h1", { text: "Commande introuvable" }),
       el("p", { text: "Vérifiez que vous avez ouvert le lien en entier." }), wa("Bonjour, je ne retrouve pas ma commande.")));
     return;
+  }
+  window.__order = o;
+  // achat confirmé : événement Purchase une seule fois par commande (eventID = n° de commande)
+  if (["paid", "processing", "installing", "delivered"].includes(o.status)) {
+    let done = true; try { done = localStorage.getItem("lo_consent") !== "yes" || !!localStorage.getItem("lo_px_" + o.ref); } catch (_) {}
+    if (!done) {
+      LO.px("Purchase", { content_ids: o.items.map((i) => i.slug).filter(Boolean), content_type: "product", contents: o.items.filter((i) => i.slug).map((i) => ({ id: i.slug, quantity: i.quantity, item_price: i.unit_price })), num_items: o.items.reduce((s, i) => s + i.quantity, 0), value: o.amount_fcfa, currency: "XOF" }, { eventID: o.ref });
+      try { localStorage.setItem("lo_px_" + o.ref, "1"); } catch (_) {}
+    }
   }
   const [lab, cls] = STATUS[o.status] || ["", "t-ko"];
   const head = el("div", { class: "panel", style: "margin-bottom:14px" },

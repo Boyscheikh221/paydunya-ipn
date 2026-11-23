@@ -98,6 +98,7 @@ const LO = (() => {
     if (line) line.qty = Math.min(max, line.qty + qty);
     else items.push({ slug: p.slug, name: p.name, price: p.price_fcfa, image: p.image_url || "", qty: Math.min(max, qty), max });
     saveCart(items);
+    px("AddToCart", { content_ids: [p.slug], content_type: "product", content_name: p.name, value: p.price_fcfa * qty, currency: "XOF" });
   }
   function cartCount() { return cart().reduce((s, i) => s + i.qty, 0); }
   function updateBadge() { const n = document.querySelector(".cart-btn .n"); if (n) n.textContent = cartCount(); }
@@ -164,6 +165,7 @@ const LO = (() => {
     let d = null;
     try { const c = JSON.parse(sessionStorage.getItem(KEY) || "null"); if (c && Date.now() - c.at < 300000) d = c.d; } catch (_) {}
     if (!d) { try { d = await boutique({ action: "nav" }); sessionStorage.setItem(KEY, JSON.stringify({ at: Date.now(), d })); } catch (_) { return; } }
+    pixelId = d.pixel || ""; loadPixel();
     const m = document.getElementById("navPages"), f = document.getElementById("footPages");
     if (m) m.replaceChildren(...(d.menu || []).map((p) => el("a", { href: url.page(p.slug), class: active === "page:" + p.slug ? "on" : null, text: p.title })));
     if (f && (d.footer || []).length) { f.append(...d.footer.map((p) => el("a", { href: url.page(p.slug), text: p.title }))); f.classList.remove("hidden"); }
@@ -229,11 +231,33 @@ const LO = (() => {
     if (!force && consent()) return;
     document.querySelector(".cookie-bar")?.remove();
     document.body.append(el("div", { class: "cookie-bar", role: "dialog", "aria-label": "Cookies" },
-      el("p", {}, "Nous utilisons le stockage de votre navigateur pour votre panier (indispensable) et, si vous l'acceptez, pour mesurer les visites. ",
+      el("p", {}, "Nous utilisons le stockage de votre navigateur pour votre panier (indispensable) et, si vous l'acceptez, pour mesurer les visites et nos publicités (Meta). ",
         el("a", { href: url.privacy, text: "En savoir plus" })),
       el("div", { class: "cb-btns" },
         el("button", { class: "btn light", text: "Refuser", onclick: () => setConsent("no") }),
-        el("button", { class: "btn", text: "Accepter", onclick: () => { setConsent("yes"); hit(); } }))));
+        el("button", { class: "btn", text: "Accepter", onclick: () => { setConsent("yes"); hit(); loadPixel(); } }))));
+  }
+
+  // ---------- pixel Meta (publicités) : chargé SEULEMENT si le visiteur accepte les cookies ----------
+  // ID réglé dans l'admin (Réglages). Les identifiants produits = code produit, comme dans le flux produits.
+  let pixelId = "", pxQueue = [];
+  function loadPixel() {
+    if (!pixelId || consent() !== "yes") { if (consent() === "no") pxQueue = []; return; }
+    if (!window.fbq) {
+      /* code officiel Meta */
+      !function (f, b, e, v, n, t, s) { if (f.fbq) return; n = f.fbq = function () { n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments); };
+        if (!f._fbq) f._fbq = n; n.push = n; n.loaded = !0; n.version = "2.0"; n.queue = []; t = b.createElement(e); t.async = !0; t.src = v;
+        s = b.getElementsByTagName(e)[0]; s.parentNode.insertBefore(t, s); }(window, document, "script", "https://connect.facebook.net/en_US/fbevents.js");
+      window.fbq("init", pixelId);
+      window.fbq("track", "PageView");
+    }
+    for (const a of pxQueue.splice(0)) window.fbq("track", ...a);
+  }
+  // événement : envoyé tout de suite si le pixel est chargé, sinon gardé en attente du chargement (jamais sans accord)
+  function px(event, params, opts) {
+    if (consent() !== "yes") return;
+    const a = opts ? [event, params, opts] : [event, params];
+    if (window.fbq && pixelId) window.fbq("track", ...a); else pxQueue.push(a);
   }
 
   // ---------- statistiques de visites ----------
@@ -284,5 +308,5 @@ const LO = (() => {
     physical: "Produit physique : nous vous contactons sur WhatsApp pour la livraison",
   };
 
-  return { acct, setAcct, visitorId, track, icon, ICONS, refCode, setRef, cookieBar, url, slugFromPath, seo, jsonLd, crumbs, mainCats, SITE, $, el, fcfa, api, boutique, cart, saveCart, addToCart, cartCount, page, toast, productCard, initials, richText, DELIVERY_TEXT };
+  return { px, acct, setAcct, visitorId, track, icon, ICONS, refCode, setRef, cookieBar, url, slugFromPath, seo, jsonLd, crumbs, mainCats, SITE, $, el, fcfa, api, boutique, cart, saveCart, addToCart, cartCount, page, toast, productCard, initials, richText, DELIVERY_TEXT };
 })();

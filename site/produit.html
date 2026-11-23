@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Produit — licenceoff</title>
-<link rel="stylesheet" href="/shop.css?v=12">
+<link rel="stylesheet" href="/shop.css?v=13">
 </head>
 <body>
 <main class="wrap">
   <div id="view"><div class="product"><div class="skeleton"></div><div class="skeleton"></div></div></div>
 </main>
-<script src="/shop.js?v=12"></script>
+<script src="/shop.js?v=13"></script>
 <script>
 LO.page("shop");
 const { el, $, fcfa } = LO;
@@ -91,7 +91,8 @@ function reviewsEl(p) {
 
 if (!slug) location.replace(LO.url.shop);
 LO.boutique({ action: "product", slug }).then((d) => {
-  if (d.product) { show(d.product); LO.track("view", { slug: d.product.slug }); }
+  if (d.product) { show(d.product); LO.track("view", { slug: d.product.slug });
+    LO.px("ViewContent", { content_ids: [d.product.slug], content_type: "product", content_name: d.product.name, value: d.product.price_fcfa, currency: "XOF" }); }
   else $("#view").replaceChildren(el("div", { class: "empty" }, el("h1", { text: "Produit introuvable" }), el("p", { text: "Ce produit n'existe plus ou a changé d'adresse." }), el("a", { class: "btn", href: LO.url.shop, text: "Retour à la boutique" })));
 }).catch(() => $("#view").replaceChildren(el("div", { class: "empty", text: "Erreur de chargement. Réessayez dans un instant." })));
 </script>

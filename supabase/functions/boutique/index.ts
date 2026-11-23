@@ -387,6 +387,51 @@ async function setting(key: string, def: number) {
 }
 
 // Plan du site pour Google (toujours à jour) : …/functions/v1/boutique?sitemap=1 (cité dans robots.txt)
+// ================= Flux produits (Meta / Google) =================
+// boutique?feed=meta (ou google) : RSS 2.0 avec l'espace g: ; boutique?feed=csv : même contenu en CSV.
+// Seulement les produits publiés qui ont une photo. id = code produit (le même que dans le pixel Meta).
+async function productFeed(kind: string) {
+  const site = (Deno.env.get("SITE_URL") ?? "https://www.licenceoff.com").trim().replace(/\/$/, "");
+  const [{ data: prods }, { data: cats }] = await Promise.all([
+    db.from("products").select("id, slug, name, description, image_url, price_fcfa, compare_price_fcfa, delivery_type, stock_qty, category_id, sku, seo_description").eq("active", true).order("sort").order("name"),
+    db.from("categories").select("id, name, parent_id"),
+  ]);
+  const catById = Object.fromEntries((cats ?? []).map((c) => [c.id, c]));
+  const list = (prods ?? []).filter((p) => String(p.image_url ?? "").trim());
+  const counts = await stockCounts(list.filter((p) => STOCK_TYPES.includes(p.delivery_type)).map((p) => p.id));
+  const plain = (s: string) => String(s ?? "").replace(/<[^>]+>/g, " ").replace(/!\[[^\]]*\]\([^)]*\)/g, "").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/[*_#>`]+/g, "").replace(/&nbsp;/g, " ").replace(/[ \t]+/g, " ").replace(/\s*\n\s*/g, "\n").trim().slice(0, 5000);
+  const rows = list.map((p) => {
+    const c = catById[p.category_id];
+    const parent = c?.parent_id ? catById[c.parent_id] : null;
+    const type = [parent?.name, c?.name].filter(Boolean).join(" > ");
+    const pub = publicProduct(p, counts, {});
+    const img = String(p.image_url).startsWith("http") ? String(p.image_url) : site + "/" + String(p.image_url).replace(/^\//, "");
+    const promo = p.compare_price_fcfa && p.compare_price_fcfa > p.price_fcfa;
+    const brand = /windows|office|microsoft|365|visio|project|outlook|word|excel/i.test(p.name + " " + type) ? "Microsoft" : "Licenceoff";
+    return {
+      id: p.slug, title: String(p.name).slice(0, 150), description: plain(p.description || p.seo_description || p.name) || p.name,
+      availability: pub.in_stock ? "in stock" : "out of stock", condition: "new",
+      price: (promo ? p.compare_price_fcfa : p.price_fcfa) + " XOF", sale_price: promo ? p.price_fcfa + " XOF" : "",
+      link: site + "/produit/" + encodeURIComponent(p.slug), image_link: img, brand, product_type: type,
+      google_product_category: p.delivery_type === "physical" ? "" : "313", // Logiciels > Logiciels informatiques
+      mpn: p.sku ?? "", identifier_exists: "no",
+    };
+  });
+  const headers = { ...cors, "Cache-Control": "public, max-age=3600" };
+  if (kind === "csv") {
+    const cols = ["id", "title", "description", "availability", "condition", "price", "sale_price", "link", "image_link", "brand", "product_type", "google_product_category", "mpn", "identifier_exists"];
+    const q = (v: string) => '"' + String(v ?? "").replace(/"/g, '""') + '"';
+    // deno-lint-ignore no-explicit-any
+    const body = [cols.join(","), ...rows.map((r: any) => cols.map((k) => q(r[k])).join(","))].join("\n") + "\n";
+    return new Response(body, { headers: { ...headers, "Content-Type": "text/csv; charset=utf-8" } });
+  }
+  const x = (s: string) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const items = rows.map((r) => "<item>" + Object.entries(r).filter(([, v]) => v !== "").map(([k, v]) => `<g:${k}>${x(String(v))}</g:${k}>`).join("") + "</item>").join("\n");
+  return new Response(`<?xml version="1.0" encoding="UTF-8"?>\n<rss version="2.0" xmlns:g="http://base.google.com/ns/1.0">\n<channel>\n<title>licenceoff</title>\n<link>${site}</link>\n<description>Catalogue licenceoff</description>\n${items}\n</channel>\n</rss>\n`,
+    { headers: { ...headers, "Content-Type": "application/xml; charset=utf-8" } });
+}
+
 async function sitemap() {
   const site = (Deno.env.get("SITE_URL") ?? "https://www.licenceoff.com").trim().replace(/\/$/, "");
   const [{ data: cats }, { data: prods }, { data: posts }, { data: pages }] = await Promise.all([
@@ -486,6 +531,7 @@ async function inbound(req: Request): Promise<Response> {
 async function handle(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method === "GET" && new URL(req.url).searchParams.has("sitemap")) return sitemap();
+  if (req.method === "GET" && new URL(req.url).searchParams.has("feed")) return productFeed(String(new URL(req.url).searchParams.get("feed")));
   if (req.method === "POST" && new URL(req.url).searchParams.has("inbound")) return inbound(req);
   if (req.method !== "POST") return json({ error: "method" }, 405);
 
@@ -559,8 +605,11 @@ async function handle(req: Request): Promise<Response> {
     }
     // ---------- Pages libres (créées dans l'admin) ----------
     case "nav": { // liens du menu et du pied de page
-      const { data } = await db.from("pages").select("slug, title, in_menu, in_footer").eq("published", true).order("sort").order("title");
-      return json({ menu: (data ?? []).filter((p) => p.in_menu).map((p) => ({ slug: p.slug, title: p.title })),
+      const [{ data }, { data: px }] = await Promise.all([
+        db.from("pages").select("slug, title, in_menu, in_footer").eq("published", true).order("sort").order("title"),
+        db.from("settings").select("value").eq("key", "meta_pixel_id").maybeSingle(),
+      ]);
+      return json({ pixel: /^\d{5,20}$/.test(String(px?.value ?? "")) ? String(px?.value) : "", menu: (data ?? []).filter((p) => p.in_menu).map((p) => ({ slug: p.slug, title: p.title })),
         footer: (data ?? []).filter((p) => p.in_footer).map((p) => ({ slug: p.slug, title: p.title })) });
     }
     case "page": {

@@ -916,13 +916,14 @@ Deno.serve(async (req) => {
         return json({ settings: Object.fromEntries((data ?? []).map((r) => [r.key, r.value])) });
       }
       case "settings_set": {
-        const allowed = ["auto_delivery", "payout_threshold", "default_discount_pct", "admin_email", "shipping_home_fcfa", "shipping_bus_fcfa", "weekly_report"];
+        const allowed = ["auto_delivery", "payout_threshold", "default_discount_pct", "admin_email", "shipping_home_fcfa", "shipping_bus_fcfa", "weekly_report", "meta_pixel_id"];
         const key = str(body.key, 40);
         if (!allowed.includes(key)) return json({ error: "reglage_inconnu" }, 400);
         let value: unknown = body.value === true;
         if (key === "payout_threshold") value = clamp(Math.round(Number(body.value) || 0), 0, 10_000_000);
         if (key === "default_discount_pct") value = clamp(Number(body.value) || 0, 0, 90);
         if (key === "shipping_home_fcfa" || key === "shipping_bus_fcfa") value = clamp(Math.round(Number(body.value) || 0), 0, 1_000_000);
+        if (key === "meta_pixel_id") { value = str(body.value, 30).replace(/\s/g, ""); if (value && !/^\d{5,20}$/.test(value as string)) return json({ error: "pixel_invalide" }, 400); }
         if (key === "admin_email") { value = str(body.value, 200).toLowerCase(); if (value && !/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/.test(value as string)) return json({ error: "email_invalide" }, 400); }
         const { error } = await db.from("settings").upsert({ key, value, updated_at: new Date().toISOString() });
         if (error) return json({ error: error.message }, 500);
