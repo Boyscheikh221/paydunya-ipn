@@ -5,14 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>Mon panier — licenceoff</title>
-<link rel="stylesheet" href="/shop.css?v=13">
+<link rel="stylesheet" href="/shop.css?v=14">
 </head>
 <body>
 <main class="wrap">
   <h1 style="margin:24px 0 0">Mon panier</h1>
   <div id="view"></div>
 </main>
-<script src="/shop.js?v=13"></script>
+<script src="/shop.js?v=14"></script>
 <script>
 LO.page("shop");
 const { el, $, fcfa } = LO;
@@ -126,7 +126,7 @@ function render() {
     try {
       const d = await LO.boutique({
         action: "create_order", items: LO.cart().map((i) => ({ slug: i.slug, qty: i.qty })),
-        name: $("#name").value, email: $("#email").value, phone: $("#phone").value, website: $("#website").value, ref: quote.code || "",
+        name: $("#name").value, email: $("#email").value, phone: $("#phone").value, website: $("#website").value, ref: quote.code || "", origin: LO.source(),
         shipping: hasPhysical() ? { method: ship.method, address: ship.address, zone: ship.zone, lat: ship.lat, lng: ship.lng } : undefined,
       });
       if (d.token) {

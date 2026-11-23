@@ -345,11 +345,15 @@ async function createAdminOrder(body: any): Promise<Response | { o: any }> {
   const computed = items.reduce((s: number, l: { id: string; qty: number }) => s + byId[l.id].price_fcfa * l.qty, 0);
   const amount = body.amount_fcfa !== "" && body.amount_fcfa != null && Number.isFinite(Number(body.amount_fcfa))
     ? clamp(Number(body.amount_fcfa), 0, 100_000_000) : computed;
+  const ref = newRef();
+  const MANUAL_CHANNELS = ["wa_manuel", "fb_manuel", "tel_manuel", "autre_manuel"];
   const { data: o, error } = await db.from("orders").insert({
-    ref: newRef(), public_token: newToken(24), customer_name: name, email,
+    ref, public_token: newToken(24), customer_name: name, email,
     phone: str(body.phone, 30).replace(/[^\d+]/g, "") || null, amount_fcfa: amount,
-    payment_method: str(body.payment_method, 30) || null, payment_ref: str(body.payment_ref, 100) || null,
+    // n° de transaction : celui de Wave/OM s'il est donné, sinon un numéro automatique
+    payment_method: str(body.payment_method, 30) || null, payment_ref: str(body.payment_ref, 100) || ("TX-" + ref.slice(3)),
     note: str(body.note, 300) || null, source: "admin",
+    channel: MANUAL_CHANNELS.includes(body.channel) ? body.channel : "wa_manuel", campaign: str(body.campaign, 80) || null,
   }).select().single();
   if (error) return json({ error: error.message }, 500);
   const { error: e2 } = await db.from("order_items").insert(items.map((l: { id: string; qty: number }) => ({
@@ -547,7 +551,7 @@ Deno.serve(async (req) => {
         }));
         const since = new Date(Date.now() - 31 * DAY).toISOString();
         const { data: recent } = await db.from("orders")
-          .select("ref, customer_name, status, amount_fcfa, created_at, paid_at, delivered_at").gte("created_at", since)
+          .select("ref, customer_name, status, amount_fcfa, created_at, paid_at, delivered_at, channel, campaign").gte("created_at", since)
           .order("created_at", { ascending: false }).limit(5000);
         const { data: top } = await db.from("order_items").select("product_name, quantity, unit_price, status, orders!inner(paid_at)")
           .gte("orders.paid_at", since).limit(5000);

@@ -57,6 +57,15 @@ const str = (v: unknown, max: number) => String(v ?? "").trim().slice(0, max);
 const STOCK_TYPES = ["key", "key_file", "stock"];
 const PRODUCT_FIELDS = "id, slug, name, description, image_url, price_fcfa, compare_price_fcfa, delivery_type, featured, sort, category_id, stock_qty, sku, seo_title, seo_description";
 
+// ================= Origine de la commande (pub Facebook, Google Ads, WhatsApp…) =================
+const SITE_CHANNELS = ["google_ads", "facebook_ads", "facebook", "google", "whatsapp", "direct", "autre"];
+// deno-lint-ignore no-explicit-any
+function originOf(o: any) {
+  const clean = (v: unknown, n: number) => String(v ?? "").replace(/[\u0000-\u001f<>]/g, "").trim().slice(0, n) || null;
+  const ch = SITE_CHANNELS.includes(String(o?.ch)) ? String(o.ch) : "direct";
+  return { channel: ch, campaign: clean(o?.camp, 80), utm_source: clean(o?.src, 60), utm_medium: clean(o?.med, 30) };
+}
+
 // ================= Email automatique de livraison (Resend) =================
 // Secrets : RESEND_API_KEY (obligatoire pour envoyer), RESEND_FROM (facultatif,
 // ex. « licenceoff <commandes@licenceoff.com> »), SITE_URL, WHATSAPP_NUMBER (facultatif).
@@ -951,6 +960,7 @@ async function handle(req: Request): Promise<Response> {
           ip: (req.headers.get("cf-connecting-ip") ?? req.headers.get("x-forwarded-for")?.split(",")[0] ?? "").trim().slice(0, 64) || null,
           user_agent: (req.headers.get("user-agent") ?? "").slice(0, 200) || null,
           parrain_id: rc?.parrain_id ?? null, referral_code_id: rc?.id ?? null, referral_code: rc?.code ?? null,
+          ...originOf(body.origin),
           discount_fcfa: listTotal - total, commission_fcfa: commission,
         };
         const { data: o, error } = await db.from("orders").insert(row).select("id").single();

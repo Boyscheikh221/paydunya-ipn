@@ -298,7 +298,37 @@ const LO = (() => {
     }).catch(() => {});
   }
 
-  function page(active) { header(active); footer(); navPages(active); hit(); cookieBar(); captureRef(); }
+  // ---------- d'où vient le visiteur (pub Facebook, Google Ads, WhatsApp…) ----------
+  // On garde seulement la catégorie et le nom de campagne (aucun identifiant personnel), 30 jours.
+  const SRC_KEY = "lo_src";
+  function classifySource(u, referrer) {
+    const p = u.searchParams, low = (k) => (p.get(k) || "").toLowerCase();
+    const s = low("utm_source"), m = low("utm_medium"), camp = p.get("utm_campaign") || "";
+    const paid = /cpc|ppc|paid|ads?$|^ad|cpm|display|retarget|social_paid|paidsocial/.test(m);
+    let host = "";
+    try { if (referrer) { const h = new URL(referrer).hostname.replace(/^www\./, ""); if (!/(^|\.)licenceoff\.com$/.test(h)) host = h; } } catch (_) {}
+    let ch = "";
+    if (p.get("gclid") || p.get("gbraid") || p.get("wbraid") || (/google|youtube/.test(s) && paid)) ch = "google_ads";
+    else if (/facebook|^fb|instagram|^ig|meta/.test(s) && paid) ch = "facebook_ads";
+    else if (p.get("fbclid") && paid) ch = "facebook_ads";
+    else if (/whatsapp|^wa$/.test(s) || /whatsapp|wa\.me/.test(host)) ch = "whatsapp";
+    else if (p.get("fbclid") || /facebook|^fb|instagram|^ig/.test(s) || /facebook\.com|instagram\.com|^fb\.|messenger/.test(host)) ch = "facebook";
+    else if (/google|bing|yahoo|duckduckgo|ecosia|qwant/.test(host) || /google/.test(s)) ch = "google";
+    else if (s || host) ch = "autre";
+    return ch ? { ch, camp: camp.slice(0, 80), src: (s || host).slice(0, 60), med: m.slice(0, 30), at: Date.now() } : null;
+  }
+  function captureSource() {
+    try {
+      const t = classifySource(new URL(location.href), document.referrer);
+      if (t) localStorage.setItem(SRC_KEY, JSON.stringify(t)); // la dernière origine connue gagne
+    } catch (_) {}
+  }
+  function source() {
+    try { const r = JSON.parse(localStorage.getItem(SRC_KEY) || "null"); if (r && Date.now() - r.at < 30 * 86400000) return { ch: r.ch, camp: r.camp, src: r.src, med: r.med }; } catch (_) {}
+    return { ch: "direct" };
+  }
+
+  function page(active) { captureSource(); header(active); footer(); navPages(active); hit(); cookieBar(); captureRef(); }
   const DELIVERY_TEXT = {
     key: "Clé de licence livrée immédiatement après paiement",
     key_file: "Clé de licence + lien de téléchargement livrés immédiatement",
@@ -308,5 +338,5 @@ const LO = (() => {
     physical: "Produit physique : nous vous contactons sur WhatsApp pour la livraison",
   };
 
-  return { px, acct, setAcct, visitorId, track, icon, ICONS, refCode, setRef, cookieBar, url, slugFromPath, seo, jsonLd, crumbs, mainCats, SITE, $, el, fcfa, api, boutique, cart, saveCart, addToCart, cartCount, page, toast, productCard, initials, richText, DELIVERY_TEXT };
+  return { source, classifySource, px, acct, setAcct, visitorId, track, icon, ICONS, refCode, setRef, cookieBar, url, slugFromPath, seo, jsonLd, crumbs, mainCats, SITE, $, el, fcfa, api, boutique, cart, saveCart, addToCart, cartCount, page, toast, productCard, initials, richText, DELIVERY_TEXT };
 })();
