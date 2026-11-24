@@ -67,8 +67,8 @@ Comment ça marche :
 
 Le mode d'emploi pas à pas est dans l'email de livraison. Une question ou un souci ? Notre assistance WhatsApp vous accompagne jusqu'à l'installation complète.$q$,
   seo_description = $q$Microsoft 365 livré par compte (identifiant + mot de passe) : Word, Excel, PowerPoint sur PC, Mac et mobile. Mode d'emploi et assistance WhatsApp.$q$
- where slug = 'microsoft-365-12-mois';
+ where slug in ('microsoft-365-12-mois', 'microsoft-365-abonnement-1-an-5-appareils-pc-et-mac');
 
 select p.name, p.delivery_type, length(p.description) descr, t.name modele, length(t.body) corps
   from public.products p left join public.email_templates t on t.id = p.email_template_id
- where p.slug = 'microsoft-365-12-mois';
+ where p.slug in ('microsoft-365-12-mois', 'microsoft-365-abonnement-1-an-5-appareils-pc-et-mac');
