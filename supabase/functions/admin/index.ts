@@ -186,7 +186,7 @@ const installButtonHtml = (link: string) => `<p style="text-align:center;margin:
 // bouton « Assistance WhatsApp » (remplace le numéro de téléphone dans les signatures)
 const waButtonHtml = (wa: string) => `<p style="margin:18px 0 12px"><a href="https://wa.me/${esc(wa)}" style="display:inline-block;background:#25D366;color:#fff;font-weight:800;text-decoration:none;padding:11px 18px;border-radius:10px">💬 Assistance WhatsApp</a></p>`;
 // produits livrés par compte : le bouton mène à la page de commande où chaque identifiant a son bouton « Copier »
-const buttonLabel = (items: Item[]) => items.length && items.every((i) => i.delivery_type === "stock") ? "📋 Copier mes identifiants (page de commande)" : "Voir ma commande et télécharger";
+const buttonLabel = (items: Item[]) => items.length && items.every((i) => i.delivery_type === "stock") ? "Ouvrir ma commande" : "Voir ma commande et télécharger";
 const buttonHtml = (link: string, label = "Voir ma commande et télécharger") => `<p style="text-align:center;margin:22px 0"><a href="${esc(link)}" style="display:inline-block;background:${EM.O};color:#fff;font-weight:800;text-decoration:none;padding:14px 22px;border-radius:10px">${esc(label)}</a></p>`;
 
 function vars(c: Ctx) {
