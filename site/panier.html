@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>Mon panier — licenceoff.com</title>
-<link rel="stylesheet" href="/shop.css?v=19">
+<link rel="stylesheet" href="/shop.css?v=20">
 <link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="64x64" href="/img/profil-64.png"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
 <meta property="og:image" content="https://www.licenceoff.com/img/partage.jpg">
 </head>
@@ -14,7 +14,7 @@
   <h1 style="margin:24px 0 0">Mon panier</h1>
   <div id="view"></div>
 </main>
-<script src="/shop.js?v=19"></script>
+<script src="/shop.js?v=20"></script>
 <script>
 LO.page("shop");
 const { el, $, fcfa } = LO;
@@ -45,6 +45,8 @@ async function loadCartInfo() {
   const items = LO.cart(); if (!items.length) return;
   try { const d = await LO.boutique({ action: "cart_info", slugs: items.map((i) => i.slug) }); if (d.shipping) cinfo = d; } catch (_) {}
 }
+// mode « WhatsApp » (page Paiements de l'admin) : email + WhatsApp seulement, puis le client finalise sur WhatsApp
+const waMode = () => (cinfo.pay_mode || "whatsapp") === "whatsapp";
 const hasPhysical = () => LO.cart().some((i) => cinfo.physical.includes(i.slug));
 const shipFee = () => hasPhysical() && ship.method !== "out" ? Number(cinfo.shipping[ship.method] || 0) : 0;
 
@@ -119,7 +121,7 @@ function render() {
     feeLine.replaceChildren(el("span", { text: "Livraison" + (ship.method === "home" ? " à domicile" : ship.method === "bus" ? " par bus" : "") }), el("span", { text: fee ? fcfa(fee) : "—" }));
     feeLine.classList.toggle("hidden", !hasPhysical());
     totVal.textContent = fcfa(total + fee);
-    go.textContent = "Commander et payer " + fcfa(total + fee);
+    go.textContent = waMode() ? "Commander · " + fcfa(total + fee) : "Commander et payer " + fcfa(total + fee);
     go.classList.toggle("hidden", hasPhysical() && ship.method === "out");
   };
   go.addEventListener("click", async () => {
@@ -128,12 +130,12 @@ function render() {
     try {
       const d = await LO.boutique({
         action: "create_order", items: LO.cart().map((i) => ({ slug: i.slug, qty: i.qty })),
-        name: $("#name").value, email: $("#email").value, phone: $("#phone").value, website: $("#website").value, ref: quote.code || "", origin: LO.source(), marketing: !!($("#mkt") && $("#mkt").checked),
+        name: $("#name") ? $("#name").value : "", email: $("#email").value, phone: $("#phone").value, website: $("#website").value, ref: quote.code || "", origin: LO.source(), marketing: !!($("#mkt") && $("#mkt").checked),
         shipping: hasPhysical() ? { method: ship.method, address: ship.address, zone: ship.zone, lat: ship.lat, lng: ship.lng } : undefined,
       });
       if (d.token) {
         LO.saveCart([]);
-        location.href = "/commande?o=" + encodeURIComponent(d.token) + "&pay=1";
+        location.href = "/commande?o=" + encodeURIComponent(d.token) + (d.wa ? "&wa=1" : "&pay=1");
         return;
       }
       msg.textContent = d.error === "stock_insuffisant"
@@ -147,8 +149,8 @@ function render() {
     el("div", { class: "panel" }, ...lines),
     el("div", { class: "panel" },
       el("h2", { style: "margin:0 0 4px;font-size:18px", text: "Vos coordonnées" }),
-      el("p", { class: "note", text: hasPhysical() ? "Après paiement, nous vous contactons sur WhatsApp pour la livraison. Vos clés et liens éventuels s'affichent sur votre page de commande." : "Après paiement, votre clé et vos liens s'affichent sur votre page de commande." }),
-      ...f("name", "Nom complet", "text", "name", "ex : Moussa Diop"),
+      el("p", { class: "note", text: waMode() ? "Indiquez votre email et votre numéro WhatsApp. Votre commande est enregistrée, puis WhatsApp s'ouvre avec un message déjà prêt pour finaliser avec nous." : hasPhysical() ? "Après paiement, nous vous contactons sur WhatsApp pour la livraison. Vos clés et liens éventuels s'affichent sur votre page de commande." : "Après paiement, votre clé et vos liens s'affichent sur votre page de commande." }),
+      ...(waMode() ? [] : f("name", "Nom complet", "text", "name", "ex : Moussa Diop")),
       ...f("email", "Email", "email", "email", "vous@exemple.com"),
       ...f("phone", "Numéro WhatsApp", "tel", "tel", "ex : 77 123 45 67"),
       el("input", { id: "website", class: "hp", tabindex: "-1", autocomplete: "off", "aria-hidden": "true" }),
@@ -160,7 +162,7 @@ function render() {
       feeLine,
       el("div", { class: "tot", style: "margin-top:8px" }, el("span", { text: "Total" }), totVal),
       go, msg,
-      el("p", { class: "note", style: "margin-top:12px", text: "🔒 Paiement sécurisé par PayDunya : Wave, Orange Money, Free Money ou carte." }))));
+      el("p", { class: "note", style: "margin-top:12px", text: waMode() ? "💬 Paiement par Wave ou Orange Money, finalisé avec nous sur WhatsApp. Votre clé s'affiche sur votre page de commande dès le paiement confirmé." : "🔒 Paiement sécurisé par PayDunya : Wave, Orange Money, Free Money ou carte." }))));
   update();
 }
 function codeBox() {

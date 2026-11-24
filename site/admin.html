@@ -158,6 +158,7 @@
     <button data-tab="faq">❓ FAQ</button>
     <button data-tab="links">🔗 Liens</button>
     <button data-tab="logs">📜 Journal <span id="badgeLog" class="badge hidden" title="Erreurs non lues" style="background:var(--rouge)"></span></button>
+    <button data-tab="payments">💳 Paiements</button>
     <button data-tab="settings">⚙️ Réglages</button>
     <div class="bottom"><button id="btnLogout">↩ Déconnexion</button></div>
   </nav>
@@ -596,6 +597,20 @@
         <div class="bar" style="margin-top:10px"><button id="lMore" class="grey hidden">Voir plus ancien</button></div></div>
     </section>
 
+    <section id="tab-payments" class="hidden">
+      <h1>Paiements</h1>
+      <div class="box">
+        <h2 style="margin:0 0 6px">Comment vos clients paient</h2>
+        <div class="small" style="margin-bottom:10px">Choisissez le mode actif du site. Un intégrateur ne peut être activé que lorsqu'il est branché et que ses clés sont enregistrées.</div>
+        <div id="payModes"></div>
+      </div>
+      <div class="box">
+        <h2 style="margin:0 0 6px">Clés des intégrateurs</h2>
+        <div class="small" style="margin-bottom:6px">🔒 Les clés sont chiffrées par le serveur dès que vous cliquez « Enregistrer », puis ne s'affichent plus jamais : vous verrez seulement « clé enregistrée ✓ ». Vous pouvez les remplacer, pas les relire. Ne les envoyez jamais par WhatsApp ou par email.</div>
+        <div id="payProviders"></div>
+      </div>
+    </section>
+
     <section id="tab-settings" class="hidden">
       <h1>Réglages</h1>
       <div class="box switch">
@@ -674,8 +689,11 @@ const ST = {
 const TYPES = { key: "Clé", key_file: "Clé + logiciel", file: "Logiciel", stock: "Identifiants", manual: "Service manuel", physical: "Produit physique" };
 const STOCK_TYPES = ["key", "key_file", "stock"];
 let stock = []; // stock de clés par produit (rempli par le tableau de bord)
-const METHOD = { wave: "Wave", orange_money: "Orange Money", free_money: "Free Money", especes: "Espèces", paydunya: "PayDunya", manuel: "Transfert manuel", autre: "Autre" };
+const METHOD = { whatsapp: "💬 WhatsApp", wave: "Wave", orange_money: "Orange Money", free_money: "Free Money", especes: "Espèces", paydunya: "PayDunya", manuel: "Transfert manuel", autre: "Autre" };
 const ERR = {
+  integrateur_pas_branche: "Cet intégrateur n'est pas encore branché au site : demandez à Claude de le brancher quand votre compte est actif.",
+  cles_manquantes: "Enregistrez d'abord toutes les clés de cet intégrateur.", cle_invalide: "Clé invalide (pas d'espace, vérifiez le copier-coller).",
+  secret_serveur_absent: "Le chiffrement n'est pas disponible sur le serveur.",
   titre_obligatoire: "Le titre est obligatoire.",
   pixel_invalide: "L'ID du pixel Meta ne contient que des chiffres (Gestionnaire d'événements Meta).",
   devis_deja_converti: "Ce devis est déjà devenu une commande.", devis_introuvable: "Devis introuvable.",
@@ -756,7 +774,7 @@ async function uploadImage(input, hidden, preview, msg) {
 }
 
 // ---------- navigation ----------
-const loaders = { dash: loadDash, orders: loadOrders, products: loadProducts, keys: loadKeys, blog: loadBlog, pages: loadPages, emails: loadTemplates, send: loadSend, quotes: loadQuotes, parrains: loadParrains, clients: loadClients, messages: loadMessages, reviews: loadReviews, faq: loadFaq, links: loadLinks, logs: loadLogs, settings: loadSettings };
+const loaders = { dash: loadDash, orders: loadOrders, products: loadProducts, keys: loadKeys, blog: loadBlog, pages: loadPages, emails: loadTemplates, send: loadSend, quotes: loadQuotes, parrains: loadParrains, clients: loadClients, messages: loadMessages, reviews: loadReviews, faq: loadFaq, links: loadLinks, logs: loadLogs, payments: loadPayments, settings: loadSettings };
 document.querySelectorAll("nav [data-tab]").forEach((b) => b.addEventListener("click", () => openTab(b.dataset.tab)));
 function openTab(t) {
   document.querySelectorAll("nav [data-tab]").forEach((b) => b.classList.toggle("on", b.dataset.tab === t));
@@ -1105,7 +1123,7 @@ async function loadOrders() {
     }
     const acts = el("div", null, "acts");
     if (o.status === "pending") {
-      acts.append(btn(o.key_locked ? "🔓 Débloquer la clé (paiement reçu)" : "✔ Valider le paiement", "green", async () => {
+      acts.append(btn(o.key_locked ? "🔓 Débloquer la clé (paiement reçu)" : "✔ Payé : livrer la commande", "green", async () => {
         if (!confirm("Avez-vous bien reçu " + fcfa(o.amount_fcfa) + " de " + o.customer_name + " ?" + (o.key_locked ? "\nLa clé sera envoyée par email au client et affichée sur sa page." : ""))) return;
         await run({ action: "order_validate", id: o.id }, "Paiement validé, commande livrée ✔", reload)();
       }));
@@ -1880,6 +1898,50 @@ $("btnLogin").addEventListener("click", login);
 $("pw").addEventListener("keydown", (e) => { if (e.key === "Enter") login(); });
 $("btnLogout").addEventListener("click", () => { try { sessionStorage.removeItem("lo_pw"); } catch (_) {} location.reload(); });
 if (pw) login();
+
+// ---------- Paiements ----------
+async function loadPayments() { renderPayments(await api({ action: "pay_get" })); }
+function renderPayments(st) {
+  const modes = $("payModes"); modes.replaceChildren();
+  const opts = [{ id: "whatsapp", name: "💬 WhatsApp", desc: "La commande est enregistrée, le client arrive sur votre WhatsApp avec un message prêt. Vous lui envoyez votre lien Wave ou votre numéro, puis vous cliquez « ✔ Payé » sur la commande : la livraison part.", ok: true }]
+    .concat(st.providers.map((p) => ({ id: p.id, name: p.name, desc: !p.ready ? "Pas encore branché au site (on le branchera quand votre compte " + p.name + " sera actif)." : !p.complete ? "Branché, mais il manque des clés." : "Paiement automatique : la commande est livrée dès que " + p.name + " confirme.", ok: p.ready && p.complete })));
+  for (const o of opts) {
+    const on = st.mode === o.id;
+    const row = el("label", null, "check"); row.style.cssText = "display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid #eef1f6;" + (o.ok || on ? "" : "opacity:.55");
+    const r = el("input"); r.type = "radio"; r.name = "payMode"; r.checked = on; r.disabled = !o.ok && !on;
+    r.addEventListener("change", async () => { if (!confirm("Passer le site en mode « " + o.name + " » ?")) { r.checked = false; loadPayments(); return; }
+      try { renderPayments(await api({ action: "pay_mode", mode: o.id })); toast("Mode de paiement : " + o.name + " ✔"); } catch (e) { toast(errMsg(e)); loadPayments(); } });
+    const t = el("div"); t.append(el("b", o.name + (on ? "  · actif" : "")), el("div", o.desc, "small"));
+    row.append(r, t); modes.append(row);
+  }
+  const box = $("payProviders"); box.replaceChildren();
+  for (const p of st.providers) {
+    const card = el("details"); card.style.cssText = "border:1px solid #e3e8f0;border-radius:10px;padding:10px 12px;margin:10px 0";
+    const nSet = p.fields.filter((f) => f.set && f.readable).length;
+    card.append(el("summary", p.name + " — " + (nSet === p.fields.length ? "clés enregistrées ✓" : nSet ? nSet + "/" + p.fields.length + " clés" : "aucune clé") + (p.ready ? "" : " · pas encore branché")));
+    const inputs = {};
+    for (const f of p.fields) {
+      const lab = el("label", f.label); const line = el("div"); line.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap";
+      const i = el("input"); i.type = "password"; i.autocomplete = "new-password"; i.spellcheck = false; i.style.flex = "1"; i.style.minWidth = "220px";
+      i.placeholder = f.set ? (f.readable ? "clé enregistrée ✓ (laisser vide pour la garder)" : "⚠️ à ressaisir") : "coller la clé ici";
+      inputs[f.key] = i; line.append(i);
+      if (f.set) line.append(btn("Effacer", "grey", async () => { if (!confirm("Effacer cette clé ?")) return; renderPayments(await api({ action: "pay_clear", provider: p.id, field: f.key })); toast("Clé effacée"); }));
+      card.append(lab, line);
+    }
+    const live = el("input"); live.type = "checkbox"; live.checked = p.live;
+    const lv = el("label", null, "check"); lv.append(live, document.createTextNode(" Mode réel (décoché = mode test / sandbox)"));
+    const save = btn("🔒 Enregistrer (chiffré)", "green", async () => {
+      const values = {}; for (const [k, i] of Object.entries(inputs)) if (i.value.trim()) values[k] = i.value.trim();
+      const st2 = await api({ action: "pay_save", provider: p.id, live: live.checked, values });
+      for (const i of Object.values(inputs)) i.value = "";
+      renderPayments(st2); toast(p.name + " : enregistré ✔");
+    });
+    const doc = el("a", "Documentation " + p.name); doc.href = p.doc; doc.target = "_blank"; doc.rel = "noopener"; doc.className = "small";
+    const bar = el("div", null, "bar"); bar.append(save);
+    card.append(lv, bar, doc, el("div", p.updated_at ? "Dernière modification : " + new Date(p.updated_at).toLocaleString("fr-FR") : "", "small"));
+    box.append(card);
+  }
+}
 </script>
 </body>
 </html>

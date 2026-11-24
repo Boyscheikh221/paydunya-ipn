@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
 <title>Ma commande — licenceoff.com</title>
-<link rel="stylesheet" href="/shop.css?v=19">
+<link rel="stylesheet" href="/shop.css?v=20">
 <link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="64x64" href="/img/profil-64.png"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
 <meta property="og:image" content="https://www.licenceoff.com/img/partage.jpg">
 </head>
@@ -14,13 +14,14 @@
 <main class="wrap" style="max-width:820px">
   <div id="view" style="padding:24px 0"><div class="skeleton"></div></div>
 </main>
-<script src="/shop.js?v=19"></script>
+<script src="/shop.js?v=20"></script>
 <script>
 LO.page("shop");
 const { el, $, fcfa } = LO;
 const params = new URLSearchParams(location.search);
 const token = params.get("o") || "";
 let autoPay = params.get("pay") === "1";
+let autoWa = params.get("wa") === "1";
 const fromInstallEmail = params.get("installe") === "1";
 let timer = null, checked = 0;
 
@@ -196,13 +197,23 @@ async function load() {
 
   CUR = o;
   const parts = [head];
-  if (o.need_name) parts.push(nameForm());
+  // mode WhatsApp : l'étape WhatsApp d'abord, le prénom/nom ensuite
+  if (o.need_name && !(o.status === "pending" && o.wa_finalize)) parts.push(nameForm());
   if (o.status === "pending" && o.key_locked) {
     parts.push(el("div", { class: "panel", style: "margin-bottom:14px;border:2px solid var(--orange,#F5A21B)" },
       el("h2", { style: "margin:0 0 6px;font-size:18px", text: "🔒 Votre clé est réservée" }),
       el("p", { style: "margin:0 0 8px", text: "Elle s'affichera ici dès que votre paiement de " + fcfa(o.amount_fcfa) + " sera confirmé. Vous recevrez aussi un email avec la clé." }),
       el("button", { class: "btn block", disabled: true, style: "opacity:.6;cursor:not-allowed", text: "🔒 Voir ma clé · en attente de confirmation du paiement" }),
       el("p", { class: "note", style: "margin:8px 0 0", text: "Vous avez déjà payé ? Envoyez-nous la preuve sur WhatsApp, avec la référence " + o.ref + "." })));
+  } else if (o.status === "pending" && o.wa_finalize) {
+    // mode WhatsApp : le paiement se finalise avec la boutique sur WhatsApp, message déjà écrit
+    parts.push(el("div", { class: "panel", style: "margin-bottom:14px;border:2px solid #25d366" },
+      el("h2", { style: "margin:0 0 6px;font-size:18px", text: "✅ Commande " + o.ref + " enregistrée" }),
+      el("p", { style: "margin:0 0 10px", text: "Dernière étape : finalisez avec nous sur WhatsApp. Le message est déjà écrit, il suffit de l'envoyer. Nous vous indiquons comment payer (Wave ou Orange Money), puis votre commande s'affiche ici." }),
+      el("a", { class: "btn block", href: o.wa_finalize, target: "_blank", rel: "noopener", style: "background:#25d366;border-color:#25d366;color:#fff", text: "💬 Continuer sur WhatsApp" }),
+      el("p", { class: "note", style: "margin:8px 0 0", text: "Total : " + fcfa(o.amount_fcfa) + ". Gardez cette page : vos clés et liens s'y afficheront." })));
+    if (o.need_name) parts.push(nameForm());
+    if (autoWa) { autoWa = false; history.replaceState(null, "", location.pathname + "?o=" + encodeURIComponent(token)); setTimeout(() => { location.href = o.wa_finalize; }, 1500); }
   } else if (o.status === "pending") {
     const msg = el("p", { class: "msg" });
     const pay = el("button", { class: "btn orange block", text: "Payer maintenant" });
@@ -235,7 +246,7 @@ async function load() {
   parts.push(el("p", { class: "note", style: "margin-top:12px", text: "Gardez précieusement le lien de cette page : c'est ici que vous retrouvez vos clés et téléchargements." }));
   view.replaceChildren(...parts);
 
-  if ((o.status === "pending" && (o.has_paydunya || o.has_payment_ref || o.key_locked)) || o.status === "paid" || o.status === "processing" || (o.status === "installing" && o.items.some((i) => i.claimed))) timer = setTimeout(load, 15000);
+  if ((o.status === "pending" && (o.has_paydunya || o.has_payment_ref || o.key_locked || o.wa_finalize)) || o.status === "paid" || o.status === "processing" || (o.status === "installing" && o.items.some((i) => i.claimed))) timer = setTimeout(load, 15000);
   if (fromInstallEmail) { const c = document.querySelector(".claim"); if (c) c.scrollIntoView({ behavior: "smooth", block: "center" }); }
 }
 load();

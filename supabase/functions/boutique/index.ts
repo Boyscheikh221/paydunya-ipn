@@ -345,6 +345,20 @@ async function sendOrderEmails(orderId: string, reason?: string) {
 
 // Consentement aux offres par email (newsletter) : on garde la date et l'origine
 // nom par défaut des ventes manuelles (« Client WhatsApp ») ou vide : le vrai nom n'est pas connu
+// ---------- mode de paiement du site (page « Paiements » de l'admin) ----------
+async function payMode(): Promise<string> {
+  const { data } = await db.from("settings").select("value").eq("key", "payment_mode").maybeSingle();
+  const v = typeof data?.value === "string" ? data.value : "whatsapp";
+  return ["whatsapp", "paydunya", "wave", "paytech", "orange_money"].includes(v) ? v : "whatsapp";
+}
+// lien WhatsApp vers la boutique avec un message déjà écrit pour la commande
+// deno-lint-ignore no-explicit-any
+function waOrderLink(ref: string, items: any[], total: number) {
+  const list = items.map((i) => (Number(i.quantity) > 1 ? i.quantity + " x " : "") + i.product_name).join(", ");
+  const msg = "Bonjour, je viens de commander sur licenceoff.com. Commande " + ref + " : " + list + ", " + fcfaTxt(total) + ". Comment on procède ?";
+  return "https://wa.me/" + siteCtx().wa + "?text=" + encodeURIComponent(msg);
+}
+
 function isPlaceholderName(n?: string | null) {
   const t = String(n ?? "").trim();
   return t.length < 2 || /^client( (whatsapp|facebook|wa|fb))?$/i.test(t) || /^(inconnu|n\/a)$/i.test(t);
@@ -745,6 +759,7 @@ async function handle(req: Request): Promise<Response> {
       return json({
         physical: (prods ?? []).filter((p) => p.delivery_type === "physical").map((p) => p.slug),
         shipping: { home: await setting("shipping_home_fcfa", 1500), bus: await setting("shipping_bus_fcfa", 1000) },
+        pay_mode: await payMode(),
       });
     }
 
@@ -1000,7 +1015,9 @@ async function handle(req: Request): Promise<Response> {
     // ---------- Nouvelle commande (panier) ----------
     case "create_order": {
       if (str(body.website, 50)) return json({ error: "spam" }, 400); // champ piège invisible
-      const name = str(body.name, 100);
+      const mode = await payMode();
+      // mode WhatsApp : seuls l'email et le numéro WhatsApp sont demandés ; le nom sera demandé sur la page de commande
+      const name = str(body.name, 100) || (mode === "whatsapp" ? "Client WhatsApp" : "");
       const email = str(body.email, 200).toLowerCase();
       const phone = str(body.phone, 30).replace(/[^\d+]/g, "");
       if (name.length < 2) return json({ error: "nom_invalide" }, 400);
@@ -1062,7 +1079,7 @@ async function handle(req: Request): Promise<Response> {
       for (let i = 0; i < 4; i++) {
         const row = {
           ref: newRef(), public_token: newToken(), customer_name: name, email, phone,
-          amount_fcfa: total + Number(ship.shipping_fee_fcfa), payment_method: "paydunya", source: "site", ...ship,
+          amount_fcfa: total + Number(ship.shipping_fee_fcfa), payment_method: mode === "whatsapp" ? "whatsapp" : mode, source: "site", ...ship,
           // CRM / anti-fraude (voir la page Confidentialité)
           ip: (req.headers.get("cf-connecting-ip") ?? req.headers.get("x-forwarded-for")?.split(",")[0] ?? "").trim().slice(0, 64) || null,
           user_agent: (req.headers.get("user-agent") ?? "").slice(0, 200) || null,
@@ -1084,7 +1101,8 @@ async function handle(req: Request): Promise<Response> {
         // case « recevoir les offres par email » cochée par le client (jamais cochée d'office)
         if (body.marketing === true) await setMarketing(email, true, "commande");
         await logEvent("info", "boutique", "Nouvelle commande de " + name + " : " + row.amount_fcfa + " FCFA (en attente de paiement)", { articles: priced.map((x) => x.q + " x " + x.p.name), code_parrain: rc?.code ?? null }, row.ref);
-        return json({ ref: row.ref, token: row.public_token });
+        return json({ ref: row.ref, token: row.public_token, pay_mode: mode,
+          wa: mode === "whatsapp" ? waOrderLink(row.ref, priced.map((x) => ({ product_name: x.p.name, quantity: x.q })), row.amount_fcfa) : null });
       }
       return json({ error: "error" }, 500);
     }
@@ -1240,6 +1258,8 @@ async function handle(req: Request): Promise<Response> {
         need_name: needName, ask_name: askName, ask_phone: askPhone, email_hint: needName ? maskEmail(o.email) : null,
         ref: o.ref, status: o.status, amount_fcfa: o.amount_fcfa, created_at: o.created_at, invoice: !!o.invoice_no,
         payment_method: o.payment_method, has_payment_ref: !!o.payment_ref, has_paydunya: !!o.paydunya_token, key_locked: !!o.key_locked,
+        // commande à finaliser sur WhatsApp (mode « WhatsApp » de la page Paiements)
+        wa_finalize: o.status === "pending" && !o.key_locked && o.payment_method === "whatsapp" ? waOrderLink(o.ref, items, o.amount_fcfa) : null,
         shipping: o.shipping_method ? { method: o.shipping_method, fee: o.shipping_fee_fcfa, address: o.shipping_address, zone: o.shipping_zone } : null,
         items: items.map((i) => {
           const link = linkByItem[i.id];

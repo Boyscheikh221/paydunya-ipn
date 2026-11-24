@@ -32,6 +32,66 @@ function cleanDetail(v: unknown, depth = 0): unknown {
   for (const [k, x] of Object.entries(v as Record<string, unknown>).slice(0, 30)) out[k] = SECRET_RE.test(k) ? "***" : cleanDetail(x, depth + 1);
   return out;
 }
+// ---------- Paiements : intégrateurs et clés API chiffrées ----------
+// Les clés saisies dans la page « Paiements » sont chiffrées ici (AES-GCM 256) avant d'aller en base, et ne repartent
+// jamais vers le navigateur. La clé de chiffrement est dérivée d'un secret du serveur (PAYMENT_KEYS_SECRET s'il existe,
+// sinon la clé de service Supabase). Si ce secret change, il suffit de ressaisir les clés des intégrateurs.
+const PAY_PROVIDERS: Record<string, { name: string; ready: boolean; doc: string; fields: [string, string][] }> = {
+  wave: { name: "Wave", ready: false, doc: "https://docs.wave.com/checkout",
+    fields: [["api_key", "Clé API Wave Checkout (commence par wave_sn_)"], ["webhook_secret", "Secret du webhook Wave"]] },
+  paytech: { name: "PayTech", ready: false, doc: "https://docs.intech.sn/doc_paytech.php",
+    fields: [["api_key", "API_KEY PayTech"], ["api_secret", "API_SECRET PayTech"]] },
+  orange_money: { name: "Orange Money", ready: false, doc: "https://developer.orange-sonatel.com",
+    fields: [["client_id", "Client ID"], ["client_secret", "Client secret"], ["merchant_code", "Code marchand"]] },
+  paydunya: { name: "PayDunya", ready: false, doc: "https://developers.paydunya.com",
+    fields: [["master_key", "Master key"], ["private_key", "Private key"], ["token", "Token"]] },
+};
+let _payKey: CryptoKey | null = null;
+async function payCryptoKey() {
+  if (_payKey) return _payKey;
+  const base = (Deno.env.get("PAYMENT_KEYS_SECRET") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "").trim();
+  if (base.length < 20) throw new Error("secret_serveur_absent");
+  const raw = await crypto.subtle.importKey("raw", new TextEncoder().encode(base), "HKDF", false, ["deriveKey"]);
+  _payKey = await crypto.subtle.deriveKey({ name: "HKDF", hash: "SHA-256", salt: new TextEncoder().encode("licenceoff-paiements-v1"), info: new TextEncoder().encode("cles-integrateurs") },
+    raw, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+  return _payKey;
+}
+const b64e = (u: Uint8Array) => btoa(String.fromCharCode(...u));
+const b64d = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+async function sealSecret(plain: string) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await payCryptoKey(), new TextEncoder().encode(plain)));
+  return "v1:" + b64e(iv) + ":" + b64e(ct);
+}
+// pour les futurs branchements (Wave, PayTech…) : relit une clé en clair, côté serveur uniquement
+async function openSecret(sealed: string): Promise<string | null> {
+  try {
+    const [v, iv, ct] = String(sealed).split(":");
+    if (v !== "v1") return null;
+    return new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64d(iv) }, await payCryptoKey(), b64d(ct)));
+  } catch { return null; }
+}
+async function payPublicState() {
+  const [{ data: rows }, { data: m }] = await Promise.all([
+    db.from("payment_providers").select("provider, live, secrets, updated_at"),
+    db.from("settings").select("value").eq("key", "payment_mode").maybeSingle(),
+  ]);
+  const by = Object.fromEntries((rows ?? []).map((r) => [r.provider, r]));
+  const providers = [];
+  for (const [id, p] of Object.entries(PAY_PROVIDERS)) {
+    const r = by[id] ?? { live: false, secrets: {}, updated_at: null };
+    const fields = [];
+    // une clé « enregistrée » doit aussi pouvoir être déchiffrée (sinon : à ressaisir)
+    for (const [key, label] of p.fields) {
+      const sealed = (r.secrets ?? {})[key];
+      fields.push({ key, label, set: !!sealed, readable: sealed ? (await openSecret(sealed)) !== null : false });
+    }
+    providers.push({ id, name: p.name, ready: p.ready, doc: p.doc, live: !!r.live, updated_at: r.updated_at, fields,
+      complete: fields.every((f) => f.set && f.readable) });
+  }
+  return { mode: typeof m?.value === "string" ? m.value : "whatsapp", providers };
+}
+
 async function logEvent(level: "info" | "warn" | "error", source: string, message: string, detail?: unknown, orderRef?: string | null) {
   if (level === "error") console.error(source, message);
   try {
@@ -1114,6 +1174,50 @@ Deno.serve(async (req) => {
         const { error } = await db.from("product_reviews").delete().eq("id", body.id);
         if (error) return json({ error: error.message }, 500);
         return json({ ok: true });
+      }
+
+      // ================= Paiements =================
+      case "pay_get": return json(await payPublicState());
+      case "pay_save": { // enregistre (chiffrées) les clés saisies ; un champ laissé vide garde l'ancienne valeur
+        const id = str(body.provider, 20), def = PAY_PROVIDERS[id];
+        if (!def) return json({ error: "integrateur_inconnu" }, 400);
+        const { data: cur } = await db.from("payment_providers").select("secrets").eq("provider", id).maybeSingle();
+        const secrets: Record<string, string> = { ...(cur?.secrets ?? {}) };
+        const vals = (body.values && typeof body.values === "object") ? body.values : {};
+        const changed: string[] = [];
+        for (const [key] of def.fields) {
+          const v = typeof vals[key] === "string" ? vals[key].trim() : "";
+          if (!v) continue;
+          if (v.length > 2000 || /\s/.test(v)) return json({ error: "cle_invalide", field: key }, 400);
+          secrets[key] = await sealSecret(v); changed.push(key);
+        }
+        const { error } = await db.from("payment_providers").upsert({ provider: id, live: body.live === true, secrets, updated_at: new Date().toISOString() });
+        if (error) return json({ error: error.message }, 500);
+        await logEvent("info", "paiements", "Réglages " + def.name + " enregistrés" + (changed.length ? " (clés remplacées : " + changed.join(", ") + ")" : ""), { mode: body.live === true ? "réel" : "test" });
+        return json(await payPublicState());
+      }
+      case "pay_clear": { // efface une clé (pour la ressaisir ou désactiver l'intégrateur)
+        const id = str(body.provider, 20), def = PAY_PROVIDERS[id], key = str(body.field, 40);
+        if (!def || !def.fields.some(([k]) => k === key)) return json({ error: "champ_inconnu" }, 400);
+        const { data: cur } = await db.from("payment_providers").select("secrets").eq("provider", id).maybeSingle();
+        const secrets = { ...(cur?.secrets ?? {}) }; delete secrets[key];
+        await db.from("payment_providers").upsert({ provider: id, secrets, updated_at: new Date().toISOString() });
+        const { data: m } = await db.from("settings").select("value").eq("key", "payment_mode").maybeSingle();
+        if (m?.value === id) await db.from("settings").upsert({ key: "payment_mode", value: "whatsapp", updated_at: new Date().toISOString() });
+        await logEvent("warn", "paiements", "Clé " + key + " de " + def.name + " effacée");
+        return json(await payPublicState());
+      }
+      case "pay_mode": { // choisit le mode de paiement actif du site
+        const mode = str(body.mode, 20);
+        if (mode !== "whatsapp") {
+          const st = await payPublicState(); const p = st.providers.find((x) => x.id === mode);
+          if (!p) return json({ error: "integrateur_inconnu" }, 400);
+          if (!p.ready) return json({ error: "integrateur_pas_branche" }, 400);
+          if (!p.complete) return json({ error: "cles_manquantes" }, 400);
+        }
+        await db.from("settings").upsert({ key: "payment_mode", value: mode, updated_at: new Date().toISOString() });
+        await logEvent("info", "paiements", "Mode de paiement du site : " + (mode === "whatsapp" ? "WhatsApp (paiement finalisé avec vous)" : PAY_PROVIDERS[mode].name));
+        return json(await payPublicState());
       }
 
       // ================= Réglages =================

@@ -125,7 +125,7 @@ const LO = (() => {
     wa: '<path d="M21 11.5a8.4 8.4 0 0 1-12.6 7.3L3 20l1.3-5A8.4 8.4 0 1 1 21 11.5z"/>',
   };
   function header(active) {
-    const top = el("div", { class: "top", text: "Licences & solutions numériques • Livraison immédiate • Wave, Orange Money, carte" });
+    const top = el("div", { class: "top", text: "Licences & solutions numériques • Livraison rapide • Wave, Orange Money" });
     const nav = el("nav", { class: "main" },
       el("a", { href: url.home, class: active === "home" ? "on" : null, text: "Accueil" }),
       el("a", { href: url.shop, class: active === "shop" ? "on" : null, text: "Boutique" }),
@@ -166,7 +166,7 @@ const LO = (() => {
           el("div", { id: "footPages", class: "hidden" }, el("b", { text: "Infos" })),
           el("div", {}, el("b", { text: "Aide" }), el("a", { href: "https://wa.me/" + WHATSAPP_NUMBER, target: "_blank", rel: "noopener", text: "WhatsApp : +" + WHATSAPP_NUMBER }),
             el("a", { href: FACEBOOK_PAGE, target: "_blank", rel: "noopener", text: "Facebook : Licenceoff" }),
-            el("span", { text: "Paiement sécurisé via PayDunya" }), el("a", { href: "/compte", text: "Mon compte" }), el("a", { href: "/parrain", text: "Espace parrain" })),
+            el("span", { text: "Paiement Wave ou Orange Money" }), el("a", { href: "/compte", text: "Mon compte" }), el("a", { href: "/parrain", text: "Espace parrain" })),
         ),
         el("div", { class: "copy", text: "© " + year + " licenceoff.com — Tous droits réservés" }),
       )),
