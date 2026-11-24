@@ -252,7 +252,7 @@
         <label class="check" style="margin:12px 0 0;padding:10px 12px;background:#fff7e6;border-radius:10px"><input type="checkbox" id="pPhysical"> <strong>Produit physique</strong> &nbsp;<span class="small">(objet à livrer : clé USB, PC, accessoire… ; décoché = produit digital)</span></label>
         <div class="grid" style="align-items:end">
           <div>
-            <label>Photo du produit <span class="small">(indispensable pour apparaître dans Google avec le prix et les étoiles)</span></label>
+            <label>Photo du produit <span class="small">(carrée 1500 × 1500, fond blanc, sans prix ni texte promo ni logo Microsoft ; convertie en JPG automatiquement)</span></label>
             <div class="bar" style="margin:0"><img id="pImgPrev" class="preview hidden" alt=""><input id="pImgFile" type="file" accept="image/*" class="grow"></div>
             <input type="hidden" id="pImg"><div id="pImgMsg" class="small"></div>
           </div>
@@ -767,14 +767,38 @@ function putFile(url, file, onProgress) {
     x.send(file);
   });
 }
-async function uploadImage(input, hidden, preview, msg) {
+// Prépare la photo avant l'envoi : JPG (accepté par Google et par le catalogue Facebook, qui refuse le WebP),
+// réduite à `max` pixels de côté au plus, fond blanc sous les zones transparentes, qualité 82 %.
+async function toJpeg(file, max) {
+  let bmp;
+  try { bmp = await createImageBitmap(file); }
+  catch { throw new Error("Format d'image non lu par le navigateur : enregistrez-la en JPG ou PNG puis réessayez."); }
+  const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+  const w = Math.round(bmp.width * k), h = Math.round(bmp.height * k);
+  const c = Object.assign(document.createElement("canvas"), { width: w, height: h });
+  const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, w, h);
+  g.imageSmoothingQuality = "high"; g.drawImage(bmp, 0, 0, w, h);
+  const ow = bmp.width, oh = bmp.height; bmp.close?.();
+  const blob = await new Promise((ok) => c.toBlob(ok, "image/jpeg", 0.82));
+  if (!blob) throw new Error("Conversion de l'image impossible.");
+  const base = (file.name || "image").replace(/\.[^.]+$/, "") || "image";
+  return { file: new File([blob], base + ".jpg", { type: "image/jpeg" }), ow, oh, w, h };
+}
+async function uploadImage(input, hidden, preview, msg, opt = {}) {
   const f = input.files[0]; if (!f) return;
-  if (f.size > 5 * 1048576) { msg.textContent = "Image trop lourde (max 5 Mo)."; return; }
+  if (f.size > 25 * 1048576) { msg.textContent = "Image trop lourde (max 25 Mo)."; input.value = ""; return; }
   try {
-    const { url, public_url } = await api({ action: "image_upload_url", filename: f.name });
-    await putFile(url, f, (p) => (msg.textContent = "Envoi… " + p + " %"));
+    msg.textContent = "Préparation de l'image…";
+    const j = await toJpeg(f, opt.max || 1600);
+    const { url, public_url } = await api({ action: "image_upload_url", filename: j.file.name });
+    await putFile(url, j.file, (p) => (msg.textContent = "Envoi… " + p + " %"));
     hidden.value = public_url; preview.src = public_url; preview.classList.remove("hidden");
-    msg.textContent = "Image envoyée ✔ (pensez à enregistrer)";
+    const notes = [];
+    if (opt.product) {
+      if (Math.min(j.ow, j.oh) < 1200) notes.push("⚠️ image petite (" + j.ow + " × " + j.oh + ") : 1500 × 1500 conseillé");
+      if (Math.abs(j.ow - j.oh) > Math.max(j.ow, j.oh) * 0.03) notes.push("⚠️ image pas carrée (" + j.ow + " × " + j.oh + ") : format carré conseillé");
+    }
+    msg.textContent = "Image envoyée ✔ JPG " + j.w + " × " + j.h + ", " + Math.round(j.file.size / 1024) + " Ko (pensez à enregistrer)" + (notes.length ? " — " + notes.join(" ; ") : "");
   } catch (e) { msg.textContent = errMsg(e); }
   input.value = "";
 }
@@ -1228,7 +1252,7 @@ function keysInfo(p) {
   $("pKeysInfo").textContent = s ? (s.available ?? 0) + " envoi(s) possible(s) en stock" + (s.reusable ? " + un sérialiseur réutilisable sans limite" : "") : "";
 }
 $("pType").addEventListener("change", syncType);
-$("pImgFile").addEventListener("change", () => uploadImage($("pImgFile"), $("pImg"), $("pImgPrev"), $("pImgMsg")));
+$("pImgFile").addEventListener("change", () => uploadImage($("pImgFile"), $("pImg"), $("pImgPrev"), $("pImgMsg"), { product: true, max: 1500 }));
 $("pUploadBtn").addEventListener("click", async () => {
   const f = $("pUpload").files[0], msg = $("pUpMsg"), b = $("pUploadBtn");
   if (!f) { msg.textContent = "Choisissez d'abord un fichier sur votre ordinateur."; return; }
