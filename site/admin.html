@@ -157,6 +157,7 @@
     <button data-tab="messages">📥 Messages <span id="badgeMsg" class="badge hidden"></span></button>
     <button data-tab="clients">👥 Clients</button>
     <button data-tab="reviews">⭐ Avis <span id="badgeRev" class="badge hidden"></span></button>
+    <button data-tab="promos">🏷️ Promos</button>
     <button data-tab="faq">❓ FAQ</button>
     <button data-tab="links">🔗 Liens</button>
     <button data-tab="logs">📜 Journal <span id="badgeLog" class="badge hidden" title="Erreurs non lues" style="background:var(--rouge)"></span></button>
@@ -584,6 +585,32 @@
       </div>
     </section>
 
+    <section id="tab-promos" class="hidden">
+      <h1>Promos</h1>
+      <p class="small">Lancez une promo sur certains produits, une catégorie ou toute la boutique, entre deux dates. Le prix normal du produit ne change pas : pendant la promo, le site affiche le prix promo et l'ancien prix barré, puis revient tout seul au prix normal à la fin. Le prix ne descend jamais sous le prix de gros. Si deux promos touchent le même produit, la moins chère s'applique. Une commande garde le prix du moment où elle a été passée.</p>
+      <div class="box">
+        <h2 id="prTitle" style="margin:0 0 6px">Nouvelle promo</h2>
+        <input type="hidden" id="prId">
+        <div class="grid">
+          <div><label>Nom de la promo (visible par les clients)</label><input id="prName" placeholder="ex. Black Friday, Tabaski, Rentrée"></div>
+          <div><label>Type de réduction</label><select id="prKind"><option value="percent">Réduction en %</option><option value="amount">Réduction en FCFA</option><option value="fixed">Prix promo fixe (FCFA)</option></select></div>
+          <div><label id="prValLabel">Réduction (%)</label><input id="prValue" type="number" min="1" inputmode="numeric" placeholder="ex. 15"></div>
+        </div>
+        <div class="grid">
+          <div><label>Début</label><input id="prStart" type="datetime-local"></div>
+          <div><label>Fin (vide = jusqu'à ce que vous l'arrêtiez)</label><input id="prEnd" type="datetime-local"></div>
+          <div><label>Appliquer à</label><select id="prScope"><option value="products">Produits choisis</option><option value="categories">Catégories choisies</option><option value="all">Toute la boutique</option></select></div>
+        </div>
+        <div id="prPickWrap" style="margin-top:10px">
+          <input id="prSearch" class="full" placeholder="Rechercher un produit…" style="margin-bottom:6px">
+          <div id="prPick" style="max-height:280px;overflow:auto;border:1px solid var(--ligne,#E2E8F0);border-radius:10px;padding:6px 10px"></div>
+        </div>
+        <div id="prPreview" class="small" style="margin-top:10px"></div>
+        <div class="bar" style="margin-top:10px"><label class="check" style="margin:0"><input type="checkbox" id="prActive" checked> Activée</label><button id="prSave" class="green">Enregistrer la promo</button><button id="prReset" class="grey">Nouvelle promo</button></div>
+      </div>
+      <div class="box"><div class="tablewrap"><table><thead><tr><th>Promo</th><th>Réduction</th><th>Sur</th><th>Période</th><th>État</th><th></th></tr></thead><tbody id="prRows"></tbody></table></div></div>
+    </section>
+
     <section id="tab-faq" class="hidden">
       <h1>FAQ (questions fréquentes)</h1>
       <div class="box">
@@ -724,6 +751,11 @@ const ERR = {
   cles_manquantes: "Enregistrez d'abord toutes les clés de cet intégrateur.", cle_invalide: "Clé invalide (pas d'espace, vérifiez le copier-coller).",
   secret_serveur_absent: "Le chiffrement n'est pas disponible sur le serveur.",
   titre_obligatoire: "Le titre est obligatoire.",
+  promo_nom: "Donnez un nom à la promo (ex. Black Friday).",
+  promo_valeur: "Indiquez la réduction : un nombre plus grand que 0 (90 % au maximum).",
+  promo_produits: "Cochez au moins un produit pour cette promo.",
+  promo_categories: "Cochez au moins une catégorie pour cette promo.",
+  promo_dates: "La date de fin doit être après la date de début.",
   google_ads_invalide: "L'ID Google Ads commence par AW- suivi de chiffres (ex. AW-123456789).",
   libelle_invalide: "Le libellé contient seulement des lettres, chiffres, - ou _ (la partie après la barre dans send_to).",
   pixel_invalide: "L'ID du pixel Meta ne contient que des chiffres (Gestionnaire d'événements Meta).",
@@ -836,7 +868,7 @@ async function uploadImage(input, hidden, preview, msg, opt = {}) {
 }
 
 // ---------- navigation ----------
-const loaders = { dash: loadDash, orders: loadOrders, products: loadProducts, keys: loadKeys, blog: loadBlog, pages: loadPages, emails: loadTemplates, send: loadSend, quotes: loadQuotes, parrains: loadParrains, clients: loadClients, messages: loadMessages, reviews: loadReviews, faq: loadFaq, links: loadLinks, logs: loadLogs, payments: loadPayments, settings: loadSettings };
+const loaders = { dash: loadDash, orders: loadOrders, products: loadProducts, keys: loadKeys, blog: loadBlog, pages: loadPages, emails: loadTemplates, send: loadSend, quotes: loadQuotes, parrains: loadParrains, clients: loadClients, messages: loadMessages, reviews: loadReviews, faq: loadFaq, promos: loadPromos, links: loadLinks, logs: loadLogs, payments: loadPayments, settings: loadSettings };
 document.querySelectorAll("nav [data-tab]").forEach((b) => b.addEventListener("click", () => openTab(b.dataset.tab)));
 // Se souvenir de l'endroit où l'on est (onglet dans l'adresse #onglet, fiche ouverte et défilement dans l'onglet du navigateur),
 // pour revenir au même endroit après une actualisation.
@@ -1931,6 +1963,92 @@ $("fReset").addEventListener("click", resetFaq);
 $("fSave").addEventListener("click", async () => {
   try { await api({ action: "faq_save", id: $("fId").value || undefined, question: $("fQ").value, answer: $("fA").value, sort: $("fSort").value, active: $("fActive").checked }); toast("Question enregistrée ✔"); resetFaq(); await loadFaq(); }
   catch (e) { toast(errMsg(e)); }
+});
+
+// ---------- promos ----------
+let promoSel = new Set();
+const promoKindText = (p) => p.kind === "percent" ? "-" + p.value + " %" : p.kind === "amount" ? "-" + fcfa(p.value) : "Prix " + fcfa(p.value);
+const toLocalInput = (iso) => { if (!iso) return ""; const d = new Date(iso); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); };
+function promoState(p, now) {
+  if (!p.active) return ["Désactivée", "off"];
+  if (p.starts_at > now) return ["À venir", "pending"];
+  if (p.ends_at && p.ends_at <= now) return ["Terminée", "off"];
+  return ["En cours", "on"];
+}
+function promoPrice(prod, kind, v) {
+  const base = Number(prod.price_fcfa) || 0; if (!base || !v) return base;
+  const raw = kind === "percent" ? Math.round(base * (1 - v / 100)) : kind === "amount" ? base - v : v;
+  return Math.min(base, Math.max(100, Number(prod.wholesale_price_fcfa) || 0, raw));
+}
+function promoTargets() {
+  const scope = $("prScope").value;
+  const live = products.filter((x) => x.active !== false);
+  if (scope === "all") return live;
+  if (scope === "categories") return live.filter((x) => { const c = categories.find((k) => k.id === x.category_id); return c && (promoSel.has(c.id) || promoSel.has(c.parent_id)); });
+  return products.filter((x) => promoSel.has(x.id));
+}
+function renderPromoPick() {
+  const scope = $("prScope").value;
+  $("prPickWrap").classList.toggle("hidden", scope === "all");
+  $("prSearch").classList.toggle("hidden", scope !== "products");
+  const q = $("prSearch").value.trim().toLowerCase();
+  const list = scope === "categories" ? catTree().map((c) => ({ id: c.id, label: (c.parent_id ? "↳ " : "") + c.name }))
+    : products.filter((x) => !q || x.name.toLowerCase().includes(q)).map((x) => ({ id: x.id, label: x.name + " — " + fcfa(x.price_fcfa) + (x.active === false ? " (brouillon)" : "") }));
+  $("prPick").replaceChildren(...list.map((it) => {
+    const cb = document.createElement("input"); cb.type = "checkbox"; cb.checked = promoSel.has(it.id);
+    cb.addEventListener("change", () => { cb.checked ? promoSel.add(it.id) : promoSel.delete(it.id); renderPromoPreview(); });
+    const l = el("label", null, "check"); l.style.margin = "4px 0"; l.append(cb, " " + it.label); return l;
+  }));
+  renderPromoPreview();
+}
+function renderPromoPreview() {
+  const kind = $("prKind").value, v = Math.round(Number($("prValue").value) || 0);
+  $("prValLabel").textContent = kind === "percent" ? "Réduction (%)" : kind === "amount" ? "Réduction (FCFA)" : "Prix promo (FCFA)";
+  const t = promoTargets();
+  if (!t.length || !v) { $("prPreview").textContent = t.length ? t.length + " produit(s) concerné(s)." : ""; return; }
+  const lines = t.slice(0, 12).map((x) => { const np = promoPrice(x, kind, v); return x.name + " : " + fcfa(x.price_fcfa) + " → " + fcfa(np) + (np === x.price_fcfa ? " (inchangé)" : Number(x.wholesale_price_fcfa) && np === Number(x.wholesale_price_fcfa) ? " (bloqué au prix de gros)" : ""); });
+  $("prPreview").replaceChildren(el("strong", "Aperçu (" + t.length + " produit" + (t.length > 1 ? "s" : "") + ") :"), ...lines.map((l) => { const d = el("div", l); return d; }), t.length > 12 ? el("div", "… et " + (t.length - 12) + " autres") : "");
+}
+function resetPromo() {
+  for (const id of ["prId", "prName", "prValue", "prEnd", "prSearch"]) $(id).value = "";
+  $("prKind").value = "percent"; $("prScope").value = "products"; $("prActive").checked = true; $("prStart").value = toLocalInput(new Date().toISOString());
+  $("prTitle").textContent = "Nouvelle promo"; promoSel = new Set(); renderPromoPick();
+}
+async function loadPromos() {
+  if (!products.length || !categories.length) await loadRefs();
+  const { rows, now } = await api({ action: "promos_list" });
+  if (!$("prId").value && !$("prName").value) resetPromo(); else renderPromoPick();
+  const nameOf = (id) => products.find((x) => x.id === id)?.name || categories.find((x) => x.id === id)?.name || "?";
+  $("prRows").replaceChildren(...rows.map((p) => {
+    const [st, cls] = promoState(p, now);
+    const on = p.scope === "all" ? "Toute la boutique" : (p.scope === "categories" ? p.category_ids : p.product_ids).map(nameOf).join(", ");
+    const per = new Date(p.starts_at).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" }) + " → " + (p.ends_at ? new Date(p.ends_at).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" }) : "sans fin");
+    const save = (patch, msg) => async () => { await api({ action: "promo_save", ...p, ...patch }); toast(msg); await loadPromos(); };
+    return tr(td(el("strong", p.name)), td(promoKindText(p)), td(el("span", on.length > 120 ? on.slice(0, 120) + "…" : on, "small")), td(el("span", per, "small")),
+      td(el("span", st, "tag s-" + cls)),
+      td(btn("Modifier", "grey", () => {
+        $("prId").value = p.id; $("prName").value = p.name; $("prKind").value = p.kind; $("prValue").value = p.value; $("prScope").value = p.scope;
+        $("prStart").value = toLocalInput(p.starts_at); $("prEnd").value = toLocalInput(p.ends_at); $("prActive").checked = p.active;
+        promoSel = new Set(p.scope === "categories" ? p.category_ids : p.product_ids); $("prTitle").textContent = "Modifier : " + p.name; renderPromoPick(); window.scrollTo(0, 0);
+      }), " ",
+        st === "En cours" || st === "À venir" ? btn("Arrêter", "red", save({ active: false }, "Promo arrêtée ✔ (prix normal sur le site d'ici 1 minute)"))
+          : btn("Relancer", "green", save({ active: true, starts_at: p.ends_at && p.ends_at <= now ? new Date().toISOString() : p.starts_at, ends_at: p.ends_at && p.ends_at <= now ? null : p.ends_at }, "Promo relancée ✔")), " ",
+        btn("Supprimer", "red", async () => { if (confirm("Supprimer la promo « " + p.name + " » ?")) { await api({ action: "promo_delete", id: p.id }); await loadPromos(); } })));
+  }));
+  if (!rows.length) $("prRows").replaceChildren(tr(td(el("span", "Aucune promo pour l'instant.", "small"))));
+}
+for (const id of ["prKind", "prValue"]) $(id).addEventListener("input", renderPromoPreview);
+$("prScope").addEventListener("change", () => { promoSel = new Set(); renderPromoPick(); });
+$("prSearch").addEventListener("input", renderPromoPick);
+$("prReset").addEventListener("click", resetPromo);
+$("prSave").addEventListener("click", async () => {
+  const scope = $("prScope").value;
+  try {
+    await api({ action: "promo_save", id: $("prId").value || undefined, name: $("prName").value.trim(), kind: $("prKind").value, value: $("prValue").value, scope,
+      product_ids: scope === "products" ? [...promoSel] : [], category_ids: scope === "categories" ? [...promoSel] : [],
+      starts_at: $("prStart").value ? new Date($("prStart").value).toISOString() : null, ends_at: $("prEnd").value ? new Date($("prEnd").value).toISOString() : null, active: $("prActive").checked });
+    toast("Promo enregistrée ✔ (visible sur le site d'ici 1 minute)"); resetPromo(); await loadPromos();
+  } catch (e) { toast(errMsg(e)); }
 });
 
 // ---------- liens ----------

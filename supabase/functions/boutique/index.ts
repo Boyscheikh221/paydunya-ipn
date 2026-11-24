@@ -452,12 +452,65 @@ function publicProduct(p: any, counts: Record<string, number>, cats: Record<stri
   return {
     slug: p.slug, name: p.name, description: p.description ?? "", image_url: p.image_url ?? "",
     price_fcfa: p.price_fcfa, compare_price_fcfa: p.compare_price_fcfa ?? null,
+    promo_name: p.promo_name ?? null, promo_ends_at: p.promo_ends_at ?? null,
     sku: p.sku ?? null, seo_title: p.seo_title ?? null, seo_description: p.seo_description ?? null,
     delivery_type: p.delivery_type, featured: p.featured,
     category: cats[p.category_id]?.slug ?? null,
     in_stock: needsStock ? left > 0 : true,
     max_qty: needsStock ? Math.min(left, 20) : 20,
   };
+}
+
+// ================= Promos programmées (table promotions, onglet « Promos » de l'admin) =================
+// Le prix normal (products.price_fcfa) ne change jamais : ici on calcule le prix promo à la volée.
+// L'ancien prix devient le prix barré. Jamais sous le prix de gros ni sous 100 FCFA. Plusieurs promos : la moins chère gagne.
+// deno-lint-ignore no-explicit-any
+let promoCache: { at: number; promos: any[]; info: Record<string, { cat: string | null; wholesale: number | null }> } = { at: 0, promos: [], info: {} };
+async function promoData() {
+  if (Date.now() - promoCache.at < 30_000) return promoCache;
+  const now = new Date().toISOString();
+  const [{ data: promos }, { data: prods }] = await Promise.all([
+    db.from("promotions").select("id, name, kind, value, scope, category_ids, product_ids, ends_at").eq("active", true)
+      .lte("starts_at", now).or(`ends_at.is.null,ends_at.gt."${now}"`),
+    db.from("products").select("id, category_id, wholesale_price_fcfa"),
+  ]);
+  const info = Object.fromEntries((prods ?? []).map((p) => [p.id, { cat: p.category_id ?? null, wholesale: p.wholesale_price_fcfa ?? null }]));
+  promoCache = { at: Date.now(), promos: promos ?? [], info };
+  return promoCache;
+}
+// Applique les promos en cours à une liste de produits (chaque ligne doit avoir id et price_fcfa). Modifie les lignes.
+// deno-lint-ignore no-explicit-any
+async function applyPromos<T extends Record<string, any>>(rows: T[]): Promise<T[]> {
+  if (!rows.length) return rows;
+  const { promos, info } = await promoData();
+  if (!promos.length) return rows;
+  // catégorie principale : une promo sur « Windows » couvre aussi Windows 10 / 11 / Server
+  const { data: cats } = await db.from("categories").select("id, parent_id");
+  const parentOf = Object.fromEntries((cats ?? []).map((c) => [c.id, c.parent_id]));
+  for (const p of rows) {
+    const base = Number(p.price_fcfa);
+    if (!p.id || !(base > 0)) continue;
+    const cat = p.category_id ?? info[p.id]?.cat ?? null;
+    const floor = Math.max(100, Number(info[p.id]?.wholesale ?? p.wholesale_price_fcfa ?? 0) || 0);
+    // deno-lint-ignore no-explicit-any
+    let best = base, bestPromo: any = null;
+    for (const pr of promos) {
+      const hit = pr.scope === "all" || (pr.scope === "products" && (pr.product_ids ?? []).includes(p.id))
+        || (pr.scope === "categories" && cat && ((pr.category_ids ?? []).includes(cat) || (pr.category_ids ?? []).includes(parentOf[cat])));
+      if (!hit) continue;
+      const v = Number(pr.value);
+      const price = pr.kind === "percent" ? Math.round(base * (1 - v / 100)) : pr.kind === "amount" ? base - v : v;
+      const final = Math.max(floor, Math.round(price));
+      if (final < best) { best = final; bestPromo = pr; }
+    }
+    if (bestPromo) {
+      (p as Record<string, unknown>).compare_price_fcfa = Math.max(base, Number(p.compare_price_fcfa) || 0);
+      (p as Record<string, unknown>).price_fcfa = best;
+      (p as Record<string, unknown>).promo_name = bestPromo.name;
+      (p as Record<string, unknown>).promo_ends_at = bestPromo.ends_at ?? null;
+    }
+  }
+  return rows;
 }
 
 // ================= Parrainage =================
@@ -520,7 +573,7 @@ async function productFeed(kind: string) {
     db.from("categories").select("id, name, parent_id"),
   ]);
   const catById = Object.fromEntries((cats ?? []).map((c) => [c.id, c]));
-  const list = (prods ?? []).filter((p) => String(p.image_url ?? "").trim());
+  const list = await applyPromos((prods ?? []).filter((p) => String(p.image_url ?? "").trim()));
   const counts = await stockCounts(list.filter((p) => STOCK_TYPES.includes(p.delivery_type)).map((p) => p.id));
   const plain = (s: string) => String(s ?? "").replace(/<[^>]+>/g, " ").replace(/!\[[^\]]*\]\([^)]*\)/g, "").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
     .replace(/[*_#>`]+/g, "").replace(/&nbsp;/g, " ").replace(/[ \t]+/g, " ").replace(/\s*\n\s*/g, "\n").trim().slice(0, 5000);
@@ -721,6 +774,7 @@ async function handle(req: Request): Promise<Response> {
         db.from("products").select(PRODUCT_FIELDS).eq("active", true).order("sort").order("name"),
       ]);
       if (error) return json({ error: "error" }, 500);
+      await applyPromos(prods ?? []);
       const byId = Object.fromEntries((cats ?? []).map((c) => [c.id, c]));
       const counts = await stockCounts((prods ?? []).filter((p) => STOCK_TYPES.includes(p.delivery_type)).map((p) => p.id));
       return json({
@@ -734,6 +788,7 @@ async function handle(req: Request): Promise<Response> {
     case "product": {
       const { data: p } = await db.from("products").select(PRODUCT_FIELDS).eq("slug", str(body.slug, 80)).eq("active", true).maybeSingle();
       if (!p) return json({ error: "not_found" }, 404);
+      await applyPromos([p]);
       const { data: cats } = await db.from("categories").select("id, slug, name, parent_id");
       const byId = Object.fromEntries((cats ?? []).map((c) => [c.id, c]));
       const counts = await stockCounts(STOCK_TYPES.includes(p.delivery_type) ? [p.id] : []);
@@ -809,9 +864,11 @@ async function handle(req: Request): Promise<Response> {
     case "quote": { // prix du panier avec le code parrain (le serveur recalcule tout à la commande)
       const rc = await findCode(normCode(body.code));
       const slugs = (Array.isArray(body.slugs) ? body.slugs : []).slice(0, 30).map((x: unknown) => str(x, 80));
-      const { data: prods } = await db.from("products").select("slug, price_fcfa, wholesale_price_fcfa").in("slug", slugs).eq("active", true);
+      const { data: prods0 } = await db.from("products").select("id, slug, price_fcfa, wholesale_price_fcfa").in("slug", slugs).eq("active", true);
+      const prods = await applyPromos(prods0 ?? []);
       return json({ code: rc?.code ?? null, discount_pct: rc ? Number(rc.discount_pct) : 0,
-        prices: Object.fromEntries((prods ?? []).map((p) => [p.slug, referralPrice(p, rc ? Number(rc.discount_pct) : 0).unit])) });
+        prices: Object.fromEntries((prods ?? []).map((p) => [p.slug, referralPrice(p, rc ? Number(rc.discount_pct) : 0).unit])),
+        list: Object.fromEntries((prods ?? []).map((p) => [p.slug, p.price_fcfa])) }); // prix du moment (promo comprise), sans code
     }
 
     // ---------- Espace parrain (connexion par lien envoyé par email) ----------
@@ -882,7 +939,7 @@ async function handle(req: Request): Promise<Response> {
         db.from("categories").select("id, slug, name, parent_id, sort").eq("active", true).order("sort"),
       ]);
       const byId = Object.fromEntries((cats ?? []).map((k) => [k.id, k]));
-      const plist = prods ?? [];
+      const plist = await applyPromos(prods ?? []);
       const counts = await stockCounts(plist.filter((p) => STOCK_TYPES.includes(p.delivery_type)).map((p) => p.id));
       const pById = Object.fromEntries(plist.map((p) => [p.id, p]));
       const pub = (id: string) => pById[id] ? publicProduct(pById[id], counts, byId) : null;
@@ -1079,6 +1136,7 @@ async function handle(req: Request): Promise<Response> {
       const { data: prods } = await db.from("products").select("id, slug, name, price_fcfa, wholesale_price_fcfa, delivery_type, stock_qty")
         .in("slug", [...want.keys()]).eq("active", true);
       if (!prods || prods.length !== want.size) return json({ error: "produit_introuvable" }, 400);
+      await applyPromos(prods); // prix promo du moment, figé dans la commande
       const counts = await stockCounts(prods.filter((p) => STOCK_TYPES.includes(p.delivery_type)).map((p) => p.id));
       for (const p of prods) {
         if (STOCK_TYPES.includes(p.delivery_type) && (counts[p.id] ?? 0) < want.get(p.slug)!) {
@@ -1138,7 +1196,7 @@ async function handle(req: Request): Promise<Response> {
         }
         const { error: e2 } = await db.from("order_items").insert(priced.map((x) => ({
           order_id: o.id, product_id: x.p.id, product_name: x.p.name, delivery_type: x.p.delivery_type,
-          unit_price: x.unit, quantity: x.q, list_price: x.p.price_fcfa, wholesale_price: x.wholesale,
+          unit_price: x.unit, quantity: x.q, list_price: x.p.price_fcfa, wholesale_price: x.wholesale, promo_name: x.p.promo_name ?? null,
         })));
         if (e2) { await db.from("orders").delete().eq("id", o.id); await logEvent("error", "boutique", "Une commande n'a pas pu être enregistrée (articles)", { erreur: e2.message, email }); return json({ error: "error" }, 500); }
         // case « recevoir les offres par email » cochée par le client (jamais cochée d'office)

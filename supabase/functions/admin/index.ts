@@ -1685,6 +1685,43 @@ ${q.valid_until ? `<p style="margin:0 0 12px">Ce devis est valable jusqu'au ${es
       }
 
       // ================= FAQ =================
+      // ================= Promos programmées =================
+      case "promos_list": {
+        const { data, error } = await db.from("promotions").select("*").order("starts_at", { ascending: false });
+        if (error) return json({ error: error.message }, 500);
+        return json({ rows: data ?? [], now: new Date().toISOString() });
+      }
+      case "promo_save": {
+        const kind = ["percent", "amount", "fixed"].includes(body.kind) ? body.kind : "percent";
+        const value = Math.round(Number(body.value) || 0);
+        const scope = ["all", "categories", "products"].includes(body.scope) ? body.scope : "products";
+        const ids = (x: unknown) => (Array.isArray(x) ? x : []).map((v) => str(v, 40)).filter((v) => /^[0-9a-f-]{36}$/i.test(v)).slice(0, 500);
+        const starts = body.starts_at ? new Date(String(body.starts_at)) : new Date();
+        const ends = body.ends_at ? new Date(String(body.ends_at)) : null;
+        const row = {
+          name: str(body.name, 80), kind, value, scope,
+          product_ids: scope === "products" ? ids(body.product_ids) : [], category_ids: scope === "categories" ? ids(body.category_ids) : [],
+          starts_at: isNaN(starts.getTime()) ? new Date().toISOString() : starts.toISOString(),
+          ends_at: ends && !isNaN(ends.getTime()) ? ends.toISOString() : null,
+          active: body.active !== false, updated_at: new Date().toISOString(),
+        };
+        if (!row.name) return json({ error: "promo_nom" }, 400);
+        if (value <= 0 || (kind === "percent" && value > 90)) return json({ error: "promo_valeur" }, 400);
+        if (scope === "products" && !row.product_ids.length) return json({ error: "promo_produits" }, 400);
+        if (scope === "categories" && !row.category_ids.length) return json({ error: "promo_categories" }, 400);
+        if (row.ends_at && row.ends_at <= row.starts_at) return json({ error: "promo_dates" }, 400);
+        const r = body.id ? await db.from("promotions").update(row).eq("id", str(body.id, 40)).select().single()
+          : await db.from("promotions").insert(row).select().single();
+        if (r.error) return json({ error: r.error.message }, 500);
+        await logEvent("info", "admin", "Promo enregistrée : " + row.name, { type: kind, valeur: value, debut: row.starts_at, fin: row.ends_at, active: row.active });
+        return json({ row: r.data });
+      }
+      case "promo_delete": {
+        const { error } = await db.from("promotions").delete().eq("id", str(body.id, 40));
+        if (error) return json({ error: error.message }, 500);
+        return json({ ok: true });
+      }
+
       case "faqs_list": {
         const { data, error } = await db.from("faqs").select("*").order("sort").order("created_at");
         if (error) return json({ error: error.message }, 500);
