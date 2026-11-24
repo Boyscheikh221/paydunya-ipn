@@ -815,7 +815,14 @@ async function uploadImage(input, hidden, preview, msg, opt = {}) {
 // ---------- navigation ----------
 const loaders = { dash: loadDash, orders: loadOrders, products: loadProducts, keys: loadKeys, blog: loadBlog, pages: loadPages, emails: loadTemplates, send: loadSend, quotes: loadQuotes, parrains: loadParrains, clients: loadClients, messages: loadMessages, reviews: loadReviews, faq: loadFaq, links: loadLinks, logs: loadLogs, payments: loadPayments, settings: loadSettings };
 document.querySelectorAll("nav [data-tab]").forEach((b) => b.addEventListener("click", () => openTab(b.dataset.tab)));
-function openTab(t) {
+// Se souvenir de l'endroit où l'on est (onglet dans l'adresse #onglet, fiche ouverte et défilement dans l'onglet du navigateur),
+// pour revenir au même endroit après une actualisation.
+const ss = { get: (k) => { try { return sessionStorage.getItem(k) || ""; } catch (_) { return ""; } }, set: (k, v) => { try { v ? sessionStorage.setItem(k, v) : sessionStorage.removeItem(k); } catch (_) {} } };
+const remember = (kind, id) => ss.set("lo_detail", kind + ":" + id);
+addEventListener("pagehide", () => ss.set("lo_scroll", String(Math.round(scrollY))));
+function openTab(t, keepDetail) {
+  if (!keepDetail) { ss.set("lo_detail", ""); ss.set("lo_scroll", ""); }
+  ss.set("lo_tab", t); try { history.replaceState(null, "", "#" + t); } catch (_) {}
   document.querySelectorAll("nav [data-tab]").forEach((b) => b.classList.toggle("on", b.dataset.tab === t));
   document.querySelectorAll("main > section").forEach((s) => s.classList.toggle("hidden", s.id !== "tab-" + t));
   return loaders[t]().catch((e) => toast(errMsg(e)));
@@ -968,7 +975,7 @@ function splitQuote(t) {
   return i > 20 ? [t.slice(0, i).trim(), t.slice(i).trim()] : [t, ""];
 }
 async function openThread(email, opts = {}) {
-  curThread = email;
+  curThread = email; remember("thread", email);
   const d = await api({ action: "inbox_thread", email });
   const msgs = d.messages || [];
   const box = $("mThread"); box.classList.remove("hidden");
@@ -1292,6 +1299,7 @@ async function loadProducts() {
   renderCategories();
 }
 function editProduct(p) {
+  remember("product", p.id);
   $("pFormTitle").textContent = "Modifier : " + p.name + (p.active ? "" : " (📝 brouillon, caché du site)");
   $("pId").value = p.id; $("pName").value = p.name; $("pCat").value = p.category_id || ""; $("pPrice").value = p.price_fcfa;
   $("pCompare").value = p.compare_price_fcfa || ""; $("pWholesale").value = p.wholesale_price_fcfa ?? ""; $("pDesc").value = p.description || ""; $("pImg").value = p.image_url || "";
@@ -1517,6 +1525,7 @@ async function loadBlog() {
   if (!rows.length) $("bRows").append(tr(td("Aucun article pour le moment.")));
 }
 function editPost(p) {
+  remember("post", p.id);
   $("bTitleH").textContent = "Modifier : " + p.title; $("bId").value = p.id; $("bTitle").value = p.title; $("bExcerpt").value = p.excerpt || ""; exCount();
   $("bContent").value = p.content || ""; $("bImg").value = p.cover_url || ""; $("bVid").value = p.cover_video || ""; $("bImgPrev").src = p.cover_url || ""; $("bImgPrev").classList.toggle("hidden", !p.cover_url);
   $("bPub").checked = p.published; window.scrollTo(0, 0);
@@ -1638,6 +1647,7 @@ async function loadPages() {
   if (!rows.length) $("gRows").append(tr(td("Aucune page pour le moment.")));
 }
 function editPage(p) {
+  remember("page", p.id);
   $("gTitleH").textContent = "Modifier : " + p.title; $("gId").value = p.id; $("gTitle").value = p.title; $("gSlug").value = p.slug; $("gSort").value = p.sort || 0;
   $("gContent").value = p.content || ""; $("gImg").value = p.image_url || ""; $("gImgPrev").src = p.image_url || ""; $("gImgPrev").classList.toggle("hidden", !p.image_url);
   $("gPub").value = p.published ? "1" : "0"; $("gMenu").checked = p.in_menu; $("gFoot").checked = p.in_footer; $("gSeoT").value = p.seo_title || ""; $("gSeoD").value = p.seo_description || "";
@@ -1674,6 +1684,7 @@ async function loadTemplates() {
   }));
 }
 function editTemplate(t) {
+  remember("tpl", t.id);
   $("tFormTitle").textContent = "Modifier : " + t.name; $("tId").value = t.id; $("tName").value = t.name; $("tSubject").value = t.subject; $("tBody").value = t.body; $("tDefault").checked = t.is_default; $("tKind").value = t.kind || "key";
   $("tPrevBox").classList.add("hidden"); window.scrollTo(0, 0);
 }
@@ -1947,11 +1958,26 @@ async function login() {
     await loadRefs();
     try { sessionStorage.setItem("lo_pw", pw); } catch (_) {}
     $("login").classList.add("hidden"); $("app").classList.remove("hidden");
-    openTab("dash");
+    restorePlace();
   } catch (e) {
     $("loginMsg").textContent = e.message === "unauthorized" ? "Mot de passe incorrect." : e.message === "bloque" ? "Trop d'essais ratés : connexion bloquée pour l'instant (15 min à 1 h). Réessayez plus tard." : "Erreur : " + e.message;
     pw = "";
   }
+}
+// après une actualisation : même onglet, même fiche ouverte, même position dans la page
+async function restorePlace() {
+  const want = location.hash.slice(1) || ss.get("lo_tab");
+  const t = loaders[want] ? want : "dash";
+  const [kind, ...rest] = ss.get("lo_detail").split(":"); const id = rest.join(":"); const y = Number(ss.get("lo_scroll")) || 0;
+  await openTab(t, true);
+  try {
+    if (kind === "product" && t === "products") { const p = products.find((x) => x.id === id); if (p) editProduct(p); }
+    else if (kind === "post" && t === "blog") { const p = ((await api({ action: "posts_list" })).rows || []).find((x) => x.id === id); if (p) editPost(p); }
+    else if (kind === "page" && t === "pages") { const p = ((await api({ action: "pages_list" })).rows || []).find((x) => x.id === id); if (p) editPage(p); }
+    else if (kind === "tpl" && t === "emails") { const x = templates.find((r) => r.id === id); if (x) editTemplate(x); }
+    else if (kind === "thread" && t === "messages" && id) await openThread(id);
+  } catch (_) {}
+  if (y) setTimeout(() => scrollTo(0, y), 300);
 }
 $("btnLogin").addEventListener("click", login);
 $("pw").addEventListener("keydown", (e) => { if (e.key === "Enter") login(); });
