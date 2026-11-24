@@ -104,6 +104,8 @@
   .item:first-child { border-top:0; padding-top:0; }
   .thumb { width:48px; height:48px; border-radius:8px; object-fit:cover; background:#eef2f7; display:block; }
   .preview { width:120px; height:90px; border-radius:10px; object-fit:cover; background:#eef2f7; border:1px solid var(--ligne); }
+  /* photo produit : aperçu carré, image entière, comme sur les cartes de la boutique */
+  .preview.sq { width:160px; height:160px; object-fit:contain; background:#fff; }
   .chart { display:flex; align-items:flex-end; gap:3px; height:120px; border-bottom:1px solid var(--ligne); }
   .chart .b { flex:1; background:var(--bleu); border-radius:3px 3px 0 0; min-height:2px; position:relative; }
   .chart .b:hover::after { content:attr(data-t); position:absolute; bottom:100%; left:50%; transform:translateX(-50%); background:var(--nuit); color:#fff; font-size:11px; padding:3px 6px; border-radius:6px; white-space:nowrap; }
@@ -253,7 +255,7 @@
         <div class="grid" style="align-items:end">
           <div>
             <label>Photo du produit <span class="small">(carrée 1500 × 1500, fond blanc, sans prix ni texte promo ni logo Microsoft ; convertie en JPG automatiquement)</span></label>
-            <div class="bar" style="margin:0"><img id="pImgPrev" class="preview hidden" alt=""><input id="pImgFile" type="file" accept="image/*" class="grow"></div>
+            <div class="bar" style="margin:0"><img id="pImgPrev" class="preview sq hidden" alt="Aperçu de la photo"><input id="pImgFile" type="file" accept="image/*" class="grow"></div>
             <input type="hidden" id="pImg"><div id="pImgMsg" class="small"></div>
           </div>
           <div>
@@ -787,19 +789,26 @@ async function toJpeg(file, max) {
 async function uploadImage(input, hidden, preview, msg, opt = {}) {
   const f = input.files[0]; if (!f) return;
   if (f.size > 25 * 1048576) { msg.textContent = "Image trop lourde (max 25 Mo)."; input.value = ""; return; }
+  // aperçu immédiat de la photo choisie, avant même l'envoi
+  const before = hidden.value, show = (src) => { preview.src = src; preview.classList.remove("hidden"); };
+  const local = URL.createObjectURL(f); show(local);
   try {
     msg.textContent = "Préparation de l'image…";
     const j = await toJpeg(f, opt.max || 1600);
+    show(URL.createObjectURL(j.file)); URL.revokeObjectURL(local); // aperçu de la version qui sera publiée
     const { url, public_url } = await api({ action: "image_upload_url", filename: j.file.name });
     await putFile(url, j.file, (p) => (msg.textContent = "Envoi… " + p + " %"));
-    hidden.value = public_url; preview.src = public_url; preview.classList.remove("hidden");
+    hidden.value = public_url;
     const notes = [];
     if (opt.product) {
       if (Math.min(j.ow, j.oh) < 1200) notes.push("⚠️ image petite (" + j.ow + " × " + j.oh + ") : 1500 × 1500 conseillé");
       if (Math.abs(j.ow - j.oh) > Math.max(j.ow, j.oh) * 0.03) notes.push("⚠️ image pas carrée (" + j.ow + " × " + j.oh + ") : format carré conseillé");
     }
     msg.textContent = "Image envoyée ✔ JPG " + j.w + " × " + j.h + ", " + Math.round(j.file.size / 1024) + " Ko (pensez à enregistrer)" + (notes.length ? " — " + notes.join(" ; ") : "");
-  } catch (e) { msg.textContent = errMsg(e); }
+  } catch (e) {
+    msg.textContent = errMsg(e);
+    if (before) show(before); else preview.classList.add("hidden");
+  }
   input.value = "";
 }
 
