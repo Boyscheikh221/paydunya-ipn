@@ -211,6 +211,7 @@
         <input id="oSearch" class="grow" placeholder="Rechercher : réf, nom, email, téléphone">
         <button id="oRefresh" class="grey">Actualiser</button>
         <button id="oNewBtn" class="org">+ Vente manuelle</button>
+        <button id="oReviewAll" class="grey" title="Email à tous les clients livrés depuis plus de 24 h, qui n'ont pas encore donné d'avis et n'ont jamais été relancés">⭐ Demander un avis à tous</button>
       </div>
       <label class="check small" style="margin:4px 0 10px" title="Désactivé : le logo du PDF revendeur n'a aucun lien (le client final ne peut pas trouver vos prix)."><input type="checkbox" id="pdfLogoLink"> 📄 PDF revendeur : logo cliquable vers la page du produit (affiche votre prix public)</label>
       <div id="oNew" class="box hidden">
@@ -700,6 +701,7 @@ const STOCK_TYPES = ["key", "key_file", "stock"];
 let stock = []; // stock de clés par produit (rempli par le tableau de bord)
 const METHOD = { whatsapp: "💬 WhatsApp", wave: "Wave", orange_money: "Orange Money", free_money: "Free Money", especes: "Espèces", paydunya: "PayDunya", manuel: "Transfert manuel", autre: "Autre" };
 const ERR = {
+  rien_a_noter: "Rien à noter : le client a déjà donné son avis sur tous ses produits, ou la commande n'a pas d'adresse email valide.",
   integrateur_pas_branche: "Cet intégrateur n'est pas encore branché au site : demandez à Claude de le brancher quand votre compte est actif.",
   cles_manquantes: "Enregistrez d'abord toutes les clés de cet intégrateur.", cle_invalide: "Clé invalide (pas d'espace, vérifiez le copier-coller).",
   secret_serveur_absent: "Le chiffrement n'est pas disponible sur le serveur.",
@@ -1126,6 +1128,17 @@ async function renewLink(o, i, reload) {
 
 // ---------- PDF d'instructions « neutre » pour un revendeur ----------
 // interrupteur « logo cliquable » : désactivé par défaut, mémorisé dans ce navigateur
+$("oReviewAll").addEventListener("click", async () => {
+  try {
+    const p = await api({ action: "review_request_bulk", dry: true });
+    if (!p.count) { toast("Aucun client à relancer : tous ont déjà donné leur avis ou reçu la demande."); return; }
+    if (!confirm(p.count + " client(s) livré(s) n'ont pas encore donné d'avis.\nEnvoyer la demande d'avis à " + p.batch + " d'entre eux maintenant ?" + (p.count > p.batch ? "\n(Recliquez ensuite pour les suivants.)" : "") + "\n\nChaque client ne reçoit cette demande groupée qu'une seule fois.")) return;
+    $("oReviewAll").disabled = true; toast("Envoi en cours…");
+    const r = await api({ action: "review_request_bulk" });
+    toast("⭐ " + r.sent + " demande(s) envoyée(s)" + (r.failed ? ", " + r.failed + " échec(s) (voir Journal)" : "") + (r.remaining ? ", " + r.remaining + " restante(s)" : ""));
+    loadOrders();
+  } catch (e) { toast(errMsg(e)); } finally { $("oReviewAll").disabled = false; }
+});
 try { $("pdfLogoLink").checked = localStorage.getItem("lo_pdf_logo_link") === "1"; } catch (_) {}
 $("pdfLogoLink").addEventListener("change", (e) => { try { localStorage.setItem("lo_pdf_logo_link", e.target.checked ? "1" : "0"); } catch (_) {} toast(e.target.checked ? "Logo du PDF cliquable" : "Logo du PDF sans lien"); });
 // Identifiants / clés + procédure du modèle d'email du produit, SANS prix, n° de commande, adresse du site ni assistance licenceoff.
@@ -1279,6 +1292,9 @@ async function loadOrders() {
     if (["delivered", "processing", "paid", "installing"].includes(o.status)) acts.append(btn(o.status === "installing" ? "✉ Renvoyer l'email d'installation" : o.emailed_at ? "✉ Renvoyer l'email" : "✉ Envoyer l'email", "grey", async () => {
       if (confirm((o.status === "installing" ? "Renvoyer l'email d'installation à " : "Envoyer l'email de livraison à ") + o.email + " ?")) await run({ action: "order_email", id: o.id }, "Email envoyé ✔", reload)();
     }));
+    if (o.status === "delivered" && o.email) acts.append(btn(o.review_asked_at ? "⭐ Redemander un avis" : "⭐ Demander un avis", "grey", async () => {
+      if (confirm("Envoyer à " + o.email + " un email lui demandant son avis (bouton vers sa page de commande) ?" + (o.review_asked_at ? "\nDéjà demandé le " + dt(o.review_asked_at) + "." : ""))) await run({ action: "review_request", id: o.id }, "Demande d'avis envoyée ✔", reload)();
+    }));
     if (items.some((i) => (i.license_keys || []).length)) acts.append(btn("📄 PDF revendeur", "grey", () => resellerPdf(o)));
     else if (o.status === "pending" && items.some((i) => STOCK_TYPES.includes(i.delivery_type))) acts.append(btn("📄 PDF revendeur", "grey", async () => {
       if (!confirm("Avez-vous bien reçu " + fcfa(o.amount_fcfa) + " de " + (o.customer_name || o.email) + " ?\n\nLe compte (ou la clé) sera pris dans le stock et la commande passera « livrée », SANS email au client.\nEnsuite le PDF d'instructions se télécharge.")) return;
@@ -1309,7 +1325,7 @@ async function loadOrders() {
         o.shipping_method ? shipInfo(o) : null),
       cItems,
       td(el("strong", fcfa(o.amount_fcfa)), el("br"), el("span", METHOD[o.payment_method] || o.payment_method || "—", "small"), el("br"), el("span", o.payment_ref || "", "small mono")),
-      td(tag(o.status), o.key_locked && o.status === "pending" ? el("div", "🔒 Clé verrouillée", "small") : null, o.emailed_at ? el("div", "✉ email envoyé " + dt(o.emailed_at), "small") : null, o.note ? el("div", o.note, "small") : null),
+      td(tag(o.status), o.key_locked && o.status === "pending" ? el("div", "🔒 Clé verrouillée", "small") : null, o.emailed_at ? el("div", "✉ email envoyé " + dt(o.emailed_at), "small") : null, o.review_asked_at ? el("div", "⭐ avis demandé " + dt(o.review_asked_at), "small") : null, o.note ? el("div", o.note, "small") : null),
       td(acts)));
   }
 }

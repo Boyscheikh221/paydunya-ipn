@@ -538,6 +538,44 @@ ${waButtonHtml(wa)}`;
   return r.ok ? { sent: true, kind: "locked" } : { sent: false, kind: "locked", reason: r.reason };
 }
 
+// ================= Demande d'avis (commandes livrées) =================
+// Un email par commande : bouton vers la page de commande où le formulaire d'avis s'ouvre (?avis=1).
+// orders.review_asked_at retient la date d'envoi (l'envoi groupé ne relance jamais deux fois).
+const REVIEW_BATCH = 40;
+// deno-lint-ignore no-explicit-any
+async function reviewables(orders: any[]) {
+  const items = orders.flatMap((o) => (o.order_items ?? []).filter((i: Item) => i.status === "delivered" && i.product_id));
+  const ids = items.map((i: Item) => i.id);
+  const done = new Set<string>();
+  for (let k = 0; k < ids.length; k += 200) {
+    const { data } = await db.from("product_reviews").select("order_item_id").in("order_item_id", ids.slice(k, k + 200));
+    for (const r of data ?? []) done.add(r.order_item_id);
+  }
+  return orders.map((o) => ({ o, items: (o.order_items ?? []).filter((i: Item) => i.status === "delivered" && i.product_id && !done.has(i.id)) }))
+    .filter((x) => x.items.length && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(x.o.email ?? "")) && !/@licenceoff\.com$/i.test(String(x.o.email)));
+}
+// deno-lint-ignore no-explicit-any
+async function sendReviewRequest(o: any, items: Item[]) {
+  const { site, wa } = siteCtx();
+  const link = site + "/commande.html?o=" + encodeURIComponent(o.public_token) + "&avis=1";
+  const nm = String(o.customer_name || "").trim();
+  const first = /^client (whatsapp|facebook)$/i.test(nm) ? "" : nm.split(/\s+/)[0] || "";
+  const names = [...new Set(items.map((i) => String(i.product_name)))];
+  const html = `<p style="margin:0 0 12px">Bonjour${first ? " " + esc(first) : ""},</p>
+<p style="margin:0 0 12px;line-height:1.6">Merci encore pour votre achat : <b>${names.map(esc).join(", ")}</b>. Nous espérons que tout fonctionne bien.</p>
+<p style="margin:0 0 12px;line-height:1.6">Votre avis aide d'autres clients à acheter en confiance. Cela prend 30 secondes : une note de 1 à 5 étoiles et, si vous le souhaitez, quelques mots.</p>
+<p style="text-align:center;margin:22px 0"><a href="${esc(link)}" style="display:inline-block;background:${EM.O};color:#fff;font-weight:800;text-decoration:none;padding:14px 22px;border-radius:10px">⭐ Donner mon avis</a></p>
+<p style="margin:0 0 12px;line-height:1.6">Un souci avec votre clé ou votre installation ? Répondez à cet email ou écrivez-nous sur WhatsApp, on s'en occupe.</p>
+${waButtonHtml(wa)}`;
+  const text = "Bonjour" + (first ? " " + first : "") + ",\n\nMerci encore pour votre achat : " + names.join(", ") + ". Nous espérons que tout fonctionne bien.\n\n" +
+    "Votre avis aide d'autres clients à acheter en confiance. Cela prend 30 secondes : une note de 1 à 5 étoiles et, si vous le souhaitez, quelques mots.\n\nDonner mon avis : " + link +
+    "\n\nUn souci avec votre clé ou votre installation ? Répondez à cet email ou écrivez-nous sur WhatsApp : https://wa.me/" + wa +
+    "\n\nCet email concerne votre commande " + o.ref + " sur licenceoff.com.\nlicenceoff.com — Dakar, Sénégal";
+  const r = await resendSend(o.email, { subject: "Votre avis sur " + (names.length === 1 ? names[0] : "votre commande") + " ? — licenceoff.com", html: wrapHtml(html, o.ref), text, headers: { "X-Entity-Ref-ID": o.ref + "-avis" } });
+  if (r.ok) await db.from("orders").update({ review_asked_at: new Date().toISOString() }).eq("id", o.id);
+  return r;
+}
+
 // Livre une commande : clés / identifiants du stock + liens à usage unique + services à traiter
 async function deliver(orderId: string, force = false, emails = true) {
   const tokens = Array.from({ length: 30 }, () => newToken());
@@ -1058,6 +1096,32 @@ Deno.serve(async (req) => {
         });
         if (!r.ok) return json({ error: r.reason }, 400);
         return json({ ok: true, to: o.email });
+      }
+
+      case "review_request": { // ⭐ demande d'avis pour une commande livrée (manuel, renvoi possible)
+        const { data: o } = await db.from("orders").select("id, ref, email, customer_name, public_token, status, order_items(id, product_id, product_name, status)").eq("id", body.id).maybeSingle();
+        if (!o) return json({ error: "commande_introuvable" }, 404);
+        const [x] = await reviewables([o]);
+        if (!x) return json({ error: "rien_a_noter" }, 400);
+        const r = await sendReviewRequest(x.o, x.items);
+        if (!r.ok) return json({ error: r.reason }, 400);
+        return json({ ok: true, to: o.email });
+      }
+
+      case "review_request_bulk": { // ⭐ envoi groupé : commandes livrées depuis 24 h, jamais relancées, sans avis
+        const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+        const { data, error } = await db.from("orders").select("id, ref, email, customer_name, public_token, status, order_items(id, product_id, product_name, status)")
+          .eq("status", "delivered").is("review_asked_at", null).lte("delivered_at", since).order("delivered_at", { ascending: true }).limit(1000);
+        if (error) return json({ error: error.message }, 500);
+        const list = await reviewables(data ?? []);
+        if (body.dry === true) return json({ count: list.length, batch: Math.min(list.length, REVIEW_BATCH) });
+        let sent = 0, failed = 0;
+        for (const x of list.slice(0, REVIEW_BATCH)) {
+          const r = await sendReviewRequest(x.o, x.items);
+          if (r.ok) sent++; else { failed++; if (r.reason === "resend_non_configure") break; }
+          await new Promise((res) => setTimeout(res, 600)); // limite Resend : 2 emails / seconde
+        }
+        return json({ ok: true, sent, failed, remaining: Math.max(0, list.length - sent - failed) });
       }
 
       case "order_note": {

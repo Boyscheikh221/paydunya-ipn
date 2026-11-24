@@ -23,6 +23,7 @@ const token = params.get("o") || "";
 let autoPay = params.get("pay") === "1";
 let autoWa = params.get("wa") === "1";
 const fromInstallEmail = params.get("installe") === "1";
+const fromReviewEmail = params.get("avis") === "1"; // lien « Donner mon avis » de l'email
 let timer = null, checked = 0;
 
 const STATUS = {
@@ -176,6 +177,7 @@ function reviewForm(i) {
   return det;
 }
 
+let reviewShown = false;
 async function load() {
   clearTimeout(timer);
   const view = $("#view");
@@ -263,6 +265,7 @@ async function load() {
 
   if ((o.status === "pending" && (o.has_paydunya || o.has_payment_ref || o.key_locked || o.wa_finalize)) || o.status === "paid" || o.status === "processing" || (o.status === "installing" && o.items.some((i) => i.claimed))) timer = setTimeout(load, 15000);
   if (fromInstallEmail) { const c = document.querySelector(".claim"); if (c) c.scrollIntoView({ behavior: "smooth", block: "center" }); }
+  if (fromReviewEmail && !reviewShown) { const r = [...document.querySelectorAll(".review-box")]; r.forEach((d) => { d.open = true; }); if (r[0]) { reviewShown = true; r[0].style.outline = "3px solid #F5A21B"; r[0].scrollIntoView({ behavior: "smooth", block: "center" }); } }
 }
 load();
 </script>
