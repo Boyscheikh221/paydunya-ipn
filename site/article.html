@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Article — licenceoff.com</title>
-<link rel="stylesheet" href="/shop.css?v=18">
+<link rel="stylesheet" href="/shop.css?v=19">
 <link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="64x64" href="/img/profil-64.png"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
 <meta property="og:image" content="https://www.licenceoff.com/img/partage.jpg">
 </head>
@@ -12,7 +12,7 @@
 <main>
   <article class="post" id="view"><div class="skeleton"></div></article>
 </main>
-<script src="/shop.js?v=18"></script>
+<script src="/shop.js?v=19"></script>
 <script>
 LO.page("blog");
 const { el, $ } = LO;
@@ -33,6 +33,7 @@ LO.boutique({ action: "post", slug }).then((d) => {
     el("div", { class: "note", text: new Date(p.published_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }) }),
     LO.ytId(p.cover_video) ? el("div", { class: "cv" }, LO.ytEmbed(p.cover_video)) : p.cover_url ? el("div", { class: "cv" }, el("img", { src: p.cover_url, alt: "" })) : null,
     content,
+    LO.shareBar(LO.SITE + LO.url.post(p.slug), p.title),
     el("div", { class: "panel", style: "margin-top:28px;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap" },
       el("strong", { text: "Besoin d'une licence ?" }), el("a", { class: "btn orange", href: LO.url.shop, text: "Voir la boutique" }))].filter(Boolean));
 }).catch(() => $("#view").replaceChildren(el("p", { text: "Erreur de chargement." })));

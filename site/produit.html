@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Produit — licenceoff.com</title>
-<link rel="stylesheet" href="/shop.css?v=18">
+<link rel="stylesheet" href="/shop.css?v=19">
 <link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="64x64" href="/img/profil-64.png"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
 <meta property="og:image" content="https://www.licenceoff.com/img/partage.jpg">
 </head>
@@ -12,7 +12,7 @@
 <main class="wrap">
   <div id="view"><div class="product"><div class="skeleton"></div><div class="skeleton"></div></div></div>
 </main>
-<script src="/shop.js?v=18"></script>
+<script src="/shop.js?v=19"></script>
 <script>
 LO.page("shop");
 const { el, $, fcfa } = LO;
@@ -53,6 +53,7 @@ function show(p) {
         off ? el("span", { class: "tag t-wait", style: "margin-left:8px;vertical-align:middle", text: "-" + off + " %" }) : null),
       el("p", { class: p.in_stock ? "" : "msg", text: p.in_stock ? "✔ En stock" : "Rupture de stock pour le moment. Écrivez-nous sur WhatsApp pour être prévenu." }),
       el("div", { style: "display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:16px 0" }, qty, add, buy, favBtn(p)),
+      LO.shareBar(LO.SITE + LO.url.product(p.slug), p.name),
       el("ul", { class: "perks" },
         el("li", { text: LO.DELIVERY_TEXT[p.delivery_type] || "Livraison rapide" }),
         el("li", { text: "Paiement sécurisé : Wave, Orange Money, carte" }),
