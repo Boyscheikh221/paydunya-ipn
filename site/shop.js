@@ -141,7 +141,7 @@ const LO = (() => {
     const year = new Date().getFullYear();
     document.body.append(
       el("div", { class: "strip" }, el("div", { class: "wrap" },
-        el("span", { text: "Au Sénégal 🇸🇳" }), el("span", { text: "Des licences authentiques" }), el("span", { text: "Votre satisfaction, notre priorité" }))),
+        el("span", { text: "Au Sénégal 🇸🇳" }), el("span", { text: "Des licences authentiques" }), el("span", { text: "Rapide et fiable" }))),
       el("footer", { class: "site" }, el("div", { class: "wrap" },
         el("div", { class: "cols" },
           el("div", {}, el("div", { class: "logo" }, el("span", { class: "a", text: "licence" }), el("span", { class: "b", text: "off" }), el("span", { class: "c", text: ".com" })),
