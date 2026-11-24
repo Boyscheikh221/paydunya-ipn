@@ -330,9 +330,15 @@
       <div class="box">
         <h2>Ajouter au stock</h2>
         <div class="grid"><div><label>Produit</label><select id="kProd"></select></div></div>
-        <label>Collez une clé (ou un identifiant) par ligne</label>
+        <div id="kAcct" class="hidden">
+          <p class="small" style="margin:6px 0">👤 Ce produit se livre avec un <b>compte</b> (ex. Office 365) : remplissez l'adresse et le mot de passe fournis par votre fournisseur. Un compte = une vente : il part à un seul client, avec la procédure de votre modèle d'email.</p>
+          <div class="grid"><div><label>Identifiant (adresse de connexion)</label><input id="kLogin" autocomplete="off" spellcheck="false" placeholder="ex. nom@domaine.com"></div>
+            <div><label>Mot de passe du compte</label><input id="kPass" autocomplete="off" spellcheck="false" class="mono"></div></div>
+          <p class="small" style="margin:8px 0 0">Plusieurs comptes d'un coup ? Collez-les plutôt dans la grande case, un par ligne : <span class="mono">adresse ; mot de passe</span></p>
+        </div>
+        <label id="kTextLabel">Collez une clé (ou un identifiant) par ligne</label>
         <textarea id="kText" class="mono" placeholder="XXXXX-XXXXX-XXXXX-XXXXX-XXXXX&#10;YYYYY-YYYYY-YYYYY-YYYYY-YYYYY"></textarea>
-        <div class="grid" style="margin-top:6px"><div><label>Type de clé</label><select id="kKind"><option value="single">Usage unique : 1 clé = 1 client</option><option value="multi">Multi-postes : 1 clé pour plusieurs appareils (5, 10…)</option><option value="unlimited">Réutilisable sans limite (sérialiseur)</option></select></div>
+        <div class="grid" id="kKindBox" style="margin-top:6px"><div><label>Type de clé</label><select id="kKind"><option value="single">Usage unique : 1 clé = 1 client</option><option value="multi">Multi-postes : 1 clé pour plusieurs appareils (5, 10…)</option><option value="unlimited">Réutilisable sans limite (sérialiseur)</option></select></div>
           <div id="kUsesBox" class="hidden"><label>Nombre d'appareils / d'activations par clé</label><input id="kUses" type="number" min="1" max="100000" placeholder="ex. 5"><div class="small">La clé part à ce nombre de clients, puis elle est épuisée.</div></div></div>
         <div class="bar" style="margin-top:10px"><button id="kImport" class="green">Ajouter au stock</button><span id="kMsg" class="small"></span></div>
         <p class="small">Les doublons sont ignorés. Une clé à usage unique envoyée ne repart jamais. Une clé multi-postes repart jusqu'à son nombre d'appareils puis s'épuise. Une clé réutilisable sans limite repart à chaque commande. Ordre d'envoi : usage unique, puis multi-postes, puis sans limite. Les commandes payées qui attendaient du stock sont livrées automatiquement.</p>
@@ -737,7 +743,7 @@ function tag(status) { return el("span", ST[status] || status, "tag s-" + status
 function btn(label, cls, fn) { const b = el("button", label, cls); b.addEventListener("click", async () => { b.disabled = true; try { await fn(); } catch (e) { toast(errMsg(e)); } finally { b.disabled = false; } }); return b; }
 const fcfa = (n) => Number(n || 0).toLocaleString("fr-FR") + " F";
 const dt = (iso) => iso ? new Date(iso).toLocaleString("fr-FR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
-const mask = (k) => showKeys || !k || k.length < 12 ? k : k.slice(0, 5) + "•••••" + k.slice(-4);
+const mask = (k) => { if (showKeys || !k) return k; const a = String(k).match(/^(Identifiant : .+?) \| Mot de passe : /); return a ? a[1] + " | Mot de passe : ••••••" : k.length < 12 ? k : k.slice(0, 5) + "•••••" + k.slice(-4); };
 async function copy(text, okMsg) { try { await navigator.clipboard.writeText(text); toast(okMsg || "Copié ✔"); } catch (_) { prompt("Copiez :", text); } }
 function waNumber(p) { let d = String(p || "").replace(/\D/g, ""); if (d.length === 9 && d[0] === "7") d = "221" + d; return d; }
 function linkState(l) { if (l.status !== "active") return l.status; if (l.download_count >= l.max_downloads) return "used"; if (new Date(l.expires_at) < new Date()) return "expired"; return "active"; }
@@ -787,7 +793,7 @@ async function loadRefs() {
   products = p.rows; categories = c.rows; templates = t.rows || [];
   const stockProds = products.filter((x) => STOCK_TYPES.includes(x.delivery_type));
   const fill = (id, list, first) => { const s = $(id), keep = s.value; s.replaceChildren(); if (first) s.append(new Option(first, "")); for (const x of list) s.append(new Option(x.name, x.id)); if (keep) s.value = keep; };
-  fill("kProd", stockProds); fill("kFilterProd", stockProds, "Tous les produits"); fill("pCat", catTree().map((c) => ({ id: c.id, name: (c.parent_id ? "↳ " : "") + c.name })), "— Sans catégorie —");
+  fill("kProd", stockProds); fill("kFilterProd", stockProds, "Tous les produits"); kAcctUi(); fill("pCat", catTree().map((c) => ({ id: c.id, name: (c.parent_id ? "↳ " : "") + c.name })), "— Sans catégorie —");
   fill("cParent", categories.filter((c) => !c.parent_id), "— Catégorie principale —");
   fill("pTpl", templates.filter((x) => !x.is_default && x.kind !== "install"), "Modèle par défaut");
   fill("pInstTpl", templates.filter((x) => !x.is_default && x.kind === "install"), "Modèle d'installation par défaut");
@@ -830,7 +836,7 @@ async function loadDash() {
   $("dashTop").replaceChildren(...(top.length ? top.map(([n, v]) => tr(td(n), td(v.q + " vendu(s)"), td(fcfa(v.ca)))) : [tr(td("Pas encore de ventes"))]));
   loadOrigin().catch(() => {});
   $("dashStock").replaceChildren(...(low.length ? low.map((x) => tr(td(x.name), td(el("span", x.available === 0 ? "Rupture" : x.available + " restant(s)", "low")),
-    td(btn("Ajouter", "grey", async () => { await openTab("keys"); $("kProd").value = x.id; $("kText").focus(); })))) : [tr(td("Tout va bien ✔"))]));
+    td(btn("Ajouter", "grey", async () => { await openTab("keys"); $("kProd").value = x.id; kAcctUi(); $("kText").focus(); })))) : [tr(td("Tout va bien ✔"))]));
   $("dashOrders").replaceChildren(...d.orders.slice(0, 8).map((o) => tr(td(dt(o.created_at)), td(o.ref), td(o.customer_name), td(tag(o.status)), td(fcfa(o.amount_fcfa)))));
 }
 // ---------- origine des ventes : camembert + tableau ----------
@@ -1040,7 +1046,7 @@ function clientMessage(o) {
   const lines = ["Bonjour " + o.customer_name + ",", "Merci pour votre commande " + o.ref + " sur licenceoff.", ""];
   for (const i of o.order_items || []) {
     lines.push("• " + (i.quantity > 1 ? i.quantity + " x " : "") + i.product_name);
-    for (const k of i.license_keys || []) lines.push("   " + k.key_value);
+    for (const k of i.license_keys || []) lines.push("   " + String(k.key_value).replace(" | Mot de passe : ", "\n   Mot de passe : "));
   }
   lines.push("", "Votre page de commande (clés + téléchargements) :", ORDER_PAGE + "?o=" + o.public_token,
     "", "Le lien de téléchargement ne fonctionne qu'une seule fois.", "", "licenceoff.com — merci de votre confiance");
@@ -1361,12 +1367,32 @@ $("kRefresh").addEventListener("click", () => loadKeys().catch((e) => toast(errM
 $("kFilterProd").addEventListener("change", () => loadKeys().catch((e) => toast(errMsg(e))));
 $("kFilterStatus").addEventListener("change", () => loadKeys().catch((e) => toast(errMsg(e))));
 $("kShow").addEventListener("click", () => { showKeys = !showKeys; $("kShow").textContent = showKeys ? "Masquer les clés" : "Afficher les clés"; loadKeys().catch((e) => toast(errMsg(e))); });
+// produit livré avec un compte (type « Identifiants ») : champs adresse + mot de passe, toujours 1 compte = 1 client
+const isAcctProd = () => (products.find((p) => p.id === $("kProd").value) || {}).delivery_type === "stock";
+function kAcctUi() {
+  const on = isAcctProd();
+  $("kAcct").classList.toggle("hidden", !on); $("kKindBox").classList.toggle("hidden", on);
+  if (on) resetKind("k");
+  $("kTextLabel").textContent = on ? "Ou plusieurs comptes, un par ligne (adresse ; mot de passe)" : "Collez une clé (ou un identifiant) par ligne";
+  $("kText").placeholder = on ? "compte1@domaine.com ; motdepasse1\ncompte2@domaine.com ; motdepasse2" : "XXXXX-XXXXX-XXXXX-XXXXX-XXXXX\nYYYYY-YYYYY-YYYYY-YYYYY-YYYYY";
+}
+$("kProd").addEventListener("change", kAcctUi);
 $("kImport").addEventListener("click", async () => {
   if (!$("kProd").value) { $("kMsg").textContent = "Créez d'abord un produit de type clé ou identifiants."; return; }
   try {
     const kp = kindPayload("k"); if (kp.error) { $("kMsg").textContent = kp.error; return; }
-    const d = await api({ action: "keys_import", product_id: $("kProd").value, text: $("kText").value, ...kp });
-    $("kText").value = ""; resetKind("k");
+    let text = $("kText").value;
+    if (isAcctProd()) {
+      const lg = $("kLogin").value.trim(), pw = $("kPass").value.trim();
+      if (lg || pw) {
+        if (!/^[^\s;|]+@[^\s;|]+$/.test(lg)) { $("kMsg").textContent = "Indiquez l'adresse de connexion du compte (ex. nom@domaine.com)."; return; }
+        if (!pw) { $("kMsg").textContent = "Indiquez le mot de passe du compte."; return; }
+        text = lg + " ; " + pw + "\n" + text;
+      }
+      kp.reusable = false; delete kp.max_uses;
+    }
+    const d = await api({ action: "keys_import", product_id: $("kProd").value, text, ...kp });
+    $("kText").value = ""; $("kLogin").value = ""; $("kPass").value = ""; resetKind("k");
     $("kMsg").textContent = d.added + " ajouté(s), " + d.duplicates + " doublon(s) ignoré(s)" + (d.delivered ? ", " + d.delivered + " commande(s) en attente livrée(s)" : "") + ".";
     await loadKeys();
   } catch (e) { $("kMsg").textContent = e.message === "aucune_cle" ? "Aucune clé trouvée dans le texte." : errMsg(e); }

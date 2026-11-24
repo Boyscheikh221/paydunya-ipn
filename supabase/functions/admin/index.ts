@@ -162,17 +162,23 @@ type Item = any;
 // deno-lint-ignore no-explicit-any
 type Ctx = { o: any; items: Item[]; link: string; wa: string; install?: string };
 
+// Compte (Office 365…) rangé dans le stock sous la forme « Identifiant : x | Mot de passe : y »
+const acctParts = (v: string) => { const m = String(v ?? "").match(/^Identifiant : (.+?) \| Mot de passe : (.+)$/); return m ? [m[1], m[2]] : null; };
+const keyBox = (v: string) => `<div style="font-family:Consolas,Menlo,monospace;font-weight:700;font-size:15px;background:#eff5ff;border:2px dashed ${EM.B};border-radius:8px;padding:10px 12px;margin:6px 0;word-break:break-all;color:${EM.N}">${esc(v)}</div>`;
 function keysHtml(items: Item[]) {
   return items.map((i) => {
     const ks = (i.license_keys ?? []) as { key_value: string }[];
     if (!ks.length) return "";
     const label = i.delivery_type === "stock" ? "Vos identifiants" : ks.length > 1 ? "Vos clés d'activation" : "Votre clé d'activation";
     return `<div style="margin:10px 0"><div style="font-size:13px;color:#5b6b86">${label} — ${esc(i.product_name)} :</div>` +
-      ks.map((k) => `<div style="font-family:Consolas,Menlo,monospace;font-weight:700;font-size:15px;background:#eff5ff;border:2px dashed ${EM.B};border-radius:8px;padding:10px 12px;margin:6px 0;word-break:break-all;color:${EM.N}">${esc(k.key_value)}</div>`).join("") + "</div>";
+      ks.map((k) => {
+        const a = acctParts(k.key_value);
+        return a ? `<div style="font-size:13px;color:#5b6b86;margin-top:6px">Identifiant (adresse de connexion)</div>${keyBox(a[0])}<div style="font-size:13px;color:#5b6b86">Mot de passe</div>${keyBox(a[1])}` : keyBox(k.key_value);
+      }).join("") + "</div>";
   }).join("");
 }
 function keysText(items: Item[]) {
-  return items.filter((i) => (i.license_keys ?? []).length).map((i) => i.product_name + " :\n" + i.license_keys.map((k: { key_value: string }) => "  " + k.key_value).join("\n")).join("\n");
+  return items.filter((i) => (i.license_keys ?? []).length).map((i) => i.product_name + " :\n" + i.license_keys.map((k: { key_value: string }) => { const a = acctParts(k.key_value); return a ? "  Identifiant : " + a[0] + "\n  Mot de passe : " + a[1] : "  " + k.key_value; }).join("\n")).join("\n");
 }
 const productsHtml = (items: Item[]) => "<ul style=\"margin:6px 0;padding-left:20px\">" + items.map((i) => `<li><b>${i.quantity > 1 ? i.quantity + " × " : ""}${esc(i.product_name)}</b>${["key_file", "file"].includes(i.delivery_type) ? " — logiciel à télécharger depuis votre page de commande (lien à usage unique)" : ""}${i.status === "to_process" ? " — notre équipe vous contacte sur WhatsApp" : ""}</li>`).join("") + "</ul>";
 const productsText = (items: Item[]) => items.map((i) => "- " + (i.quantity > 1 ? i.quantity + " x " : "") + i.product_name).join("\n");
@@ -1026,7 +1032,9 @@ Deno.serve(async (req) => {
         if (!STOCK_TYPES.includes(p.delivery_type)) return json({ error: "produit_sans_stock" }, 400);
         // clé multi-postes : nombre d'activations (ex. 5 ou 10 appareils) ; vide = usage unique ou illimitée
         const maxUses = Number(body.max_uses) >= 1 ? clamp(Math.floor(Number(body.max_uses)), 1, 100000) : null;
-        const lines = String(body.text ?? "").split(/[\r\n]+/).map((l) => l.trim()).filter((l) => l.length >= 3 && l.length <= 500);
+        // produit « Identifiants » : « adresse ; mot de passe » (ou séparés par une tabulation) devient « Identifiant : … | Mot de passe : … »
+        const acct = (l: string) => { const m = l.match(/^([^\s;|]+@[^\s;|]+)\s*[;\t]\s*(.+)$/); return m ? "Identifiant : " + m[1] + " | Mot de passe : " + m[2] : l; };
+        const lines = String(body.text ?? "").split(/[\r\n]+/).map((l) => l.trim()).map((l) => p.delivery_type === "stock" ? acct(l) : l).filter((l) => l.length >= 3 && l.length <= 500);
         const unique = [...new Set(lines)];
         if (!unique.length) return json({ error: "aucune_cle" }, 400);
         if (unique.length > 2000) return json({ error: "max_2000_par_import" }, 400);

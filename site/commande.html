@@ -68,10 +68,19 @@ function itemBlock(i) {
   const body = box.lastChild;
   if (i.keys?.length) {
     body.append(el("div", { class: "note", style: "margin-top:8px", text: i.delivery_type === "stock" ? "Vos identifiants :" : (i.keys.length > 1 ? "Vos clés d'activation :" : "Votre clé d'activation :") }));
-    for (const k of i.keys) {
+    const copyBtn = (v) => {
       const c = el("button", { class: "btn light", style: "padding:6px 10px;font-size:13px", text: "Copier" });
-      c.addEventListener("click", async () => { try { await navigator.clipboard.writeText(k); c.textContent = "Copié ✔"; } catch (_) { c.textContent = "Sélectionnez et copiez"; } });
-      body.append(el("div", { class: "key" }, k), c);
+      c.addEventListener("click", async () => { try { await navigator.clipboard.writeText(v); c.textContent = "Copié ✔"; } catch (_) { c.textContent = "Sélectionnez et copiez"; } });
+      return c;
+    };
+    for (const k of i.keys) {
+      // compte (Office 365…) : identifiant et mot de passe, chacun avec son bouton « Copier »
+      const a = String(k).match(/^Identifiant : (.+?) \| Mot de passe : (.+)$/);
+      if (a) {
+        body.append(el("div", { class: "note", style: "margin-top:6px", text: "Identifiant (adresse de connexion)" }), el("div", { class: "key" }, a[1]), copyBtn(a[1]),
+          el("div", { class: "note", style: "margin-top:6px", text: "Mot de passe" }), el("div", { class: "key" }, a[2]), copyBtn(a[2]),
+          el("p", { class: "note", style: "margin-top:6px", text: "Utilisez ces identifiants pour vous connecter. La procédure complète est dans l'email de livraison." }));
+      } else body.append(el("div", { class: "key" }, k), copyBtn(k));
     }
   }
   if (i.keys_hidden || i.download?.state === "need_name") {
