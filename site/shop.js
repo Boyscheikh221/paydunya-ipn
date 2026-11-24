@@ -268,7 +268,7 @@ const LO = (() => {
     if (!force && consent()) return;
     document.querySelector(".cookie-bar")?.remove();
     document.body.append(el("div", { class: "cookie-bar", role: "dialog", "aria-label": "Cookies" },
-      el("p", {}, "Nous utilisons le stockage de votre navigateur pour votre panier (indispensable) et, si vous l'acceptez, pour mesurer les visites et nos publicités (Meta, Google). ",
+      el("p", {}, el("b", { text: "🍪 Cookies et confidentialité" }), "Nous utilisons le stockage de votre navigateur pour votre panier (indispensable) et, si vous l'acceptez, pour mesurer les visites et nos publicités (Meta, Google). ",
         el("a", { href: url.privacy, text: "En savoir plus" })),
       el("div", { class: "cb-btns" },
         el("button", { class: "btn light", text: "Refuser", onclick: () => setConsent("no") }),
