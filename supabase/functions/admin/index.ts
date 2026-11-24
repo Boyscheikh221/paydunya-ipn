@@ -936,7 +936,8 @@ Deno.serve(async (req) => {
         if (body.payment_ref) {
           await db.from("orders").update({ payment_ref: str(body.payment_ref, 100) }).eq("id", body.id).eq("status", "pending");
         }
-        return json({ result: await deliver(body.id) });
+        // silent : livraison sans email au client (ex. vente à un revendeur, PDF d'instructions envoyé à la main)
+        return json({ result: body.silent === true ? await deliver(body.id, true, false) : await deliver(body.id) });
       }
 
       case "order_deliver_now": { // livraison automatique désactivée : l'admin livre lui-même (clés du stock + liens)

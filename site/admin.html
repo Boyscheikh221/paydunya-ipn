@@ -1280,6 +1280,15 @@ async function loadOrders() {
       if (confirm((o.status === "installing" ? "Renvoyer l'email d'installation à " : "Envoyer l'email de livraison à ") + o.email + " ?")) await run({ action: "order_email", id: o.id }, "Email envoyé ✔", reload)();
     }));
     if (items.some((i) => (i.license_keys || []).length)) acts.append(btn("📄 PDF revendeur", "grey", () => resellerPdf(o)));
+    else if (o.status === "pending" && items.some((i) => STOCK_TYPES.includes(i.delivery_type))) acts.append(btn("📄 PDF revendeur", "grey", async () => {
+      if (!confirm("Avez-vous bien reçu " + fcfa(o.amount_fcfa) + " de " + (o.customer_name || o.email) + " ?\n\nLe compte (ou la clé) sera pris dans le stock et la commande passera « livrée », SANS email au client.\nEnsuite le PDF d'instructions se télécharge.")) return;
+      try {
+        const r = await api({ action: "order_validate", id: o.id, silent: true });
+        if (r.result && r.result.ok === false && r.result.reason) toast("Livraison : " + r.result.reason);
+        await resellerPdf(o);
+      } catch (e) { toast(errMsg(e)); }
+      reload();
+    }));
     acts.append(btn("Page client", "grey", () => copy(ORDER_PAGE + "?o=" + o.public_token, "Lien de la page client copié ✔")));
     if (o.invoice_no) acts.append(btn("🧾 Facture", "grey", () => window.open(SITE + "/facture?o=" + encodeURIComponent(o.public_token), "_blank", "noopener")));
     if (o.invoice_no && o.status !== "cancelled") acts.append(btn("✉ Envoyer la facture", "grey", async () => {
