@@ -164,7 +164,7 @@ type Ctx = { o: any; items: Item[]; link: string; wa: string; install?: string }
 
 // Compte (Office 365…) rangé dans le stock sous la forme « Identifiant : x | Mot de passe : y »
 const acctParts = (v: string) => { const m = String(v ?? "").match(/^Identifiant : (.+?) \| Mot de passe : (.+)$/); return m ? [m[1], m[2]] : null; };
-const keyBox = (v: string) => `<div style="font-family:Consolas,Menlo,monospace;font-weight:700;font-size:15px;background:#eff5ff;border:2px dashed ${EM.B};border-radius:8px;padding:10px 12px;margin:6px 0;word-break:break-all;color:${EM.N}">${esc(v)}</div>`;
+const keyBox = (v: string) => `<div style="font-family:Consolas,Menlo,monospace;font-weight:700;font-size:15px;background:#eff5ff;border:2px dashed ${EM.B};border-radius:8px;padding:10px 12px;margin:6px 0;word-break:break-all;color:${EM.N};-webkit-user-select:all;user-select:all">${esc(v)}</div>`;
 function keysHtml(items: Item[]) {
   return items.map((i) => {
     const ks = (i.license_keys ?? []) as { key_value: string }[];
@@ -185,7 +185,9 @@ const productsText = (items: Item[]) => items.map((i) => "- " + (i.quantity > 1 
 const installButtonHtml = (link: string) => `<p style="text-align:center;margin:22px 0 6px"><a href="${esc(link)}" style="display:inline-block;background:#15803d;color:#fff;font-weight:800;text-decoration:none;padding:14px 22px;border-radius:10px">✅ J'ai fini l'installation : recevoir ma clé</a></p><p style="text-align:center;margin:0 0 14px;font-size:12px;color:#5b6b86">Bouton à usage unique</p>`;
 // bouton « Assistance WhatsApp » (remplace le numéro de téléphone dans les signatures)
 const waButtonHtml = (wa: string) => `<p style="margin:18px 0 12px"><a href="https://wa.me/${esc(wa)}" style="display:inline-block;background:#25D366;color:#fff;font-weight:800;text-decoration:none;padding:11px 18px;border-radius:10px">💬 Assistance WhatsApp</a></p>`;
-const buttonHtml = (link: string) => `<p style="text-align:center;margin:22px 0"><a href="${esc(link)}" style="display:inline-block;background:${EM.O};color:#fff;font-weight:800;text-decoration:none;padding:14px 22px;border-radius:10px">Voir ma commande et télécharger</a></p>`;
+// produits livrés par compte : le bouton mène à la page de commande où chaque identifiant a son bouton « Copier »
+const buttonLabel = (items: Item[]) => items.length && items.every((i) => i.delivery_type === "stock") ? "📋 Copier mes identifiants (page de commande)" : "Voir ma commande et télécharger";
+const buttonHtml = (link: string, label = "Voir ma commande et télécharger") => `<p style="text-align:center;margin:22px 0"><a href="${esc(link)}" style="display:inline-block;background:${EM.O};color:#fff;font-weight:800;text-decoration:none;padding:14px 22px;border-radius:10px">${esc(label)}</a></p>`;
 
 function vars(c: Ctx) {
   const parts = String(c.o.customer_name ?? "").trim().split(/\s+/);
@@ -210,7 +212,7 @@ function renderBody(body: string, c: Ctx) {
     const t = para.trim();
     if (t === "{produits}") return productsHtml(c.items);
     if (t === "{cles}") return keysHtml(c.items);
-    if (t === "{bouton}") return buttonHtml(c.link);
+    if (t === "{bouton}") return buttonHtml(c.link, buttonLabel(c.items));
     if (t === "{bouton_installation}") return installButtonHtml(c.install ?? c.link);
     if (t === "{bouton_whatsapp}") return waButtonHtml(c.wa);
     const inline = (s: string) => esc(sub(s))
@@ -220,7 +222,7 @@ function renderBody(body: string, c: Ctx) {
     if (lines.every((l) => /^\s*-\s+/.test(l))) return "<ul style=\"margin:6px 0;padding-left:20px\">" + lines.map((l) => "<li>" + inline(l.replace(/^\s*-\s+/, "")) + "</li>").join("") + "</ul>";
     return `<p style="margin:0 0 12px;line-height:1.6">${lines.map(inline).join("<br>")}</p>`;
   }).join("");
-  const html = blocks.replace(/\{produits\}/g, productsHtml(c.items)).replace(/\{cles\}/g, keysHtml(c.items)).replace(/\{bouton\}/g, buttonHtml(c.link)).replace(/\{bouton_installation\}/g, installButtonHtml(c.install ?? c.link)).replace(/\{bouton_whatsapp\}/g, waButtonHtml(c.wa));
+  const html = blocks.replace(/\{produits\}/g, productsHtml(c.items)).replace(/\{cles\}/g, keysHtml(c.items)).replace(/\{bouton\}/g, buttonHtml(c.link, buttonLabel(c.items))).replace(/\{bouton_installation\}/g, installButtonHtml(c.install ?? c.link)).replace(/\{bouton_whatsapp\}/g, waButtonHtml(c.wa));
   // Texte
   const text = sub(b).replace(/\*\*(.+?)\*\*/g, "$1").replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, "$1 : $2")
     .replace(/\{produits\}/g, productsText(c.items)).replace(/\{cles\}/g, keysText(c.items)).replace(/\{bouton\}/g, "Votre commande : " + c.link)
