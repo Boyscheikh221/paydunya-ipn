@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Page introuvable — licenceoff.com</title>
+<meta name="theme-color" content="#1E4FB8">
+<link rel="stylesheet" href="/shop.css?v=17">
+<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="64x64" href="/img/profil-64.png"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+<meta property="og:image" content="https://www.licenceoff.com/img/partage.jpg">
+</head>
+<body>
+<main class="wrap" style="max-width:760px">
+  <div class="panel" style="margin:34px 0;text-align:center">
+    <div style="font-size:54px;font-weight:900;color:var(--orange)">404</div>
+    <h1 style="margin:4px 0 8px">Cette page n'existe pas (ou plus)</h1>
+    <p class="note">Le lien est peut-être ancien ou incomplet. Voici comment retrouver ce que vous cherchez :</p>
+    <form action="/boutique" method="get" style="display:flex;gap:8px;max-width:460px;margin:18px auto">
+      <input class="field" name="q" placeholder="Rechercher un produit (ex : Windows 11)" aria-label="Rechercher" style="flex:1">
+      <button class="btn" type="submit">Rechercher</button>
+    </form>
+    <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:8px">
+      <a class="btn orange" href="/boutique">Voir la boutique</a>
+      <a class="btn light" href="/">Accueil</a>
+      <a class="btn light" href="/faq">Questions fréquentes</a>
+    </div>
+    <p class="note" style="margin-top:18px">Vous cherchiez votre commande ? Ouvrez le lien reçu par email, ou <a href="https://wa.me/221777860777" target="_blank" rel="noopener">écrivez-nous sur WhatsApp</a>.</p>
+    <div id="cats" style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:14px"></div>
+  </div>
+</main>
+<script src="/shop.js?v=17"></script>
+<script>
+LO.page("");
+LO.boutique({ action: "catalog" }).then((d) => {
+  document.getElementById("cats").replaceChildren(...LO.mainCats(d).map((c) => LO.el("a", { class: "chip", href: LO.url.category(c.slug), text: c.name })));
+}).catch(() => {});
+</script>
+</body>
+</html>

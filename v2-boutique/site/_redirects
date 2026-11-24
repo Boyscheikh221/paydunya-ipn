@@ -1,0 +1,10 @@
+# Adresses courtes et lisibles (réécritures : l'adresse reste celle-ci dans le navigateur)
+/boutique            /categorie 200
+# anciennes catégories (renommées le 22/11/2026)
+/categorie/licences-windows        /categorie/windows        301
+/categorie/services-informatiques  /categorie/solutions-pc   301
+/categorie/:parent/:slug           /categorie 200
+/categorie/:slug                   /categorie 200
+/produit/:slug       /produit   200
+/blog/:slug          /article   200
+/page/:slug          /page      200

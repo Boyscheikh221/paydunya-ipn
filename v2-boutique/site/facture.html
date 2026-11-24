@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Facture — licenceoff.com</title>
+<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="64x64" href="/img/profil-64.png"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+<style>
+  :root { --bleu:#1E4FB8; --nuit:#0F2A6B; --orange:#F5A21B; --gris:#6b7690; --ligne:#e3e8f0; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:#eef1f6; font-family: "Segoe UI", Arial, sans-serif; color:var(--nuit); font-size:14px; }
+  .bar { max-width:820px; margin:16px auto 0; padding:0 16px; display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end; }
+  .bar button, .bar a { background:var(--bleu); color:#fff; border:0; border-radius:10px; padding:11px 18px; font-size:15px; font-weight:700; cursor:pointer; text-decoration:none; }
+  .bar .light { background:#fff; color:var(--bleu); border:1px solid var(--bleu); }
+  .doc { position:relative; max-width:820px; margin:16px auto 32px; background:#fff; padding:40px 44px; box-shadow:0 4px 20px rgba(16,42,67,.1); overflow:hidden; }
+  .head { display:flex; justify-content:space-between; gap:24px; flex-wrap:wrap; border-bottom:3px solid var(--orange); padding-bottom:18px; }
+  .brand { display:flex; gap:12px; align-items:center; }
+  .brand img { width:64px; height:64px; }
+  .brand .n { font-size:24px; font-weight:800; color:var(--bleu); } .brand .n span { color:var(--orange); }
+  .seller { font-size:13px; color:var(--gris); line-height:1.5; margin-top:6px; }
+  .title { text-align:right; }
+  .title h1 { margin:0; font-size:28px; letter-spacing:1px; text-transform:uppercase; }
+  .title .no { font-size:16px; font-weight:700; margin-top:4px; }
+  .title .d { color:var(--gris); margin-top:4px; line-height:1.5; }
+  .parties { display:flex; gap:24px; flex-wrap:wrap; margin:24px 0; }
+  .parties > div { flex:1; min-width:220px; background:#f6f8fc; border-radius:10px; padding:14px 16px; line-height:1.55; }
+  .parties h3 { margin:0 0 6px; font-size:12px; text-transform:uppercase; letter-spacing:.5px; color:var(--gris); }
+  table { width:100%; border-collapse:collapse; }
+  th { text-align:left; font-size:12px; text-transform:uppercase; color:var(--gris); border-bottom:2px solid var(--ligne); padding:8px 6px; }
+  td { padding:10px 6px; border-bottom:1px solid var(--ligne); vertical-align:top; }
+  .r { text-align:right; white-space:nowrap; }
+  .tot { margin-left:auto; margin-top:16px; width:100%; max-width:320px; }
+  .tot div { display:flex; justify-content:space-between; padding:6px 0; }
+  .tot .big { font-size:18px; font-weight:800; border-top:2px solid var(--nuit); margin-top:4px; padding-top:10px; }
+  .notes { margin-top:24px; color:var(--gris); font-size:13px; line-height:1.55; white-space:pre-line; }
+  .foot { margin-top:32px; border-top:1px solid var(--ligne); padding-top:12px; color:var(--gris); font-size:12px; text-align:center; line-height:1.5; }
+  .stamp { position:absolute; top:150px; right:-40px; transform:rotate(-20deg); border:4px solid #b91c1c; color:#b91c1c; font-size:34px; font-weight:900; padding:6px 40px; opacity:.35; }
+  .paid { color:#15803d; font-weight:700; }
+  .msg { max-width:520px; margin:60px auto; background:#fff; border-radius:14px; padding:28px; text-align:center; }
+  @media (max-width:600px) { .doc { padding:24px 18px; } .title { text-align:left; } th.hide, td.hide { display:none; } }
+  @media print {
+    body { background:#fff; } .bar { display:none; }
+    .doc { box-shadow:none; margin:0; padding:0; max-width:none; }
+    @page { size:A4; margin:16mm; }
+  }
+</style>
+</head>
+<body>
+<div class="bar" id="bar" hidden>
+  <a class="light" href="/">Retour au site</a>
+  <button id="print">⬇️ Télécharger en PDF / Imprimer</button>
+</div>
+<div id="root"><div class="msg">Chargement…</div></div>
+<script>
+const API = "https://vnzpxfoeiixiqxkhdnik.supabase.co/functions/v1/boutique";
+const q = new URLSearchParams(location.search);
+const root = document.getElementById("root");
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const money = (n) => Math.round(Number(n || 0)).toLocaleString("fr-FR").replace(/ | /g, " ") + " FCFA";
+const day = (d) => d ? new Date(d).toLocaleDateString("fr-FR", { day: "2-digit", month: "long", year: "numeric" }) : "";
+const PAY = { wave: "Wave", orange_money: "Orange Money", free_money: "Free Money", especes: "Espèces", paydunya: "PayDunya", card: "Carte bancaire", autre: "Autre" };
+
+function render(d) {
+  const quote = d.kind === "quote";
+  const label = quote ? "Devis" : "Facture";
+  document.title = label + " " + d.no + " — " + (d.seller.legal_name || "licenceoff.com");
+  const s = d.seller, c = d.customer || {};
+  const sellerLines = [s.address, s.phone ? "Tél. " + s.phone : (s.whatsapp ? "WhatsApp +" + s.whatsapp : ""), s.email || "contact@licenceoff.com", "www.licenceoff.com",
+    s.ninea ? "NINEA : " + s.ninea : "", s.rc ? "RC : " + s.rc : ""].filter(Boolean);
+  const vat = Number(d.vat_rate) || 0;
+  const ht = vat ? Math.round(d.total / (1 + vat / 100)) : d.total;
+  const rows = d.lines.map((l) => `<tr><td>${esc(l.name)}</td><td class="r">${l.qty}</td><td class="r hide">${money(l.unit_price)}</td><td class="r">${money(l.qty * l.unit_price)}</td></tr>`).join("");
+  const pay = !quote && d.payment ? [d.payment.method ? "Mode de paiement : " + esc(PAY[d.payment.method] || d.payment.method) : "", d.payment.ref ? "Référence : " + esc(d.payment.ref) : ""].filter(Boolean).join("<br>") : "";
+  root.innerHTML = `<div class="doc">
+  ${d.cancelled ? '<div class="stamp">ANNULÉE</div>' : ""}
+  <div class="head">
+    <div>
+      <div class="brand"><img src="/img/profil-192.png" alt=""><div class="n">licence<span>off</span><small>.com</small></div></div>
+      <div class="seller"><b style="color:var(--nuit)">${esc(s.legal_name)}</b><br>${sellerLines.map(esc).join("<br>")}</div>
+    </div>
+    <div class="title">
+      <h1>${label}</h1>
+      <div class="no">N° ${esc(d.no)}</div>
+      <div class="d">Date : ${day(d.date)}${quote && d.valid_until ? "<br>Valable jusqu'au : " + day(d.valid_until) : ""}${d.ref ? "<br>Commande : " + esc(d.ref) : ""}</div>
+    </div>
+  </div>
+  <div class="parties">
+    <div><h3>${quote ? "Devis pour" : "Facturé à"}</h3>${c.company ? "<b>" + esc(c.company) + "</b><br>" : ""}${esc(c.name)}${c.address ? "<br>" + esc(c.address) : ""}${c.phone ? "<br>" + esc(c.phone) : ""}${c.email ? "<br>" + esc(c.email) : ""}</div>
+    ${pay ? `<div><h3>Paiement</h3><span class="paid">${d.cancelled ? "Commande annulée" : "Payée"}</span>${d.payment.date ? " le " + day(d.payment.date) : ""}<br>${pay}</div>` : ""}
+  </div>
+  <table>
+    <thead><tr><th>Désignation</th><th class="r">Qté</th><th class="r hide">Prix unitaire</th><th class="r">Montant</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <div class="tot">
+    ${vat ? `<div><span>Total HT</span><span>${money(ht)}</span></div><div><span>TVA ${vat} %</span><span>${money(d.total - ht)}</span></div>` : ""}
+    <div class="big"><span>Total${vat ? " TTC" : ""}</span><span>${money(d.total)}</span></div>
+    ${vat ? "" : '<div style="color:var(--gris);font-size:12px;justify-content:flex-end">TVA non applicable</div>'}
+  </div>
+  ${d.notes ? `<div class="notes">${esc(d.notes)}</div>` : ""}
+  <div class="foot">${quote ? "Pour accepter ce devis, répondez à l'email qui l'accompagne ou écrivez-nous sur WhatsApp." : "Merci pour votre confiance."}<br>${esc(s.legal_name)} · www.licenceoff.com</div>
+</div>`;
+  document.getElementById("bar").hidden = false;
+}
+
+(async () => {
+  const payload = q.get("d") ? { action: "invoice", d: q.get("d") } : { action: "invoice", o: q.get("o") || "" };
+  try {
+    const r = await fetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    const d = await r.json();
+    if (!r.ok || d.error) throw new Error(d.error || "erreur");
+    render(d);
+  } catch (e) {
+    root.innerHTML = '<div class="msg"><h2>Document introuvable</h2><p>' + (e.message === "pas_de_facture"
+      ? "La facture est créée dès que le paiement est confirmé. Revenez un peu plus tard, ou écrivez-nous sur WhatsApp."
+      : "Le lien est peut-être incomplet. Vérifiez-le ou écrivez-nous sur WhatsApp.") + '</p><p><a href="/">Retour au site</a></p></div>';
+  }
+})();
+document.getElementById("print").addEventListener("click", () => window.print());
+</script>
+</body>
+</html>

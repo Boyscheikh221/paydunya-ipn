@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Mon panier — licenceoff.com</title>
+<link rel="stylesheet" href="/shop.css?v=17">
+<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="64x64" href="/img/profil-64.png"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+<meta property="og:image" content="https://www.licenceoff.com/img/partage.jpg">
+</head>
+<body>
+<main class="wrap">
+  <h1 style="margin:24px 0 0">Mon panier</h1>
+  <div id="view"></div>
+</main>
+<script src="/shop.js?v=17"></script>
+<script>
+LO.page("shop");
+const { el, $, fcfa } = LO;
+const ERR = {
+  nom_invalide: "Indiquez votre nom complet.",
+  email_invalide: "Adresse email invalide.",
+  telephone_invalide: "Numéro WhatsApp invalide.",
+  panier_vide: "Votre panier est vide.",
+  produit_introuvable: "Un produit de votre panier n'est plus disponible. Retirez-le et réessayez.",
+  livraison_manquante: "Choisissez un mode de livraison.",
+  adresse_manquante: "Indiquez votre adresse de livraison.",
+  trop_de_commandes: "Vous avez déjà plusieurs commandes en attente. Contactez-nous sur WhatsApp.",
+};
+// prix avec le code parrain (calculés par le serveur, recalculés à la commande)
+let quote = { code: null, discount_pct: 0, prices: {} };
+const priceOf = (i) => quote.prices[i.slug] ?? i.price;
+async function loadQuote(code) {
+  const items = LO.cart();
+  if (!code || !items.length) { quote = { code: null, discount_pct: 0, prices: {} }; return null; }
+  try { const d = await LO.boutique({ action: "quote", code, slugs: items.map((i) => i.slug) }); quote = d.code ? d : { code: null, discount_pct: 0, prices: {} }; return d.code; }
+  catch (_) { return null; }
+}
+
+// produits physiques : livraison dans Dakar (domicile ou bus) ; hors Dakar, le client nous écrit sur WhatsApp
+let cinfo = { physical: [], shipping: { home: 1500, bus: 1000 } };
+const ship = { method: "home", address: "", zone: "", lat: null, lng: null };
+async function loadCartInfo() {
+  const items = LO.cart(); if (!items.length) return;
+  try { const d = await LO.boutique({ action: "cart_info", slugs: items.map((i) => i.slug) }); if (d.shipping) cinfo = d; } catch (_) {}
+}
+const hasPhysical = () => LO.cart().some((i) => cinfo.physical.includes(i.slug));
+const shipFee = () => hasPhysical() && ship.method !== "out" ? Number(cinfo.shipping[ship.method] || 0) : 0;
+
+function shipBox(update) {
+  const opt = (v, title, sub) => {
+    const inp = el("input", { type: "radio", name: "ship", value: v });
+    inp.checked = ship.method === v;
+    inp.addEventListener("change", () => { ship.method = v; sync(); update(); });
+    return el("label", { class: "ship-opt" }, inp, el("span", {}, el("b", { text: title }), el("span", { class: "note", text: sub })));
+  };
+  const addr = el("textarea", { class: "field", rows: "2", placeholder: "Rue, immeuble, point de repère…", maxlength: "300" }); addr.value = ship.address;
+  addr.addEventListener("input", () => { ship.address = addr.value; });
+  const zone = el("input", { class: "field", placeholder: "ex : Médina, Parcelles, Almadies…", maxlength: "80" }); zone.value = ship.zone;
+  zone.addEventListener("input", () => { ship.zone = zone.value; });
+  const posInfo = el("span", { class: "note", text: ship.lat != null ? "📍 Position enregistrée ✔" : "" });
+  const posBtn = el("button", { class: "btn light", type: "button", style: "margin-top:8px", text: "📍 Partager ma position" });
+  posBtn.addEventListener("click", () => {
+    if (!navigator.geolocation) { posInfo.textContent = "Votre téléphone ne permet pas de partager la position. Écrivez bien l'adresse."; return; }
+    posBtn.disabled = true; posInfo.textContent = "Recherche de votre position…";
+    navigator.geolocation.getCurrentPosition(
+      (p) => { ship.lat = p.coords.latitude; ship.lng = p.coords.longitude; posBtn.disabled = false; posInfo.textContent = "📍 Position enregistrée ✔ (le livreur trouvera plus facilement)"; },
+      () => { posBtn.disabled = false; posInfo.textContent = "Position non partagée. Ce n'est pas grave : l'adresse suffit."; },
+      { enableHighAccuracy: true, timeout: 15000 });
+  });
+  const fields = el("div", {}, el("label", { text: "Adresse de livraison" }), addr, el("label", { text: "Quartier" }), zone,
+    el("div", { style: "display:flex;gap:10px;align-items:center;flex-wrap:wrap" }, posBtn, posInfo),
+    el("p", { class: "note", style: "margin:6px 0 0", text: "Votre position sert uniquement à la livraison, si vous l'acceptez." }));
+  const out = el("div", { class: "note", style: "margin-top:8px" }, "Pour une livraison hors de Dakar, écrivez-nous : nous trouverons ensemble le meilleur moyen de vous envoyer le colis. ",
+    el("a", { class: "btn", style: "margin-top:8px", href: "https://wa.me/" + WHATSAPP_NUMBER + "?text=" + encodeURIComponent("Bonjour, je souhaite commander (" + LO.cart().map((i) => i.qty + " × " + i.name).join(", ") + ") avec une livraison hors de Dakar."), target: "_blank", rel: "noopener", text: "Contacter l'assistance sur WhatsApp" }));
+  const sync = () => { fields.classList.toggle("hidden", ship.method === "out"); out.classList.toggle("hidden", ship.method !== "out"); };
+  sync();
+  return el("div", { class: "ship-box" }, el("h2", { style: "margin:18px 0 6px;font-size:18px", text: "Livraison" }),
+    opt("home", "À domicile dans Dakar", "à partir de " + fcfa(cinfo.shipping.home)),
+    opt("bus", "Envoi par bus dans Dakar", fcfa(cinfo.shipping.bus)),
+    opt("out", "Hors de Dakar", "on s'organise ensemble sur WhatsApp"),
+    fields, out);
+}
+
+function render() {
+  const items = LO.cart();
+  const view = $("#view");
+  if (!items.length) {
+    view.replaceChildren(el("div", { class: "panel empty", style: "margin:24px 0" },
+      el("p", { text: "Votre panier est vide." }), el("a", { class: "btn", href: LO.url.shop, text: "Découvrir la boutique" })));
+    return;
+  }
+  const total = items.reduce((s, i) => s + priceOf(i) * i.qty, 0);
+  const listTotal = items.reduce((s, i) => s + i.price * i.qty, 0);
+  const lines = items.map((i, idx) => {
+    const q = el("input", { type: "number", min: "1", max: String(i.max || 20), value: String(i.qty), "aria-label": "Quantité" });
+    const setQ = (n) => { const all = LO.cart(); all[idx].qty = Math.max(1, Math.min(i.max || 20, Math.floor(n) || 1)); LO.saveCart(all); render(); };
+    q.addEventListener("change", () => setQ(Number(q.value)));
+    return el("div", { class: "line" },
+      el("a", { class: "th", href: LO.url.product(i.slug) }, i.image ? el("img", { src: i.image, alt: "" }) : LO.initials(i.name)),
+      el("div", {},
+        el("a", { class: "nm", href: LO.url.product(i.slug), style: "color:inherit", text: i.name }),
+        el("div", { class: "note" }, priceOf(i) < i.price ? el("s", { text: fcfa(i.price), style: "margin-right:6px" }) : null, fcfa(priceOf(i)) + " l'unité"),
+        el("div", { style: "display:flex;gap:12px;align-items:center;margin-top:6px" },
+          el("div", { class: "qty", style: "transform:scale(.85);transform-origin:left" },
+            el("button", { type: "button", text: "−", onclick: () => setQ(i.qty - 1) }), q, el("button", { type: "button", text: "+", onclick: () => setQ(i.qty + 1) })),
+          el("button", { class: "rm", text: "Retirer", onclick: () => { const all = LO.cart(); all.splice(idx, 1); LO.saveCart(all); render(); } }))),
+      el("strong", { text: fcfa(priceOf(i) * i.qty) }));
+  });
+
+  const f = (id, label, type, ac, ph) => [el("label", { for: id, text: label }), el("input", { id, class: "field", type, autocomplete: ac, placeholder: ph })];
+  const msg = el("div", { class: "msg" });
+  const go = el("button", { class: "btn orange block", style: "margin-top:16px" });
+  const feeLine = el("div", { class: "note", style: "margin-top:12px;display:flex;justify-content:space-between" });
+  const totVal = el("span");
+  const update = () => {
+    const fee = shipFee();
+    feeLine.replaceChildren(el("span", { text: "Livraison" + (ship.method === "home" ? " à domicile" : ship.method === "bus" ? " par bus" : "") }), el("span", { text: fee ? fcfa(fee) : "—" }));
+    feeLine.classList.toggle("hidden", !hasPhysical());
+    totVal.textContent = fcfa(total + fee);
+    go.textContent = "Commander et payer " + fcfa(total + fee);
+    go.classList.toggle("hidden", hasPhysical() && ship.method === "out");
+  };
+  go.addEventListener("click", async () => {
+    msg.textContent = "";
+    go.disabled = true; go.textContent = "Création de la commande…";
+    try {
+      const d = await LO.boutique({
+        action: "create_order", items: LO.cart().map((i) => ({ slug: i.slug, qty: i.qty })),
+        name: $("#name").value, email: $("#email").value, phone: $("#phone").value, website: $("#website").value, ref: quote.code || "", origin: LO.source(), marketing: !!($("#mkt") && $("#mkt").checked),
+        shipping: hasPhysical() ? { method: ship.method, address: ship.address, zone: ship.zone, lat: ship.lat, lng: ship.lng } : undefined,
+      });
+      if (d.token) {
+        LO.saveCart([]);
+        location.href = "/commande?o=" + encodeURIComponent(d.token) + "&pay=1";
+        return;
+      }
+      msg.textContent = d.error === "stock_insuffisant"
+        ? "Stock insuffisant pour « " + d.product + " » : il en reste " + d.left + ". Modifiez la quantité."
+        : ERR[d.error] || "Erreur, réessayez dans un instant.";
+    } catch (_) { msg.textContent = "Erreur de connexion, réessayez."; }
+    go.disabled = false; update();
+  });
+
+  view.replaceChildren(el("div", { class: "two" },
+    el("div", { class: "panel" }, ...lines),
+    el("div", { class: "panel" },
+      el("h2", { style: "margin:0 0 4px;font-size:18px", text: "Vos coordonnées" }),
+      el("p", { class: "note", text: hasPhysical() ? "Après paiement, nous vous contactons sur WhatsApp pour la livraison. Vos clés et liens éventuels s'affichent sur votre page de commande." : "Après paiement, votre clé et vos liens s'affichent sur votre page de commande." }),
+      ...f("name", "Nom complet", "text", "name", "ex : Moussa Diop"),
+      ...f("email", "Email", "email", "email", "vous@exemple.com"),
+      ...f("phone", "Numéro WhatsApp", "tel", "tel", "ex : 77 123 45 67"),
+      el("input", { id: "website", class: "hp", tabindex: "-1", autocomplete: "off", "aria-hidden": "true" }),
+      el("label", { class: "note", style: "display:flex;gap:8px;align-items:flex-start;margin-top:10px;cursor:pointer" },
+        el("input", { id: "mkt", type: "checkbox", style: "margin-top:3px" }), "Je souhaite recevoir les offres et nouveautés licenceoff.com par email (désinscription en un clic)."),
+      hasPhysical() ? shipBox(update) : null,
+      codeBox(),
+      listTotal > total ? el("div", { class: "note", style: "margin-top:12px;display:flex;justify-content:space-between" }, el("span", { text: "Remise parrain (" + quote.code + ")" }), el("span", { text: "− " + fcfa(listTotal - total) })) : null,
+      feeLine,
+      el("div", { class: "tot", style: "margin-top:8px" }, el("span", { text: "Total" }), totVal),
+      go, msg,
+      el("p", { class: "note", style: "margin-top:12px", text: "🔒 Paiement sécurisé par PayDunya : Wave, Orange Money, Free Money ou carte." }))));
+  update();
+}
+function codeBox() {
+  const box = el("details", { style: "margin-top:14px", open: quote.code ? "" : null }, el("summary", { style: "cursor:pointer;font-weight:700", text: quote.code ? "Code parrain : " + quote.code + " (-" + quote.discount_pct + " %)" : "Vous avez un code parrain ?" }));
+  const inp = el("input", { class: "field", placeholder: "ex : AMADOU", value: quote.code || "", style: "text-transform:uppercase" });
+  const info = el("div", { class: "note" });
+  const ok = el("button", { class: "btn light", type: "button", style: "margin-top:8px", text: "Appliquer" });
+  ok.addEventListener("click", async () => {
+    const c = inp.value.trim().toUpperCase();
+    const got = await loadQuote(c);
+    if (c && !got) { info.textContent = "Ce code n'existe pas ou n'est plus actif."; return; }
+    LO.setRef(got || ""); render();
+  });
+  box.append(inp, ok, info);
+  if (quote.code) box.append(el("button", { class: "rm", type: "button", text: "Retirer le code", onclick: () => { LO.setRef(""); quote = { code: null, discount_pct: 0, prices: {} }; render(); } }));
+  return box;
+}
+render();
+update0();
+async function update0() { await Promise.all([loadCartInfo(), loadQuote(LO.refCode())]); render(); }
+</script>
+</body>
+</html>

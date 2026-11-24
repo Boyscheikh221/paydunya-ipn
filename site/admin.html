@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Admin — liens de téléchargement</title>
+<style>
+  :root { --bleu:#1F5FBF; --nuit:#102A43; --orange:#F59E0B; --creme:#F4EFE6; --rouge:#b91c1c; --vert:#15803d; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background:var(--creme); color:var(--nuit); padding:14px; }
+  .wrap { max-width:1000px; margin:0 auto; }
+  h1 { font-size:20px; margin:4px 0 14px; } h1 .a{color:var(--bleu)} h1 .b{color:var(--orange)}
+  .box { background:#fff; border-radius:12px; padding:16px; margin-bottom:14px; box-shadow:0 2px 10px rgba(16,42,67,.08); }
+  label { font-size:12px; font-weight:700; display:block; margin:8px 0 3px; }
+  input, select { width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:8px; font-size:15px; }
+  .row { display:grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap:10px; }
+  button { border:0; border-radius:8px; padding:9px 12px; font-weight:700; cursor:pointer; background:var(--bleu); color:#fff; font-size:13px; }
+  button.big { padding:12px 18px; font-size:15px; margin-top:12px; }
+  button.green { background:var(--vert); } button.red { background:var(--rouge); } button.grey { background:#64748b; } button.org { background:var(--orange); }
+  .tablewrap { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; font-size:13px; min-width:760px; }
+  th, td { text-align:left; padding:8px 6px; border-bottom:1px solid #e2e8f0; vertical-align:top; }
+  th { font-size:12px; opacity:.7; }
+  .tag { display:inline-block; padding:2px 8px; border-radius:99px; font-size:12px; font-weight:700; color:#fff; }
+  .t-pending { background:#a16207; } .t-active { background:var(--vert); } .t-revoked { background:var(--rouge); }
+  .acts { display:flex; flex-wrap:wrap; gap:4px; }
+  .msg { margin-top:10px; font-size:14px; font-weight:600; word-break:break-all; }
+  .hidden { display:none; }
+  .small { font-size:12px; opacity:.7; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1><span class="a">licence</span><span class="b">off</span> — Admin téléchargements</h1>
+
+  <div id="login" class="box">
+    <label for="pw">Mot de passe admin</label>
+    <input id="pw" type="password" autocomplete="current-password">
+    <button id="btnLogin" class="big">Se connecter</button>
+    <div id="loginMsg" class="msg"></div>
+  </div>
+
+  <div id="app" class="hidden">
+    <div class="box">
+      <strong>Nouveau lien client</strong>
+      <div class="row">
+        <div><label for="email">Email du client</label><input id="email" type="email" placeholder="client@exemple.com"></div>
+        <div><label for="note">Note (nom, n° commande…)</label><input id="note" type="text" placeholder="ex : Moussa – Office 2024"></div>
+      </div>
+      <div class="row">
+        <div><label for="days">Validité (jours)</label><input id="days" type="number" value="7" min="1" max="90"></div>
+        <div><label for="max">Téléchargements max</label><input id="max" type="number" value="2" min="1" max="10"></div>
+        <div><label for="act">Statut au départ</label>
+          <select id="act"><option value="no">En attente (je l'active après)</option><option value="yes">Actif tout de suite</option></select>
+        </div>
+      </div>
+      <button id="btnCreate" class="big">Créer le lien</button>
+      <div id="createMsg" class="msg"></div>
+    </div>
+
+    <div class="box">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+        <strong>Liens existants</strong>
+        <div><button id="btnRefresh" class="grey">Actualiser</button> <button id="btnLogout" class="grey">Déconnexion</button></div>
+      </div>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Client</th><th>Statut</th><th>Téléch.</th><th>Expire</th><th>Actions</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <div class="small">Un lien « en attente » ne télécharge rien tant que vous ne l'avez pas activé.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ====== À MODIFIER ======
+const ADMIN_URL = "https://vnzpxfoeiixiqxkhdnik.supabase.co/functions/v1/admin";
+const DL_PAGE   = "https://www.licenceoff.com/dl.html"; // adresse de la page dl.html
+// ========================
+
+const $ = (id) => document.getElementById(id);
+let pw = "";
+try { pw = sessionStorage.getItem("lo_pw") || ""; } catch (_) {}
+
+async function api(payload) {
+  const r = await fetch(ADMIN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-admin-password": pw },
+    body: JSON.stringify(payload),
+  });
+  if (r.status === 401) throw new Error("unauthorized");
+  const d = await r.json();
+  if (d.error) throw new Error(d.error);
+  return d;
+}
+
+function td(text) { const c = document.createElement("td"); c.textContent = text; return c; }
+function fmt(iso) { return iso ? new Date(iso).toLocaleDateString("fr-FR", { day:"2-digit", month:"short" }) : "—"; }
+function linkFor(token) { return DL_PAGE + "?t=" + token; }
+
+async function copy(text, msgEl) {
+  try { await navigator.clipboard.writeText(text); msgEl.textContent = "Lien copié ✔ : " + text; }
+  catch (_) { msgEl.textContent = "Copiez ce lien : " + text; }
+}
+
+function btn(label, cls, fn) {
+  const b = document.createElement("button");
+  b.textContent = label; if (cls) b.className = cls;
+  b.addEventListener("click", fn);
+  return b;
+}
+
+async function refresh() {
+  const { rows } = await api({ action: "list" });
+  const tbody = $("rows");
+  tbody.replaceChildren();
+  for (const r of rows) {
+    const tr = document.createElement("tr");
+
+    const c1 = document.createElement("td");
+    const b = document.createElement("strong"); b.textContent = r.email;
+    c1.append(b);
+    if (r.note) { c1.append(document.createElement("br")); const s = document.createElement("span"); s.className = "small"; s.textContent = r.note; c1.append(s); }
+
+    const c2 = document.createElement("td");
+    const tag = document.createElement("span");
+    tag.className = "tag t-" + r.status;
+    tag.textContent = { pending: "En attente", active: "Actif", revoked: "Révoqué" }[r.status];
+    c2.append(tag);
+
+    const c3 = td(r.download_count + " / " + r.max_downloads);
+    const expired = new Date(r.expires_at) < new Date();
+    const c4 = td(fmt(r.expires_at) + (expired ? " (expiré)" : ""));
+
+    const c5 = document.createElement("td");
+    const acts = document.createElement("div"); acts.className = "acts";
+    const doAct = (payload) => async () => { try { await api(payload); await refresh(); } catch (e) { alert("Erreur : " + e.message); } };
+
+    acts.append(btn("Copier le lien", "org", () => copy(linkFor(r.token), $("createMsg"))));
+    if (r.status !== "active") acts.append(btn("Activer", "green", doAct({ action: "set_status", id: r.id, status: "active" })));
+    if (r.status !== "revoked") acts.append(btn("Révoquer", "red", doAct({ action: "set_status", id: r.id, status: "revoked" })));
+    acts.append(btn("+7 jours", "grey", doAct({ action: "extend", id: r.id, days: 7 })));
+    acts.append(btn("+1 téléch.", "grey", doAct({ action: "add_download", id: r.id })));
+    acts.append(btn("Supprimer", "grey", () => { if (confirm("Supprimer définitivement ce lien ?")) doAct({ action: "delete", id: r.id })(); }));
+    c5.append(acts);
+
+    tr.append(c1, c2, c3, c4, c5);
+    tbody.append(tr);
+  }
+}
+
+function showApp() { $("login").classList.add("hidden"); $("app").classList.remove("hidden"); }
+function showLogin() { $("app").classList.add("hidden"); $("login").classList.remove("hidden"); }
+
+async function login() {
+  pw = $("pw").value || pw;
+  $("loginMsg").textContent = "";
+  try {
+    await refresh();
+    try { sessionStorage.setItem("lo_pw", pw); } catch (_) {}
+    showApp();
+  } catch (e) {
+    $("loginMsg").textContent = e.message === "unauthorized" ? "Mot de passe incorrect." : "Erreur : " + e.message;
+    pw = "";
+  }
+}
+
+$("btnLogin").addEventListener("click", login);
+$("pw").addEventListener("keydown", (e) => { if (e.key === "Enter") login(); });
+$("btnRefresh").addEventListener("click", () => refresh().catch((e) => alert(e.message)));
+$("btnLogout").addEventListener("click", () => { try { sessionStorage.removeItem("lo_pw"); } catch (_) {} pw = ""; location.reload(); });
+
+$("btnCreate").addEventListener("click", async () => {
+  const msg = $("createMsg");
+  msg.textContent = "";
+  try {
+    const { row } = await api({
+      action: "create",
+      email: $("email").value,
+      note: $("note").value,
+      days: Number($("days").value),
+      max_downloads: Number($("max").value),
+      active: $("act").value === "yes",
+    });
+    await copy(linkFor(row.token), msg);
+    $("email").value = ""; $("note").value = "";
+    await refresh();
+  } catch (e) {
+    msg.textContent = "Erreur : " + e.message;
+  }
+});
+
+if (pw) login();
+</script>
+</body>
+</html>

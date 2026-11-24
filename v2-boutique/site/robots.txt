@@ -1,0 +1,8 @@
+User-agent: *
+Disallow: /admin
+Disallow: /dl
+Disallow: /panier
+Disallow: /commande
+
+Sitemap: https://www.licenceoff.com/sitemap.xml
+Sitemap: https://vnzpxfoeiixiqxkhdnik.supabase.co/functions/v1/boutique?sitemap=1
