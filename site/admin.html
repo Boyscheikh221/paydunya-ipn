@@ -608,7 +608,7 @@
         <div id="prPreview" class="small" style="margin-top:10px"></div>
         <div class="bar" style="margin-top:10px"><label class="check" style="margin:0"><input type="checkbox" id="prActive" checked> Activée</label><button id="prSave" class="green">Enregistrer la promo</button><button id="prReset" class="grey">Nouvelle promo</button></div>
       </div>
-      <div class="box"><div class="tablewrap"><table><thead><tr><th>Promo</th><th>Réduction</th><th>Sur</th><th>Période</th><th>État</th><th></th></tr></thead><tbody id="prRows"></tbody></table></div></div>
+      <div class="box"><div class="tablewrap"><table><thead><tr><th>Promo</th><th>Réduction</th><th>Produits concernés</th><th>Période</th><th>État</th><th></th></tr></thead><tbody id="prRows"></tbody></table></div></div>
     </section>
 
     <section id="tab-faq" class="hidden">
@@ -2022,9 +2022,13 @@ async function loadPromos() {
   $("prRows").replaceChildren(...rows.map((p) => {
     const [st, cls] = promoState(p, now);
     const on = p.scope === "all" ? "Toute la boutique" : (p.scope === "categories" ? p.category_ids : p.product_ids).map(nameOf).join(", ");
+    // nombre de produits publiés touchés par la promo
+    const live = products.filter((x) => x.active !== false);
+    const nb = p.scope === "all" ? live.length : p.scope === "products" ? p.product_ids.length
+      : live.filter((x) => { const c = categories.find((k) => k.id === x.category_id); return c && (p.category_ids.includes(c.id) || p.category_ids.includes(c.parent_id)); }).length;
     const per = new Date(p.starts_at).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" }) + " → " + (p.ends_at ? new Date(p.ends_at).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" }) : "sans fin");
     const save = (patch, msg) => async () => { await api({ action: "promo_save", ...p, ...patch }); toast(msg); await loadPromos(); };
-    return tr(td(el("strong", p.name)), td(promoKindText(p)), td(el("span", on.length > 120 ? on.slice(0, 120) + "…" : on, "small")), td(el("span", per, "small")),
+    return tr(td(el("strong", p.name)), td(promoKindText(p)), td(el("strong", nb + " produit" + (nb > 1 ? "s" : "")), el("br"), el("span", on.length > 120 ? on.slice(0, 120) + "…" : on, "small")), td(el("span", per, "small")),
       td(el("span", st, "tag s-" + cls)),
       td(btn("Modifier", "grey", () => {
         $("prId").value = p.id; $("prName").value = p.name; $("prKind").value = p.kind; $("prValue").value = p.value; $("prScope").value = p.scope;
