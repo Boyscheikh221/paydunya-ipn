@@ -149,6 +149,9 @@ function renderBody(body: string, c: Ctx) {
     if (t === "{bouton}") return buttonHtml(c.link, buttonLabel(c.items));
     if (t === "{bouton_installation}") return installButtonHtml(c.install ?? c.link);
     if (t === "{bouton_whatsapp}") return waButtonHtml(c.wa);
+    // bouton lien libre dans un modèle : {bouton_lien:Texte du bouton|https://…} (seul sur sa ligne)
+    const bl = t.match(/^\{bouton_lien:([^|}]{1,80})\|(https:\/\/[^\s}]+)\}$/);
+    if (bl) return `<p style="text-align:center;margin:14px 0"><a href="${esc(bl[2])}" style="display:inline-block;background:${EM.B};color:#fff;font-weight:800;text-decoration:none;padding:12px 20px;border-radius:10px">${esc(bl[1])}</a></p>`;
     const inline = (s: string) => esc(sub(s))
       .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
       .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, `<a href="$2" style="color:${EM.B};font-weight:700">$1</a>`);
@@ -161,7 +164,8 @@ function renderBody(body: string, c: Ctx) {
   const text = sub(b).replace(/\*\*(.+?)\*\*/g, "$1").replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, "$1 : $2")
     .replace(/\{produits\}/g, productsText(c.items)).replace(/\{cles\}/g, keysText(c.items)).replace(/\{bouton\}/g, "Votre commande : " + c.link)
     .replace(/\{bouton_installation\}/g, "Installation terminée ? Recevez votre clé (lien à usage unique) : " + (c.install ?? c.link))
-    .replace(/\{bouton_whatsapp\}/g, "Assistance WhatsApp : https://wa.me/" + c.wa);
+    .replace(/\{bouton_whatsapp\}/g, "Assistance WhatsApp : https://wa.me/" + c.wa)
+    .replace(/\{bouton_lien:([^|}]{1,80})\|(https:\/\/[^\s}]+)\}/g, "$1 : $2");
   return { html, text };
 }
 // Email « transactionnel » sobre (fond blanc, peu d'images, pas de slogan) : Gmail le classe

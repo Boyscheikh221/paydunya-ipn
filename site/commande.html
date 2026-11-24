@@ -80,6 +80,12 @@ function itemBlock(i) {
         body.append(el("div", { class: "note", style: "margin-top:6px", text: "Identifiant (adresse de connexion)" }), el("div", { class: "key" }, a[1]), copyBtn(a[1]),
           el("div", { class: "note", style: "margin-top:6px", text: "Mot de passe" }), el("div", { class: "key" }, a[2]), copyBtn(a[2]),
           el("p", { class: "note", style: "margin-top:6px", text: "Utilisez ces identifiants pour vous connecter. La procédure complète est dans l'email de livraison." }));
+        // Microsoft 365 : installateurs officiels (si Office n'est pas encore installé ; aucune clé, la connexion suffit)
+        if (/\b365\b/.test(i.name || "")) body.append(
+          el("p", { class: "note", style: "margin-top:10px;font-weight:700", text: "Office pas encore installé ? Téléchargez Microsoft 365 (pas Office 2021 ni 2024), puis connectez-vous avec ce compte :" }),
+          el("div", { style: "display:flex;gap:8px;flex-wrap:wrap;margin-top:6px" },
+            el("a", { class: "btn", href: "https://c2rsetup.officeapps.live.com/c2r/download.aspx?ProductreleaseID=O365ProPlusRetail&platform=x64&language=fr-fr&version=O16GA", rel: "noopener", text: "⬇ Microsoft 365 pour Windows" }),
+            el("a", { class: "btn", href: "https://go.microsoft.com/fwlink/?linkid=525133", rel: "noopener", text: "⬇ Microsoft 365 pour Mac" })));
       } else body.append(el("div", { class: "key" }, k), copyBtn(k));
     }
   }
