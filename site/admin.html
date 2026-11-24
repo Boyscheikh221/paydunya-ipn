@@ -212,6 +212,7 @@
         <button id="oRefresh" class="grey">Actualiser</button>
         <button id="oNewBtn" class="org">+ Vente manuelle</button>
       </div>
+      <label class="check small" style="margin:4px 0 10px" title="Désactivé : le logo du PDF revendeur n'a aucun lien (le client final ne peut pas trouver vos prix)."><input type="checkbox" id="pdfLogoLink"> 📄 PDF revendeur : logo cliquable vers la page du produit (affiche votre prix public)</label>
       <div id="oNew" class="box hidden">
         <h2>Nouvelle vente (WhatsApp, en direct…)</h2>
         <div id="nLines"></div>
@@ -1124,6 +1125,9 @@ async function renewLink(o, i, reload) {
 }
 
 // ---------- PDF d'instructions « neutre » pour un revendeur ----------
+// interrupteur « logo cliquable » : désactivé par défaut, mémorisé dans ce navigateur
+try { $("pdfLogoLink").checked = localStorage.getItem("lo_pdf_logo_link") === "1"; } catch (_) {}
+$("pdfLogoLink").addEventListener("change", (e) => { try { localStorage.setItem("lo_pdf_logo_link", e.target.checked ? "1" : "0"); } catch (_) {} toast(e.target.checked ? "Logo du PDF cliquable" : "Logo du PDF sans lien"); });
 // Identifiants / clés + procédure du modèle d'email du produit, SANS prix, n° de commande, adresse du site ni assistance licenceoff.
 // Logo « licenceoff » sans « .com ». Tous les liens sont cliquables.
 let jsPdfLoading;
@@ -1146,7 +1150,7 @@ function buildInstructionsPdf(J, item) {
   // logo texte « licenceoff » (sans .com, sans lien)
   doc.setFont("helvetica", "bold"); doc.setFontSize(20); doc.setTextColor(...B); doc.text("licence", M, y);
   doc.setTextColor(...O); doc.text("off", M + doc.getTextWidth("licence"), y);
-  if (item.url) doc.link(M, y - 7, doc.getTextWidth("licenceoff") + 1, 9, { url: item.url }); // logo cliquable → page du produit
+  if (item.url && $("pdfLogoLink")?.checked) doc.link(M, y - 7, doc.getTextWidth("licenceoff") + 1, 9, { url: item.url }); // logo cliquable → page du produit
   y += 4; doc.setDrawColor(...O); doc.setLineWidth(0.6); doc.line(M, y, R, y); y += 10;
   doc.setTextColor(...N); doc.setFontSize(15); const tl = doc.splitTextToSize(pdfTxt("Instructions - " + item.product_name), R - M); doc.text(tl, M, y); y += tl.length * 6.5 + 3;
   // identifiants / clés dans des cadres
