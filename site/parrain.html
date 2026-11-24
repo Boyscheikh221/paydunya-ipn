@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Espace parrain — licenceoff.com</title>
+<meta name="theme-color" content="#1E4FB8">
+<link rel="stylesheet" href="/shop.css?v=21">
+<style>
+  .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin:14px 0; }
+  .kpi { background:#fff; border:1px solid var(--ligne); border-radius:14px; padding:14px; }
+  .kpi b { display:block; font-size:22px; color:var(--nuit); } .kpi span { font-size:13px; color:var(--gris); }
+  .tbl { width:100%; border-collapse:collapse; font-size:14px; } .tbl th, .tbl td { padding:9px 8px; border-bottom:1px solid var(--ligne); text-align:left; vertical-align:top; }
+  .tbl th { font-size:12px; color:var(--gris); text-transform:uppercase; letter-spacing:.03em; }
+  .scroll { overflow-x:auto; } .mono { font-family:ui-monospace,Consolas,monospace; }
+  .codecard { border:1px solid var(--ligne); border-radius:12px; padding:12px; margin:10px 0; background:#fff; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .pill { display:inline-block; padding:2px 9px; border-radius:99px; font-size:12px; font-weight:700; background:var(--ciel); color:var(--bleu); }
+  .pill.ok { background:#dcfce7; color:#15803d; } .pill.wait { background:#fef3c7; color:#92400e; }
+</style>
+<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="64x64" href="/img/profil-64.png"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+<meta property="og:image" content="https://www.licenceoff.com/img/partage.jpg">
+</head>
+<body>
+<main class="wrap" style="max-width:980px">
+  <div id="view" style="margin:24px 0 40px"></div>
+</main>
+<script src="/shop.js?v=21"></script>
+<script>
+LO.page("");
+const { el, $, fcfa } = LO;
+const KEY = "lo_parrain";
+let S = ""; try { S = localStorage.getItem(KEY) || ""; } catch (_) {}
+const ERR = { code_invalide: "Le code doit faire 3 à 20 lettres ou chiffres.", code_pris: "Ce code est déjà pris, choisissez-en un autre.", trop_de_codes: "Limite de 50 liens atteinte.", lien_expire: "Ce lien de connexion a expiré ou a déjà servi. Demandez-en un nouveau." };
+const api = (p) => LO.boutique({ ...p, s: S });
+const pct = (n) => Number(n).toLocaleString("fr-FR", { maximumFractionDigits: 2 }) + " %";
+
+function loginView(msg) {
+  const email = el("input", { class: "field", type: "email", placeholder: "votre@email.com", autocomplete: "email" });
+  const info = el("p", { class: "note", text: msg || "" });
+  const b = el("button", { class: "btn orange", style: "margin-top:10px", text: "Recevoir mon lien de connexion" });
+  b.addEventListener("click", async () => {
+    if (!email.value.includes("@")) return email.focus();
+    b.disabled = true;
+    await LO.boutique({ action: "parrain_login", email: email.value }).catch(() => {});
+    info.textContent = "Si cette adresse est celle d'un parrain, un email avec un lien de connexion vient de partir (valable 30 minutes). Pensez à regarder dans les spams.";
+    b.disabled = false;
+  });
+  $("#view").replaceChildren(el("div", { class: "panel", style: "max-width:520px;margin:20px auto" },
+    el("h1", { style: "margin:0 0 6px", text: "Espace parrain" }),
+    el("p", { class: "note", text: "Entrez l'email que vous avez donné à licenceoff. Vous recevrez un lien pour vous connecter, sans mot de passe." }),
+    el("label", { text: "Email" }), email, b, info,
+    el("p", { class: "note", style: "margin-top:16px" }, "Pas encore parrain ? ", el("a", { href: "https://wa.me/221777860777?text=" + encodeURIComponent("Bonjour, je veux devenir parrain licenceoff."), target: "_blank", rel: "noopener", text: "Écrivez-nous sur WhatsApp" }), ".")));
+}
+
+async function copy(t, btn) { try { await navigator.clipboard.writeText(t); btn.textContent = "Copié ✔"; setTimeout(() => (btn.textContent = "Copier"), 1500); } catch (_) { prompt("Copiez :", t); } }
+
+function codeCard(c, products) {
+  const link = LO.SITE + "/?ref=" + c.code;
+  const p = el("input", { class: "field", type: "number", min: "0", max: "90", step: "0.5", value: String(Number(c.discount_pct)), style: "width:110px" });
+  const save = el("button", { class: "btn light", text: "Enregistrer" });
+  const active = el("input", { type: "checkbox" }); active.checked = c.active;
+  save.addEventListener("click", async () => { save.disabled = true; const d = await api({ action: "parrain_code_save", id: c.id, discount_pct: p.value, label: c.label, active: active.checked }); save.disabled = false; if (d.error) return LO.toast(ERR[d.error] || "Erreur"); LO.toast("Enregistré ✔"); load(); });
+  const cp = el("button", { class: "btn", text: "Copier" }); cp.addEventListener("click", () => copy(link, cp));
+  const wa = el("a", { class: "btn light", target: "_blank", rel: "noopener", href: "https://wa.me/?text=" + encodeURIComponent("Licences Windows et Office authentiques, livrées en quelques minutes. Avec mon lien, vous avez -" + Number(c.discount_pct) + " % : " + link), text: "Partager sur WhatsApp" });
+  return el("div", { class: "codecard" },
+    el("div", { class: "row", style: "justify-content:space-between" }, el("div", {}, el("b", { class: "mono", text: c.code }), " ", el("span", { class: "note", text: c.label || "" })),
+      el("span", { class: "pill" + (c.active ? " ok" : " wait"), text: c.active ? "Actif" : "Désactivé" })),
+    el("div", { class: "note", style: "margin:6px 0" }, "Lien : ", el("span", { class: "mono", text: link }), " · " + c.clicks + " visite(s)"),
+    el("div", { class: "row" }, cp, wa),
+    el("div", { class: "row", style: "margin-top:10px" }, el("label", { style: "margin:0", text: "Remise client" }), p, el("span", { text: "%" }),
+      el("label", { class: "check", style: "margin:0" }, active, " Actif"), save));
+}
+
+function dash(d) {
+  const newCode = el("input", { class: "field", placeholder: "ex : PROMO-ECOLE", style: "max-width:220px;text-transform:uppercase" });
+  const newLabel = el("input", { class: "field", placeholder: "Nom (ex : clients du bureau)", style: "max-width:260px" });
+  const newPct = el("input", { class: "field", type: "number", min: "0", max: "90", step: "0.5", value: "10", style: "width:100px" });
+  const add = el("button", { class: "btn", text: "Créer le lien" });
+  add.addEventListener("click", async () => { const r = await api({ action: "parrain_code_save", code: newCode.value, label: newLabel.value, discount_pct: newPct.value }); if (r.error) return LO.toast(ERR[r.error] || "Erreur"); LO.toast("Lien créé ✔"); load(); });
+
+  // simulateur : prix client et gain pour chaque produit avec la remise choisie
+  const simPct = el("input", { class: "field", type: "number", min: "0", max: "90", step: "0.5", value: String(Number(d.codes[0]?.discount_pct ?? 10)), style: "width:100px" });
+  const simBody = el("tbody");
+  const sim = () => { const k = Number(simPct.value) || 0; simBody.replaceChildren(...d.products.map((p) => { const unit = Math.max(p.wholesale, Math.round(p.price * (1 - k / 100))); return el("tr", {}, el("td", { text: p.name }), el("td", { text: fcfa(p.price) }), el("td", { text: fcfa(p.wholesale) }), el("td", {}, el("b", { text: fcfa(unit) }), unit === p.wholesale && k > 0 ? el("div", { class: "note", text: "plancher : prix de gros" }) : null), el("td", {}, el("b", { text: fcfa(unit - p.wholesale) }))); })); };
+  simPct.addEventListener("input", sim);
+
+  const wave = el("input", { class: "field", value: d.me.payout_info || "", placeholder: "ex : Wave 77 123 45 67" });
+  const phone = el("input", { class: "field", value: d.me.phone || "", placeholder: "ex : 77 123 45 67" });
+  const saveMe = el("button", { class: "btn light", style: "margin-top:8px", text: "Enregistrer" });
+  saveMe.addEventListener("click", async () => { await api({ action: "parrain_profile_save", payout_info: wave.value, phone: phone.value }); LO.toast("Enregistré ✔"); });
+  const out = el("button", { class: "rm", text: "Se déconnecter" });
+  out.addEventListener("click", async () => { await api({ action: "parrain_logout" }).catch(() => {}); try { localStorage.removeItem(KEY); } catch (_) {} S = ""; loginView(); });
+
+  $("#view").replaceChildren(
+    el("div", { class: "row", style: "justify-content:space-between" }, el("h1", { style: "margin:0", text: "Bonjour " + String(d.me.name).split(/\s+/)[0] + " 👋" }), out),
+    el("p", { class: "note", text: "Partagez vos liens : vos clients ont une remise, et vous gagnez la différence entre le prix payé et le prix de gros." }),
+    el("div", { class: "kpis" },
+      el("div", { class: "kpi" }, el("span", { text: "Gains totaux" }), el("b", { text: fcfa(d.earned) })),
+      el("div", { class: "kpi" }, el("span", { text: "Solde à venir" }), el("b", { text: fcfa(Math.max(0, d.balance)) }), el("span", { text: "versé à partir de " + fcfa(d.threshold) })),
+      el("div", { class: "kpi" }, el("span", { text: "En cours de versement" }), el("b", { text: fcfa(d.to_pay) })),
+      el("div", { class: "kpi" }, el("span", { text: "Déjà versé" }), el("b", { text: fcfa(d.paid_out) })),
+      el("div", { class: "kpi" }, el("span", { text: "Ventes payées" }), el("b", { text: String(d.sales.filter((s) => s.paid).length) }))),
+    el("div", { class: "panel", style: "margin-bottom:14px" }, el("h2", { style: "margin:0 0 4px;font-size:18px", text: "Mes liens et codes" }),
+      el("p", { class: "note", text: "Le client peut cliquer sur le lien, ou taper le code dans son panier. Vous choisissez la remise : plus elle est grande, plus votre gain est petit. Le prix ne descend jamais sous le prix de gros." }),
+      ...d.codes.map((c) => codeCard(c, d.products)),
+      el("div", { class: "codecard" }, el("b", { text: "Nouveau lien" }), el("div", { class: "row", style: "margin-top:8px" }, newCode, newLabel, newPct, el("span", { text: "%" }), add))),
+    el("div", { class: "panel", style: "margin-bottom:14px" }, el("h2", { style: "margin:0 0 4px;font-size:18px", text: "Prix et gains par produit" }),
+      el("div", { class: "row", style: "margin:6px 0 10px" }, el("label", { style: "margin:0", text: "Avec une remise de" }), simPct, el("span", { text: "%" })),
+      d.products.length ? el("div", { class: "scroll" }, el("table", { class: "tbl" }, el("thead", {}, el("tr", {}, ...["Produit", "Prix public", "Prix de gros", "Prix client", "Votre gain"].map((t) => el("th", { text: t })))), simBody))
+        : el("p", { class: "note", text: "Les prix de gros arrivent bientôt." })),
+    el("div", { class: "panel", style: "margin-bottom:14px" }, el("h2", { style: "margin:0 0 8px;font-size:18px", text: "Mes ventes" }),
+      d.sales.length ? el("div", { class: "scroll" }, el("table", { class: "tbl" }, el("thead", {}, el("tr", {}, ...["Date", "Client", "Produits", "Code", "Payé", "Gain"].map((t) => el("th", { text: t })))),
+        el("tbody", {}, ...d.sales.map((s) => el("tr", {}, el("td", { text: new Date(s.date).toLocaleDateString("fr-FR") }), el("td", { text: s.client }), el("td", { text: s.items }), el("td", { class: "mono", text: s.code || "" }),
+          el("td", {}, el("span", { class: "pill" + (s.paid ? " ok" : " wait"), text: s.paid ? fcfa(s.amount) : s.status === "cancelled" ? "Annulée" : "En attente" })), el("td", {}, el("b", { text: s.paid ? fcfa(s.gain) : "—" })))))))
+        : el("p", { class: "note", text: "Aucune vente pour l'instant. Partagez votre lien !" })),
+    el("div", { class: "panel", style: "margin-bottom:14px" }, el("h2", { style: "margin:0 0 8px;font-size:18px", text: "Versements" }),
+      el("label", { text: "Où recevoir vos gains (Wave, Orange Money…)" }), wave, el("label", { text: "Téléphone" }), phone, saveMe,
+      d.payouts.length ? el("table", { class: "tbl", style: "margin-top:12px" }, el("tbody", {}, ...d.payouts.map((p) => el("tr", {}, el("td", { text: new Date(p.created_at).toLocaleDateString("fr-FR") }), el("td", {}, el("b", { text: fcfa(p.amount_fcfa) })),
+        el("td", {}, el("span", { class: "pill" + (p.status === "paid" ? " ok" : " wait"), text: p.status === "paid" ? "Versé le " + new Date(p.paid_at).toLocaleDateString("fr-FR") : p.status === "to_pay" ? "En cours" : "Annulé" })))))) : null));
+  sim();
+}
+
+async function load() {
+  if (!S) return loginView();
+  const d = await api({ action: "parrain_me" }).catch(() => ({ error: "net" }));
+  if (d.error) { if (d.error === "non_connecte") { try { localStorage.removeItem(KEY); } catch (_) {} S = ""; } return loginView(d.error === "net" ? "Erreur de connexion, réessayez." : "Votre session a expiré, reconnectez-vous."); }
+  dash(d);
+}
+
+(async () => {
+  const t = new URLSearchParams(location.search).get("t");
+  if (t) {
+    history.replaceState(null, "", "/parrain");
+    const d = await LO.boutique({ action: "parrain_session", t }).catch(() => ({ error: "net" }));
+    if (d.s) { S = d.s; try { localStorage.setItem(KEY, S); } catch (_) {} }
+    else return loginView(ERR[d.error] || "Erreur, réessayez.");
+  }
+  load();
+})();
+</script>
+</body>
+</html>

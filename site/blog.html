@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blog — licenceoff.com</title>
+<meta name="description" content="Conseils, guides d'installation et actualités sur Windows, Office et les logiciels.">
+<link rel="stylesheet" href="/shop.css?v=21">
+<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="64x64" href="/img/profil-64.png"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+<meta property="og:image" content="https://www.licenceoff.com/img/partage.jpg">
+<link rel="alternate" type="application/rss+xml" title="Blog licenceoff.com" href="https://vnzpxfoeiixiqxkhdnik.supabase.co/functions/v1/boutique?blog_rss=1">
+</head>
+<body>
+<main class="wrap">
+  <div id="crumbs"></div>
+  <section class="block" style="padding-top:8px">
+    <h1 style="margin:0 0 6px">Blog</h1>
+    <p class="note" style="margin:0 0 18px">Guides d'installation, astuces et actualités.</p>
+    <div id="posts" class="posts"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
+  </section>
+</main>
+<script src="/shop.js?v=21"></script>
+<script>
+LO.page("blog");
+const { el, $ } = LO;
+LO.seo({ path: LO.url.blog });
+$("#crumbs").replaceChildren(LO.crumbs([["Accueil", LO.url.home], ["Blog"]]));
+LO.boutique({ action: "posts" }).then((d) => {
+  const list = d.posts || [];
+  $("#posts").replaceChildren(...list.map((p) => el("a", { class: "post-card", href: LO.url.post(p.slug) },
+    el("div", { class: "cv" }, (p.cover_url || LO.ytThumb(p.cover_video)) ? el("img", { src: p.cover_url || LO.ytThumb(p.cover_video), alt: "", loading: "lazy" }) : null, LO.ytId(p.cover_video) ? el("span", { class: "play", text: "▶" }) : null),
+    el("div", { class: "body" },
+      el("div", { class: "note", text: new Date(p.published_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }) }),
+      el("h3", { text: p.title }), p.excerpt ? el("p", { class: "note", text: p.excerpt }) : null))));
+  if (!list.length) $("#posts").replaceChildren(el("div", { class: "empty", text: "Les premiers articles arrivent bientôt." }));
+}).catch(() => $("#posts").replaceChildren(el("div", { class: "empty", text: "Erreur de chargement." })));
+</script>
+</body>
+</html>

@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Ma commande — licenceoff.com</title>
+<link rel="stylesheet" href="/shop.css?v=21">
+<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="64x64" href="/img/profil-64.png"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+<meta property="og:image" content="https://www.licenceoff.com/img/partage.jpg">
+</head>
+<body>
+<main class="wrap" style="max-width:820px">
+  <div id="view" style="padding:24px 0"><div class="skeleton"></div></div>
+</main>
+<script src="/shop.js?v=21"></script>
+<script>
+LO.page("shop");
+const { el, $, fcfa } = LO;
+const params = new URLSearchParams(location.search);
+const token = params.get("o") || "";
+let autoPay = params.get("pay") === "1";
+let autoWa = params.get("wa") === "1";
+const fromInstallEmail = params.get("installe") === "1";
+const fromReviewEmail = params.get("avis") === "1"; // lien « Donner mon avis » de l'email
+let timer = null, checked = 0;
+
+const STATUS = {
+  pending: ["En attente de paiement", "t-wait"],
+  paid: ["Payée — livraison en préparation", "t-info"],
+  processing: ["Payée — en cours de traitement", "t-info"],
+  installing: ["Payée — installez le logiciel", "t-info"],
+  delivered: ["Livrée ✔", "t-ok"],
+  cancelled: ["Annulée", "t-ko"],
+};
+const ITEM = {
+  pending: ["En attente", "t-wait"], waiting_stock: ["En préparation", "t-info"], to_process: ["En cours de traitement", "t-info"], awaiting_install: ["À installer", "t-info"],
+  delivered: ["Livré", "t-ok"], cancelled: ["Annulé", "t-ko"],
+};
+const wa = (text, label = "Écrire sur WhatsApp") => el("a", { class: "btn light", href: "https://wa.me/" + WHATSAPP_NUMBER + "?text=" + encodeURIComponent(text), target: "_blank", rel: "noopener", text: label });
+
+async function startPay(btn, msg) {
+  btn.disabled = true; btn.textContent = "Ouverture du paiement…";
+  try {
+    const d = await LO.api("paydunya", { action: "create", o: token });
+    if (d.url) {
+      const o = window.__order;
+      if (o) LO.px("InitiateCheckout", { content_ids: o.items.map((i) => i.slug).filter(Boolean), content_type: "product", num_items: o.items.reduce((s, i) => s + i.quantity, 0), value: o.amount_fcfa, currency: "XOF" });
+      setTimeout(() => { location.href = d.url; }, 400); return;
+    }
+    msg.textContent = d.error === "paydunya_non_configure"
+      ? "Le paiement en ligne n'est pas encore disponible. Utilisez le paiement manuel ci-dessous."
+      : "Le paiement en ligne n'a pas pu s'ouvrir. Réessayez ou utilisez le paiement manuel ci-dessous.";
+    $("#manual") && ($("#manual").open = true);
+  } catch (_) { msg.textContent = "Erreur de connexion, réessayez."; }
+  btn.disabled = false; btn.textContent = "Payer maintenant";
+}
+
+// bouton « Télécharger » (lien à usage unique, recliquable 30 min)
+function dlBlock(body, dl, label, withNote = true) {
+  if (dl.state === "ready") {
+    const b = el("button", { class: "btn block", style: "margin-top:10px", text: label });
+    b.addEventListener("click", async () => {
+      b.disabled = true; b.textContent = "Préparation…";
+      try {
+        const d = await LO.api("download", { t: dl.token });
+        if (d.ok && d.url) { b.textContent = "Téléchargement lancé ✔ (recliquer si besoin)"; b.disabled = false; location.href = d.url; }
+        else b.textContent = "Lien déjà utilisé";
+      } catch (_) { b.disabled = false; b.textContent = "Erreur, réessayer"; }
+    });
+    body.append(b);
+    if (withNote) body.append(el("p", { class: "note", text: "Le lien de téléchargement ne fonctionne qu'une seule fois. Lancez-le depuis l'ordinateur où vous installez le logiciel. Le téléchargement ne démarre pas ou s'arrête ? Recliquez sur le bouton : c'est possible pendant 30 minutes. Si Windows ou l'antivirus affiche un avertissement, choisissez « Conserver » puis « Exécuter quand même » : le fichier est le programme d'installation officiel." }));
+  } else {
+    body.append(el("p", { class: "note", text: (label.startsWith("Télécharger ") && label !== "Télécharger le logiciel" ? label.slice(12) + " : l" : "L") + "ien de téléchargement déjà utilisé ou expiré. Écrivez-nous pour en recevoir un nouveau." }));
+  }
+}
+
+function itemBlock(i) {
+  const [lab, cls] = ITEM[i.status] || ["", "t-ko"];
+  const box = el("div", { class: "line", style: "grid-template-columns:64px 1fr" },
+    el("div", { class: "th" }, i.image_url ? el("img", { src: i.image_url, alt: "" }) : LO.initials(i.name)),
+    el("div", {},
+      el("div", { style: "display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap" },
+        el("span", { class: "nm", text: (i.quantity > 1 ? i.quantity + " × " : "") + i.name }),
+        el("span", { class: "tag " + cls, text: lab })),
+      el("div", { class: "note", text: fcfa(i.unit_price * i.quantity) })));
+  const body = box.lastChild;
+  if (i.keys?.length) {
+    body.append(el("div", { class: "note", style: "margin-top:8px", text: i.delivery_type === "stock" ? "Vos identifiants :" : (i.keys.length > 1 ? "Vos clés d'activation :" : "Votre clé d'activation :") }));
+    const copyBtn = (v) => {
+      const c = el("button", { class: "btn light", style: "padding:6px 10px;font-size:13px", text: "Copier" });
+      c.addEventListener("click", async () => { try { await navigator.clipboard.writeText(v); c.textContent = "Copié ✔"; } catch (_) { c.textContent = "Sélectionnez et copiez"; } });
+      return c;
+    };
+    i.keys.forEach((k, n) => {
+      // pack : nom du logiciel de cette clé (ex. « Windows 11 Professionnel »)
+      if (i.key_names?.[n]) body.append(el("div", { class: "note", style: "margin-top:10px;font-weight:700", text: i.key_names[n] }));
+      // compte (Office 365…) : identifiant et mot de passe, chacun avec son bouton « Copier »
+      const a = String(k).match(/^Identifiant : (.+?) \| Mot de passe : (.+)$/);
+      if (a) {
+        body.append(el("div", { class: "note", style: "margin-top:6px", text: "Identifiant (adresse de connexion)" }), el("div", { class: "key" }, a[1]), copyBtn(a[1]),
+          el("div", { class: "note", style: "margin-top:6px", text: "Mot de passe" }), el("div", { class: "key" }, a[2]), copyBtn(a[2]),
+          el("p", { class: "note", style: "margin-top:6px", text: "Utilisez ces identifiants pour vous connecter. La procédure complète est dans l'email de livraison." }));
+        // Microsoft 365 : installateurs officiels (si Office n'est pas encore installé ; aucune clé, la connexion suffit)
+        if (/\b365\b/.test(i.name || "")) body.append(
+          el("p", { class: "note", style: "margin-top:10px;font-weight:700", text: "Office pas encore installé ? Téléchargez Microsoft 365 (pas Office 2021 ni 2024), puis connectez-vous avec ce compte :" }),
+          el("div", { style: "display:flex;gap:8px;flex-wrap:wrap;margin-top:6px" },
+            el("a", { class: "btn", href: "https://c2rsetup.officeapps.live.com/c2r/download.aspx?ProductreleaseID=O365ProPlusRetail&platform=x64&language=fr-fr&version=O16GA", rel: "noopener", text: "⬇ Microsoft 365 pour Windows" }),
+            el("a", { class: "btn", href: "https://go.microsoft.com/fwlink/?linkid=525133", rel: "noopener", text: "⬇ Microsoft 365 pour Mac" })));
+      } else body.append(el("div", { class: "key" }, k), copyBtn(k));
+    });
+  }
+  if (i.keys_hidden || i.download?.state === "need_name") {
+    body.append(el("p", { class: "note", style: "margin-top:8px;font-weight:700", text: "🔒 " + (i.keys_hidden ? "Votre clé est prête" : "Votre logiciel est prêt") + " : indiquez vos coordonnées ci-dessus pour l'afficher." }));
+  } else if (i.download) dlBlock(body, i.download, "Télécharger le logiciel");
+  // pack : un bouton de téléchargement par logiciel inclus
+  const packDl = i.pack_downloads || [];
+  if (packDl.some((d) => d.state === "need_name")) {
+    if (!i.keys_hidden) body.append(el("p", { class: "note", style: "margin-top:8px;font-weight:700", text: "🔒 Vos logiciels sont prêts : indiquez vos coordonnées ci-dessus pour les afficher." }));
+  } else {
+    packDl.forEach((d) => dlBlock(body, d, "Télécharger " + (d.name || "le logiciel"), false));
+    if (packDl.some((d) => d.state === "ready")) body.append(el("p", { class: "note", text: "Chaque lien de téléchargement ne fonctionne qu'une seule fois. Lancez-le depuis l'ordinateur où vous installez le logiciel. Le téléchargement ne démarre pas ou s'arrête ? Recliquez sur le bouton : c'est possible pendant 30 minutes. Si Windows ou l'antivirus affiche un avertissement, choisissez « Conserver » puis « Exécuter quand même » : c'est le programme d'installation officiel." }));
+  }
+  if (i.can_claim && !CUR.need_name) {
+    const msg = el("p", { class: "msg" });
+    const b = el("button", { class: "btn orange block", style: "margin-top:12px", text: "✅ J'ai fini l'installation : recevoir ma clé" });
+    b.addEventListener("click", async () => {
+      if (!confirm("Confirmez-vous que l'installation est terminée ? Ce bouton ne fonctionne qu'une fois.")) return;
+      b.disabled = true; b.textContent = "Envoi de votre clé…";
+      try { await LO.boutique({ action: "claim", o: token, i: i.id }); } catch (_) {}
+      load();
+    });
+    const box = el("div", { class: "claim", style: "margin-top:12px;padding:12px;border-radius:12px;background:#E8F1FC" + (fromInstallEmail ? ";outline:3px solid #F5A21B" : "") },
+      el("p", { class: "note", style: "margin:0", text: "Étape 2 : une fois le logiciel installé, cliquez ci-dessous pour recevoir votre clé de licence (par email et sur cette page)." }), b, msg);
+    body.append(box);
+  } else if (i.claimed && i.status !== "delivered") {
+    body.append(el("p", { class: "note", text: i.status === "awaiting_install" || i.status === "to_process" || i.status === "waiting_stock"
+      ? "Demande de clé reçue ✔ Elle arrive très vite par email et sur cette page." : "" }));
+  } else if (i.status === "to_process") body.append(el("p", { class: "note", text: "Notre équipe traite cet article et vous contacte rapidement sur WhatsApp." }));
+  if (i.reviewed) body.append(el("p", { class: "note", text: "⭐ Merci pour votre avis !" }));
+  else if (i.can_review) body.append(reviewForm(i));
+  return box;
+}
+
+// commande passée par WhatsApp / Facebook : le client donne son nom et son téléphone avant de voir sa clé
+let CUR = {};
+function nameForm() {
+  const inp = (ph, type, ac) => el("input", { class: "field", placeholder: ph, type: type || "text", autocomplete: ac || "off", style: "margin-top:8px" });
+  const first = inp("Prénom", "text", "given-name"), last = inp("Nom", "text", "family-name"), phone = inp("Numéro WhatsApp (ex. 77 123 45 67)", "tel", "tel");
+  const mkt = el("input", { type: "checkbox", style: "margin-top:3px" });
+  const msg = el("p", { class: "msg" });
+  const b = el("button", { class: "btn orange block", style: "margin-top:12px", text: "🔑 Valider et voir ma clé" });
+  b.addEventListener("click", async () => {
+    msg.textContent = "";
+    if (CUR.ask_name && (first.value.trim().length < 2 || last.value.trim().length < 2)) { msg.textContent = "Indiquez votre prénom et votre nom."; return (first.value.trim().length < 2 ? first : last).focus(); }
+    if (CUR.ask_phone && phone.value.replace(/\D/g, "").length < 8) { msg.textContent = "Indiquez votre numéro WhatsApp."; return phone.focus(); }
+    b.disabled = true; b.textContent = "Enregistrement…";
+    const d = await LO.boutique({ action: "set_name", o: token, first: first.value, last: last.value, phone: phone.value, marketing: mkt.checked }).catch(() => ({ error: "net" }));
+    if (d.ok) return load();
+    b.disabled = false; b.textContent = "🔑 Valider et voir ma clé";
+    msg.textContent = d.error === "nom_invalide" ? "Vérifiez votre prénom et votre nom (lettres seulement)." : d.error === "telephone_invalide" ? "Vérifiez votre numéro WhatsApp." : "Erreur, réessayez.";
+  });
+  return el("div", { class: "panel", style: "margin-bottom:14px;border:2px solid var(--orange,#F5A21B)" },
+    el("h2", { style: "margin:0 0 6px;font-size:18px", text: "Encore une étape pour voir votre clé" }),
+    el("p", { class: "note", style: "margin:0", text: "Indiquez vos coordonnées : elles figurent sur votre facture et créent votre compte client licenceoff.com" + (CUR.email_hint ? " (" + CUR.email_hint + ")" : "") + ", pour retrouver vos clés à tout moment." }),
+    CUR.ask_name ? el("div", { style: "display:grid;grid-template-columns:1fr 1fr;gap:0 8px" }, first, last) : null,
+    CUR.ask_phone ? phone : null,
+    el("label", { class: "note", style: "display:flex;gap:8px;align-items:flex-start;margin-top:10px;cursor:pointer" }, mkt, "Recevoir les offres et nouveautés licenceoff.com par email (désinscription en un clic)."),
+    b, msg,
+    el("p", { class: "note", style: "margin:8px 0 0" }, "Vos données servent uniquement à votre commande et à votre compte. ", el("a", { href: "/confidentialite", text: "Confidentialité" })));
+}
+
+// avis client : 1 par article livré, publié après validation
+function reviewForm(i) {
+  let note = 0;
+  const stars = el("div", { class: "stars-in", role: "radiogroup", "aria-label": "Note" });
+  const paint = () => [...stars.children].forEach((b, k) => b.classList.toggle("on", k < note));
+  for (let k = 1; k <= 5; k++) stars.append(el("button", { type: "button", text: "★", "aria-label": k + " sur 5", onclick: () => { note = k; paint(); } }));
+  const txt = el("textarea", { class: "field", rows: "3", maxlength: "1000", placeholder: "Votre avis sur ce produit (facultatif)" });
+  const msg = el("p", { class: "msg" });
+  const send = el("button", { class: "btn", style: "margin-top:8px", text: "Publier mon avis" });
+  send.addEventListener("click", async () => {
+    if (!note) { msg.textContent = "Choisissez une note de 1 à 5 étoiles."; return; }
+    send.disabled = true;
+    const d = await LO.boutique({ action: "review", o: token, i: i.id, rating: note, comment: txt.value }).catch(() => ({ error: "net" }));
+    if (d.ok || d.error === "deja_note") { det.replaceChildren(el("p", { class: "note", style: "margin:0", text: "⭐ Merci ! Votre avis sera visible après vérification." })); return; }
+    send.disabled = false; msg.textContent = "Erreur, réessayez.";
+  });
+  const det = el("details", { class: "review-box" }, el("summary", { text: "⭐ Donner mon avis sur ce produit" }), stars, txt, send, msg);
+  return det;
+}
+
+let reviewShown = false;
+async function load() {
+  clearTimeout(timer);
+  const view = $("#view");
+  if (!token) { view.replaceChildren(el("div", { class: "panel empty" }, el("h1", { text: "Commande introuvable" }))); return; }
+  let o;
+  try { o = await LO.boutique({ action: "status", o: token }); } catch (_) { o = { error: "net" }; }
+  // retour de PayDunya : vérification immédiate du paiement
+  if (!o.error && o.status === "pending" && o.has_paydunya && checked < 40) {
+    checked++;
+    try { const d = await LO.api("paydunya", { action: "check", o: token }); if (d.ok) o = await LO.boutique({ action: "status", o: token }); } catch (_) {}
+  }
+  if (o.error) {
+    view.replaceChildren(el("div", { class: "panel empty" }, el("h1", { text: "Commande introuvable" }),
+      el("p", { text: "Vérifiez que vous avez ouvert le lien en entier." }), wa("Bonjour, je ne retrouve pas ma commande.")));
+    return;
+  }
+  window.__order = o;
+  // achat confirmé : événement Purchase une seule fois par commande (eventID = n° de commande)
+  if (["paid", "processing", "installing", "delivered"].includes(o.status)) {
+    let done = true; try { done = localStorage.getItem("lo_consent") !== "yes" || !!localStorage.getItem("lo_px_" + o.ref); } catch (_) {}
+    if (!done) {
+      LO.px("Purchase", { content_ids: o.items.map((i) => i.slug).filter(Boolean), content_type: "product", contents: o.items.filter((i) => i.slug).map((i) => ({ id: i.slug, quantity: i.quantity, item_price: i.unit_price })), num_items: o.items.reduce((s, i) => s + i.quantity, 0), value: o.amount_fcfa, currency: "XOF" }, { eventID: o.ref });
+      try { localStorage.setItem("lo_px_" + o.ref, "1"); } catch (_) {}
+    }
+  }
+  const [lab, cls] = STATUS[o.status] || ["", "t-ko"];
+  const head = el("div", { class: "panel", style: "margin-bottom:14px" },
+    el("div", { style: "display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center" },
+      el("div", {}, el("div", { class: "note", text: "Commande " + o.ref + " · " + new Date(o.created_at).toLocaleDateString("fr-FR") }),
+        el("h1", { style: "margin:4px 0 0;font-size:24px", text: o.status === "delivered" ? "Merci, votre commande est prête !" : "Votre commande" })),
+      el("span", { class: "tag " + cls, text: lab })),
+    el("div", { class: "tot" }, el("span", { text: "Total" }), el("span", { text: fcfa(o.amount_fcfa) })),
+    o.invoice ? el("p", { style: "margin:10px 0 0" }, el("a", { class: "btn light", href: "/facture?o=" + encodeURIComponent(token), target: "_blank", rel: "noopener", text: "🧾 Ma facture (PDF)" })) : null);
+
+  CUR = o;
+  const parts = [head];
+  // mode WhatsApp : l'étape WhatsApp d'abord, le prénom/nom ensuite
+  if (o.need_name && !(o.status === "pending" && o.wa_finalize)) parts.push(nameForm());
+  if (o.status === "pending" && o.key_locked) {
+    parts.push(el("div", { class: "panel", style: "margin-bottom:14px;border:2px solid var(--orange,#F5A21B)" },
+      el("h2", { style: "margin:0 0 6px;font-size:18px", text: "🔒 Votre clé est réservée" }),
+      el("p", { style: "margin:0 0 8px", text: "Elle s'affichera ici dès que votre paiement de " + fcfa(o.amount_fcfa) + " sera confirmé. Vous recevrez aussi un email avec la clé." }),
+      el("button", { class: "btn block", disabled: true, style: "opacity:.6;cursor:not-allowed", text: "🔒 Voir ma clé · en attente de confirmation du paiement" }),
+      el("p", { class: "note", style: "margin:8px 0 0", text: "Vous avez déjà payé ? Envoyez-nous la preuve sur WhatsApp, avec la référence " + o.ref + "." })));
+  } else if (o.status === "pending" && o.wa_finalize) {
+    // mode WhatsApp : le paiement se finalise avec la boutique sur WhatsApp, message déjà écrit
+    parts.push(el("div", { class: "panel", style: "margin-bottom:14px;border:2px solid #25d366" },
+      el("h2", { style: "margin:0 0 6px;font-size:18px", text: "✅ Commande " + o.ref + " enregistrée" }),
+      el("p", { style: "margin:0 0 10px", text: "Dernière étape : finalisez avec nous sur WhatsApp. Le message est déjà écrit, il suffit de l'envoyer. Nous vous indiquons comment payer (Wave ou Orange Money), puis votre commande s'affiche ici." }),
+      el("a", { class: "btn block", href: o.wa_finalize, target: "_blank", rel: "noopener", style: "background:#25d366;border-color:#25d366;color:#fff", text: "💬 Continuer sur WhatsApp" }),
+      el("p", { class: "note", style: "margin:8px 0 0", text: "Total : " + fcfa(o.amount_fcfa) + ". Gardez cette page : vos clés et liens s'y afficheront." })));
+    if (o.need_name) parts.push(nameForm());
+    if (autoWa) { autoWa = false; history.replaceState(null, "", location.pathname + "?o=" + encodeURIComponent(token)); setTimeout(() => { location.href = o.wa_finalize; }, 1500); }
+  } else if (o.status === "pending") {
+    const msg = el("p", { class: "msg" });
+    const pay = el("button", { class: "btn orange block", text: "Payer maintenant" });
+    pay.addEventListener("click", () => startPay(pay, msg));
+    const manual = el("details", { id: "manual", style: "margin-top:14px" }, el("summary", { style: "cursor:pointer;font-weight:700", text: "Payer manuellement par transfert" }));
+    const lines = Object.entries(MANUAL_PAY).map(([k, v]) => el("li", {}, el("b", { text: k + " : " }), v));
+    manual.append(el("p", { text: "Envoyez exactement " + fcfa(o.amount_fcfa) + " à l'un de ces numéros, en indiquant la référence " + o.ref + " :" }), el("ul", {}, ...lines));
+    if (!o.has_payment_ref) {
+      const inp = el("input", { class: "field", placeholder: "N° de transaction reçu par SMS" });
+      const b = el("button", { class: "btn", style: "margin-top:8px", text: "J'ai payé" });
+      b.addEventListener("click", async () => { if (!inp.value.trim()) return inp.focus(); b.disabled = true; await LO.boutique({ action: "add_payment_ref", o: token, payment_ref: inp.value }).catch(() => {}); load(); });
+      manual.append(inp, b);
+    } else manual.append(el("p", { class: "note", text: "Merci, nous vérifions votre paiement manuel." }));
+    parts.push(el("div", { class: "panel", style: "margin-bottom:14px" },
+      el("h2", { style: "margin:0 0 6px;font-size:18px", text: "Paiement" }),
+      el("p", { class: "note", text: "Wave, Orange Money, Free Money ou carte bancaire, via PayDunya. Votre commande est livrée ici dès que le paiement est confirmé." }),
+      pay, msg, manual));
+    if (autoPay && !o.has_paydunya) { autoPay = false; setTimeout(() => startPay(pay, msg), 300); }
+  }
+  parts.push(el("div", { class: "panel" }, el("h2", { style: "margin:0 0 4px;font-size:18px", text: "Articles" }), ...o.items.map(itemBlock)));
+  if (!LO.acct()) parts.push(el("div", { class: "panel note", style: "display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center" },
+    el("span", { text: "Retrouvez toutes vos commandes, vos clés et vos favoris dans votre compte (sans mot de passe)." }), el("a", { class: "btn light", href: "/compte", text: "Mon compte" })));
+  if (o.shipping) parts.push(el("div", { class: "panel" }, el("h2", { style: "margin:0 0 4px;font-size:18px", text: "Livraison" }),
+    el("p", { style: "margin:4px 0", text: (o.shipping.method === "bus" ? "Envoi par bus" : "À domicile") + " · " + fcfa(o.shipping.fee) }),
+    el("p", { class: "note", style: "margin:0", text: [o.shipping.address, o.shipping.zone].filter(Boolean).join(" — ") }),
+    el("p", { class: "note", text: "Nous vous contactons sur WhatsApp pour convenir de la livraison." })));
+  parts.push(el("div", { style: "margin-top:16px;display:flex;gap:10px;flex-wrap:wrap" },
+    wa("Bonjour, j'ai une question sur ma commande " + o.ref + ".", "Une question ? WhatsApp"),
+    el("a", { class: "btn light", href: LO.url.shop, text: "Continuer mes achats" })));
+  parts.push(el("p", { class: "note", style: "margin-top:12px", text: "Gardez précieusement le lien de cette page : c'est ici que vous retrouvez vos clés et téléchargements." }));
+  view.replaceChildren(...parts);
+
+  if ((o.status === "pending" && (o.has_paydunya || o.has_payment_ref || o.key_locked || o.wa_finalize)) || o.status === "paid" || o.status === "processing" || (o.status === "installing" && o.items.some((i) => i.claimed))) timer = setTimeout(load, 15000);
+  if (fromInstallEmail) { const c = document.querySelector(".claim"); if (c) c.scrollIntoView({ behavior: "smooth", block: "center" }); }
+  if (fromReviewEmail && !reviewShown) { const r = [...document.querySelectorAll(".review-box")]; r.forEach((d) => { d.open = true; }); if (r[0]) { reviewShown = true; r[0].style.outline = "3px solid #F5A21B"; r[0].scrollIntoView({ behavior: "smooth", block: "center" }); } }
+}
+load();
+</script>
+</body>
+</html>
