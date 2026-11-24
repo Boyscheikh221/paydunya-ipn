@@ -191,6 +191,9 @@ const LO = (() => {
   }
 
   // ---------- texte d'article (petit Markdown sûr) ----------
+  const ytId = (u) => { const m = String(u || "").trim().match(/^https?:\/\/(?:www\.|m\.)?(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([\w-]{11})/); return m ? m[1] : null; };
+  const ytThumb = (u) => { const v = ytId(u); return v ? "https://i.ytimg.com/vi/" + v + "/hqdefault.jpg" : null; };
+  const ytEmbed = (u) => { const v = ytId(u); return v ? el("div", { class: "video" }, el("iframe", { src: "https://www.youtube-nocookie.com/embed/" + v, title: "Vidéo", loading: "lazy", allow: "accelerometer; encrypted-media; picture-in-picture", allowfullscreen: "" })) : null; };
   function richText(src) {
     const frag = document.createDocumentFragment();
     const okUrl = (u) => /^(https?:\/\/|\/)/.test(u);
@@ -208,7 +211,7 @@ const LO = (() => {
       if (last < txt.length) span.append(txt.slice(last));
       return span;
     };
-    const yt = (u) => { const m = u.match(/^https?:\/\/(?:www\.)?(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([\w-]{11})/); return m ? m[1] : null; };
+    const yt = ytId;
     let list = null, listTag = "";
     for (const raw of String(src || "").split(/\r?\n/)) {
       const line = raw.trim();
@@ -357,5 +360,5 @@ const LO = (() => {
     physical: "Produit physique : nous vous contactons sur WhatsApp pour la livraison",
   };
 
-  return { source, classifySource, px, acct, setAcct, visitorId, track, icon, ICONS, refCode, setRef, cookieBar, url, slugFromPath, seo, jsonLd, crumbs, mainCats, SITE, $, el, fcfa, api, boutique, cart, saveCart, addToCart, cartCount, page, toast, productCard, initials, richText, DELIVERY_TEXT };
+  return { source, classifySource, px, acct, setAcct, visitorId, track, icon, ICONS, refCode, setRef, cookieBar, url, slugFromPath, seo, jsonLd, crumbs, mainCats, SITE, $, el, fcfa, api, boutique, cart, saveCart, addToCart, cartCount, page, toast, productCard, initials, richText, ytId, ytThumb, ytEmbed, DELIVERY_TEXT };
 })();

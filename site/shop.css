@@ -146,6 +146,10 @@ section.block { padding: 32px 0; }
 article.post { max-width: 760px; margin: 0 auto; padding: 28px 16px 40px; }
 article.post h1 { font-size: clamp(26px, 4vw, 36px); line-height: 1.2; margin: 6px 0 12px; }
 article.post .cv { border-radius: var(--r); overflow: hidden; margin: 18px 0; }
+article.post .cv .video, .post-card .cv { position: relative; }
+article.post .cv .video { padding-top: 56.25%; background: #000; }
+article.post .cv .video iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.post-card .cv .play { position: absolute; inset: 0; display: grid; place-items: center; font-size: 42px; color: #fff; text-shadow: 0 2px 12px rgba(0,0,0,.6); }
 article.post .content { font-size: 17px; line-height: 1.75; }
 article.post .content h2 { font-size: 22px; margin: 28px 0 8px; }
 article.post .content h3 { font-size: 19px; margin: 22px 0 6px; }

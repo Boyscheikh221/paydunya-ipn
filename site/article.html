@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Article — licenceoff.com</title>
-<link rel="stylesheet" href="/shop.css?v=16">
+<link rel="stylesheet" href="/shop.css?v=17">
 <link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="64x64" href="/img/profil-64.png"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
 <meta property="og:image" content="https://www.licenceoff.com/img/partage.jpg">
 </head>
@@ -12,7 +12,7 @@
 <main>
   <article class="post" id="view"><div class="skeleton"></div></article>
 </main>
-<script src="/shop.js?v=16"></script>
+<script src="/shop.js?v=17"></script>
 <script>
 LO.page("blog");
 const { el, $ } = LO;
@@ -20,9 +20,9 @@ const slug = LO.slugFromPath("blog", "a");
 LO.boutique({ action: "post", slug }).then((d) => {
   const p = d.post;
   if (!p) { $("#view").replaceChildren(LO.crumbs([["Accueil", LO.url.home], ["Blog", LO.url.blog], ["Article introuvable"]]), el("h1", { text: "Article introuvable" }), el("a", { class: "btn", href: LO.url.blog, text: "Retour au blog" })); return; }
-  LO.seo({ title: p.title + " — licenceoff.com", description: p.excerpt || p.title, path: LO.url.post(p.slug), image: p.cover_url || null });
+  LO.seo({ title: p.title + " — licenceoff.com", description: p.excerpt || p.title, path: LO.url.post(p.slug), image: p.cover_url || LO.ytThumb(p.cover_video) || null });
   LO.jsonLd({ "@context": "https://schema.org", "@type": "BlogPosting", headline: p.title, description: p.excerpt || undefined,
-    datePublished: p.published_at, dateModified: p.updated_at || p.published_at, image: [p.cover_url || LO.SITE + "/img/banniere.jpg"],
+    datePublished: p.published_at, dateModified: p.updated_at || p.published_at, image: [p.cover_url || LO.ytThumb(p.cover_video) || LO.SITE + "/img/banniere.jpg"],
     mainEntityOfPage: { "@type": "WebPage", "@id": LO.SITE + LO.url.post(p.slug) },
     author: { "@type": "Organization", name: "licenceoff.com", url: LO.SITE },
     publisher: { "@type": "Organization", name: "licenceoff.com", url: LO.SITE, logo: { "@type": "ImageObject", url: LO.SITE + "/img/logo.png" } } });
@@ -31,7 +31,7 @@ LO.boutique({ action: "post", slug }).then((d) => {
     LO.crumbs([["Accueil", LO.url.home], ["Blog", LO.url.blog], [p.title]]),
     el("h1", { text: p.title }),
     el("div", { class: "note", text: new Date(p.published_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }) }),
-    p.cover_url ? el("div", { class: "cv" }, el("img", { src: p.cover_url, alt: "" })) : null,
+    LO.ytId(p.cover_video) ? el("div", { class: "cv" }, LO.ytEmbed(p.cover_video)) : p.cover_url ? el("div", { class: "cv" }, el("img", { src: p.cover_url, alt: "" })) : null,
     content,
     el("div", { class: "panel", style: "margin-top:28px;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap" },
       el("strong", { text: "Besoin d'une licence ?" }), el("a", { class: "btn orange", href: LO.url.shop, text: "Voir la boutique" }))].filter(Boolean));

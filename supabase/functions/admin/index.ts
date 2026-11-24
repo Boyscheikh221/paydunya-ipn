@@ -399,15 +399,23 @@ async function createAdminOrder(body: any): Promise<Response | { o: any }> {
 // ---------- Page Facebook (secrets FB_PAGE_ID + FB_PAGE_TOKEN, ajoutés par Cheikh dans Supabase) ----------
 function fbReady() { return !!(Deno.env.get("FB_PAGE_ID") ?? "").trim() && !!(Deno.env.get("FB_PAGE_TOKEN") ?? "").trim(); }
 // deno-lint-ignore no-explicit-any
+const ytId = (u: string) => { const m = String(u || "").trim().match(/^https?:\/\/(?:www\.|m\.)?(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([\w-]{11})/); return m ? m[1] : null; };
+// deno-lint-ignore no-explicit-any
 async function postToFacebook(p: any): Promise<{ ok: boolean; reason?: string; id?: string }> {
   const page = (Deno.env.get("FB_PAGE_ID") ?? "").trim(), token = (Deno.env.get("FB_PAGE_TOKEN") ?? "").trim();
   if (!page || !token) return { ok: false, reason: "fb_non_configure" };
   const link = siteCtx().site + "/blog/" + encodeURIComponent(p.slug);
-  const intro = String(p.excerpt || String(p.content || "").replace(/!\[[^\]]*\]\([^)]*\)/g, "").replace(/[#*>\[\]]/g, "").replace(/\(https?:[^)]*\)/g, "").replace(/\s+/g, " ").trim().slice(0, 300));
-  const message = p.title + (intro ? "\n\n" + intro : "") + "\n\n👉 Lire l'article : " + link;
+  // Facebook : seulement un extrait (le résumé, sinon le début de l'article) + le lien, jamais l'article entier
+  const plain = (t: string) => String(t || "").replace(/!\[[^\]]*\]\([^)]*\)/g, "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/^-{3,}$/gm, "").replace(/[#*>_`]/g, "").replace(/\s+/g, " ").trim();
+  const short = (t: string, n: number) => t.length <= n ? t : t.slice(0, n).replace(/\s+\S*$/, "") + "…";
+  const intro = short(plain(p.excerpt) || plain(p.content), 220);
+  const vid = ytId(p.cover_video);
+  const message = p.title + (intro ? "\n\n" + intro : "") + "\n\n" + (vid ? "▶ Regarder la vidéo et lire l'article : " : "👉 Lire l'article : ") + link;
+  // image principale ; si l'article a une vidéo YouTube sans image, on prend sa miniature
+  const img = p.cover_url || (vid ? "https://i.ytimg.com/vi/" + vid + "/hqdefault.jpg" : null);
   // avec une image : publication photo (l'image s'affiche en grand) ; sinon : lien
-  const params = p.cover_url ? { url: p.cover_url, caption: message, access_token: token } : { message, link, access_token: token };
-  const r = await fetch(`https://graph.facebook.com/v21.0/${encodeURIComponent(page)}/${p.cover_url ? "photos" : "feed"}`, {
+  const params = img ? { url: img, caption: message, access_token: token } : { message, link, access_token: token };
+  const r = await fetch(`https://graph.facebook.com/v21.0/${encodeURIComponent(page)}/${img ? "photos" : "feed"}`, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(params),
   }).catch(() => null);
   // deno-lint-ignore no-explicit-any
@@ -1425,7 +1433,7 @@ ${q.valid_until ? `<p style="margin:0 0 12px">Ce devis est valable jusqu'au ${es
         const row: Record<string, unknown> = {
           title: str(body.title, 200), slug: slugify(str(body.slug, 120) || str(body.title, 120)),
           excerpt: str(body.excerpt, 400) || null, content: str(body.content, 50000),
-          cover_url: str(body.cover_url, 500) || null, published, updated_at: new Date().toISOString(),
+          cover_url: str(body.cover_url, 500) || null, cover_video: ytId(str(body.cover_video, 300)) ? str(body.cover_video, 300) : null, published, updated_at: new Date().toISOString(),
         };
         if (!row.title || !row.slug) return json({ error: "titre_obligatoire" }, 400);
         let firstPublish = false;

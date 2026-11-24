@@ -704,7 +704,7 @@ async function handle(req: Request): Promise<Response> {
 
     // ---------- Blog ----------
     case "posts": {
-      const { data, error } = await db.from("posts").select("slug, title, excerpt, cover_url, published_at")
+      const { data, error } = await db.from("posts").select("slug, title, excerpt, cover_url, cover_video, published_at")
         .eq("published", true).order("published_at", { ascending: false }).limit(Math.min(Number(body.limit) || 50, 100));
       if (error) return json({ error: "error" }, 500);
       return json({ posts: data });
@@ -725,7 +725,7 @@ async function handle(req: Request): Promise<Response> {
       return json({ page: data });
     }
     case "post": {
-      const { data } = await db.from("posts").select("slug, title, excerpt, content, cover_url, published_at, updated_at")
+      const { data } = await db.from("posts").select("slug, title, excerpt, content, cover_url, cover_video, published_at, updated_at")
         .eq("slug", str(body.slug, 120)).eq("published", true).maybeSingle();
       if (!data) return json({ error: "not_found" }, 404);
       return json({ post: data });
