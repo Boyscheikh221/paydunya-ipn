@@ -375,10 +375,11 @@
         </div>
         <textarea id="bContent" style="min-height:320px" placeholder="Écrivez votre article. Utilisez les boutons au-dessus pour la mise en forme. Pour ajouter une image : bouton 🖼️ Image, ou glissez-déposez / collez une image directement ici."></textarea>
         <div id="bPreview" class="bpreview hidden"></div>
-        <label class="check"><input type="checkbox" id="bPub"> Publié (visible sur le site)</label>
+        <label class="check"><input type="checkbox" id="bPub"> En ligne (visible sur le site)</label>
         <label class="check" id="bFbRow"><input type="checkbox" id="bFb" checked> 📣 Publier aussi sur la page Facebook (à la première publication)</label>
         <div class="small" id="bFbInfo"></div>
-        <div class="bar"><button id="bSave" class="green">Enregistrer</button><button id="bReset" class="grey">Nouvel article</button></div>
+        <div class="bar"><button id="bPublish" class="green">🚀 Publier l'article</button><button id="bSave" class="grey">💾 Enregistrer sans publier</button><button id="bReset" class="grey">Nouvel article</button></div>
+        <div class="small">« Publier » met l'article en ligne sur le site (et sur Facebook si la case est cochée). « Enregistrer sans publier » garde l'état choisi par la case « En ligne » (brouillon si décochée).</div>
       </div>
       <div class="box"><table class="small"><thead><tr><th>Article</th><th>Statut</th><th>Date</th><th></th></tr></thead><tbody id="bRows"></tbody></table></div>
     </section>
@@ -1534,6 +1535,7 @@ $("bPrevBtn").addEventListener("click", () => {
   if (on) renderPreview();
 });
 $("bImgFile").addEventListener("change", () => uploadImage($("bImgFile"), $("bImg"), $("bImgPrev"), $("bImgMsg")));
+$("bPublish").addEventListener("click", () => { $("bPub").checked = true; $("bSave").click(); });
 $("bSave").addEventListener("click", async () => {
   try { const d = await api({ action: "post_save", id: $("bId").value || undefined, title: $("bTitle").value, excerpt: $("bExcerpt").value, content: $("bContent").value, cover_url: $("bImg").value, published: $("bPub").checked, facebook: $("bFb").checked });
     toast(($("bPub").checked ? "Article publié ✔" : "Brouillon enregistré ✔") + (d.facebook ? (d.facebook.ok ? " · publié sur Facebook ✔" : " · Facebook : " + (ERR[d.facebook.reason] || d.facebook.reason)) : ""));
