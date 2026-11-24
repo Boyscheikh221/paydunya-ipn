@@ -1123,6 +1123,98 @@ async function renewLink(o, i, reload) {
   reload();
 }
 
+// ---------- PDF d'instructions « neutre » pour un revendeur ----------
+// Identifiants / clés + procédure du modèle d'email du produit, SANS prix, n° de commande, adresse du site ni assistance licenceoff.
+// Logo « licenceoff » sans « .com ». Tous les liens sont cliquables.
+let jsPdfLoading;
+function loadJsPdf() {
+  if (window.jspdf) return Promise.resolve(window.jspdf);
+  return jsPdfLoading ??= new Promise((ok, ko) => {
+    const sc = document.createElement("script"); sc.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+    sc.onload = () => ok(window.jspdf); sc.onerror = () => { jsPdfLoading = null; ko(new Error("Impossible de charger le module PDF (connexion ?)")); };
+    document.head.append(sc);
+  });
+}
+// texte compatible avec les polices PDF de base (pas d'émojis)
+const pdfTxt = (t) => String(t ?? "").replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/…/g, "...").replace(/[–—]/g, "-")
+  .replace(/[^\x20-\x7E\xA0-\xFF\n]/g, "").replace(/ {2,}/g, " ");
+function buildInstructionsPdf(J, item) {
+  const doc = new J.jsPDF({ unit: "mm", format: "a4" });
+  const W = 210, M = 18, R = W - M, BOT = 280, B = [30, 79, 184], O = [245, 162, 27], N = [15, 42, 107];
+  let y = 20;
+  const need = (h) => { if (y + h > BOT) { doc.addPage(); y = 20; } };
+  // logo texte « licenceoff » (sans .com, sans lien)
+  doc.setFont("helvetica", "bold"); doc.setFontSize(20); doc.setTextColor(...B); doc.text("licence", M, y);
+  doc.setTextColor(...O); doc.text("off", M + doc.getTextWidth("licence"), y);
+  if (item.url) doc.link(M, y - 7, doc.getTextWidth("licenceoff") + 1, 9, { url: item.url }); // logo cliquable → page du produit
+  y += 4; doc.setDrawColor(...O); doc.setLineWidth(0.6); doc.line(M, y, R, y); y += 10;
+  doc.setTextColor(...N); doc.setFontSize(15); const tl = doc.splitTextToSize(pdfTxt("Instructions - " + item.product_name), R - M); doc.text(tl, M, y); y += tl.length * 6.5 + 3;
+  // identifiants / clés dans des cadres
+  const box = (label, val) => {
+    need(20); doc.setFont("helvetica", "normal"); doc.setFontSize(9.5); doc.setTextColor(91, 107, 134); doc.text(pdfTxt(label), M, y); y += 2;
+    doc.setFont("courier", "bold"); doc.setFontSize(12.5); const lines = doc.splitTextToSize(pdfTxt(val), R - M - 8); const h = 6 + lines.length * 5.5;
+    doc.setFillColor(239, 245, 255); doc.setDrawColor(...B); doc.setLineWidth(0.4); doc.setLineDashPattern([1.5, 1.2], 0); doc.roundedRect(M, y, R - M, h, 2, 2, "FD"); doc.setLineDashPattern([], 0);
+    doc.setTextColor(...N); doc.text(lines, M + 4, y + 6.5); y += h + 5;
+  };
+  doc.setFont("helvetica", "normal"); doc.setFontSize(10.5); doc.setTextColor(...N);
+  doc.text(item.keys.some((k) => k.login) ? "Voici vos identifiants et la marche à suivre." : "Voici votre clé et la marche à suivre.", M, y); y += 8;
+  for (const k of item.keys) { if (k.login) { box("Identifiant (adresse de connexion)", k.login); box("Mot de passe", k.password); } else box("Clé d'activation", k.key); }
+  y += 2;
+  // texte : paragraphes, titres **...**, listes « - », liens [texte](url) et boutons [[texte]](url) cliquables
+  const LH = 5.6, FS = 10.5;
+  const flow = (line, x0, maxX) => {
+    const segs = []; const re = /\*\*(.+?)\*\*|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g; let last = 0, m;
+    while ((m = re.exec(line))) { if (m.index > last) segs.push({ t: line.slice(last, m.index) }); segs.push(m[1] != null ? { t: m[1], b: true } : { t: m[2], u: m[3] }); last = re.lastIndex; }
+    if (last < line.length) segs.push({ t: line.slice(last) });
+    let x = x0; need(LH);
+    for (const sg of segs) {
+      doc.setFont("helvetica", sg.b ? "bold" : "normal"); doc.setFontSize(FS); doc.setTextColor(...(sg.u ? B : N));
+      for (const w of pdfTxt(sg.t).split(/(\s+)/)) {
+        if (!w) continue; const ww = doc.getTextWidth(w);
+        if (/^\s+$/.test(w)) { x += ww; continue; }
+        if (x + ww > maxX && x > x0) { y += LH; need(LH); x = x0; }
+        if (sg.u) { doc.textWithLink(w, x, y, { url: sg.u }); doc.setDrawColor(...B); doc.setLineWidth(0.2); doc.line(x, y + 0.8, x + ww, y + 0.8); }
+        else doc.text(w, x, y);
+        x += ww;
+      }
+    }
+    y += LH;
+  };
+  for (const para of String(item.text || "").split(/\n{2,}/)) {
+    const lines = para.split("\n").map((l) => l.trim()).filter(Boolean); if (!lines.length) continue;
+    const btnM = lines.length === 1 && lines[0].match(/^\[\[(.+?)\]\]\((https?:\/\/\S+)\)$/);
+    if (btnM) { // bouton cliquable
+      need(14); doc.setFont("helvetica", "bold"); doc.setFontSize(11); const t = pdfTxt(btnM[1]).trim(); const bw = doc.getTextWidth(t) + 14, bx = (W - bw) / 2;
+      doc.setFillColor(...B); doc.roundedRect(bx, y - 1, bw, 10, 2, 2, "F"); doc.setTextColor(255, 255, 255); doc.text(t, bx + 7, y + 5.6);
+      doc.link(bx, y - 1, bw, 10, { url: btnM[2] }); y += 14; continue;
+    }
+    const head = lines.length === 1 && /^\*\*[^*]+\*\*$/.test(lines[0]);
+    if (head) { y += 2; need(12); }
+    for (const l of lines) {
+      if (/^-\s+/.test(l)) { need(LH); doc.setFont("helvetica", "normal"); doc.setFontSize(FS); doc.setTextColor(...N); doc.text("•", M + 2, y); flow(l.replace(/^-\s+/, ""), M + 7, R); }
+      else flow(l, M, R);
+    }
+    y += head ? 0.5 : 2.5;
+  }
+  return doc;
+}
+async function resellerPdf(o) {
+  try {
+    toast("Préparation du PDF…");
+    const [J, d] = await Promise.all([loadJsPdf(), api({ action: "order_instructions", id: o.id })]);
+    for (const item of d.items) {
+      const doc = buildInstructionsPdf(J, item);
+      const fname = "instructions-" + item.product_name.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 50) + ".pdf";
+      doc.save(fname);
+      if (confirm("PDF « " + fname + " » téléchargé ✔ (sans prix ni n° de commande).\n\nL'envoyer aussi en pièce jointe au revendeur (" + d.email + ") ?")) {
+        const pdf = doc.output("datauristring").split(",")[1];
+        await api({ action: "order_instructions_send", id: o.id, pdf, filename: fname, product: item.product_name });
+        toast("PDF envoyé à " + d.email + " ✔");
+      }
+    }
+  } catch (e) { toast(e.message === "rien_a_livrer" ? "Aucune clé ni identifiant livré dans cette commande." : errMsg(e)); }
+}
+
 async function cancelOrder(o, items, reload) {
   const paid = o.status !== "pending";
   const nKeys = items.reduce((n, i) => n + (i.license_keys || []).length, 0);
@@ -1183,6 +1275,7 @@ async function loadOrders() {
     if (["delivered", "processing", "paid", "installing"].includes(o.status)) acts.append(btn(o.status === "installing" ? "✉ Renvoyer l'email d'installation" : o.emailed_at ? "✉ Renvoyer l'email" : "✉ Envoyer l'email", "grey", async () => {
       if (confirm((o.status === "installing" ? "Renvoyer l'email d'installation à " : "Envoyer l'email de livraison à ") + o.email + " ?")) await run({ action: "order_email", id: o.id }, "Email envoyé ✔", reload)();
     }));
+    if (items.some((i) => (i.license_keys || []).length)) acts.append(btn("📄 PDF revendeur", "grey", () => resellerPdf(o)));
     acts.append(btn("Page client", "grey", () => copy(ORDER_PAGE + "?o=" + o.public_token, "Lien de la page client copié ✔")));
     if (o.invoice_no) acts.append(btn("🧾 Facture", "grey", () => window.open(SITE + "/facture?o=" + encodeURIComponent(o.public_token), "_blank", "noopener")));
     if (o.invoice_no && o.status !== "cancelled") acts.append(btn("✉ Envoyer la facture", "grey", async () => {

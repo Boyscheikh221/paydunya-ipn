@@ -266,13 +266,26 @@ function renderEmail(tpl: Tpl, c: Ctx) {
     headers: ref && ref !== "—" ? { "X-Entity-Ref-ID": ref } : undefined,
   };
 }
+// Modèle d'email → instructions « neutres » pour un client final de revendeur :
+// on retire tout ce qui parle de la commande, du prix, de la page de commande, du site ou de l'assistance licenceoff.
+function neutralInstructions(body: string, product: string) {
+  const version = (product.match(/\b(20(?:07|10|13|16|19|21|24|25|26)|365)\b/) ?? [""])[0];
+  const drop = /\{(commande|total|bouton|lien_commande|whatsapp|bouton_whatsapp|bouton_installation|lien_installation|produits)\}|licenceoff|commande|wa\.me|whatsapp/i;
+  return body.replace(/\r/g, "").split(/\n{2,}/)
+    .filter((p) => p.trim() && !drop.test(p) && !/^\s*(\{cles\}|Bonjour\b[^\n]*)\s*$/i.test(p))
+    .map((p) => p.trim()
+      .replace(/\{prenom\}|\{nom\}/g, "").replace(/Bonjour\s*,/, "Bonjour,")
+      .replace(/\{version\}/g, version).replace(/\{produit\}/g, product)
+      .replace(/^\{bouton_lien:([^|}]+)\|(https:\/\/[^\s}]+)\}$/, "[[$1]]($2)"))
+    .join("\n\n");
+}
 function siteCtx() {
   return {
     site: (Deno.env.get("SITE_URL") ?? "https://www.licenceoff.com").trim().replace(/\/$/, ""),
     wa: (Deno.env.get("WHATSAPP_NUMBER") ?? "221777860777").replace(/\D/g, ""),
   };
 }
-async function resendSend(to: string, mail: { subject: string; html: string; text: string; headers?: Record<string, string> }, replyTo?: string, from?: string) {
+async function resendSend(to: string, mail: { subject: string; html: string; text: string; headers?: Record<string, string>; attachments?: { filename: string; content: string }[] }, replyTo?: string, from?: string) {
   const key = (Deno.env.get("RESEND_API_KEY") ?? "").trim();
   if (!key) { await logEvent("warn", "email", "Email non envoyé : clé Resend absente dans Supabase (secret RESEND_API_KEY)", { destinataire: to }); return { ok: false, reason: "resend_non_configure" }; }
   const r = await fetch("https://api.resend.com/emails", {
@@ -282,7 +295,7 @@ async function resendSend(to: string, mail: { subject: string; html: string; tex
       from: (from ?? (Deno.env.get("RESEND_FROM") ?? "licenceoff.com <commandes@licenceoff.com>")).trim().replace(/^"?licenceoff"?\s*</i, "licenceoff.com <"),
       // les réponses des clients arrivent dans l'admin (onglet Messages) via contact@licenceoff.com
       to: [to], reply_to: replyTo ?? ((Deno.env.get("RESEND_REPLY_TO") ?? "").trim() || "contact@licenceoff.com"),
-      subject: mail.subject, html: mail.html, text: mail.text, headers: mail.headers,
+      subject: mail.subject, html: mail.html, text: mail.text, headers: mail.headers, attachments: mail.attachments,
     }),
   }).catch(() => null);
   if (!r || !r.ok) {
@@ -1006,6 +1019,44 @@ Deno.serve(async (req) => {
         const r = oo?.status === "installing" ? await sendInstallEmail(body.id, true) : await sendDeliveryEmail(body.id, true);
         if (!r.sent) return json({ error: r.reason }, 400);
         return json({ ok: true });
+      }
+
+      // ===== PDF d'instructions « neutre » pour un revendeur (sans prix, sans n° de commande, sans adresse du site) =====
+      case "order_instructions": {
+        const { data: o } = await db.from("orders")
+          .select("id, email, customer_name, order_items(id, product_name, delivery_type, status, created_at, license_keys(key_value), products(email_template_id, slug))")
+          .eq("id", body.id).maybeSingle();
+        if (!o) return json({ error: "commande_introuvable" }, 404);
+        const { data: tpls } = await db.from("email_templates").select("id, body, is_default, kind");
+        const byId = Object.fromEntries((tpls ?? []).map((t) => [t.id, t]));
+        const def = (tpls ?? []).find((t) => t.is_default && t.kind !== "install");
+        const items = ((o.order_items ?? []) as Item[]).filter((i) => i.status !== "cancelled" && (i.license_keys ?? []).length)
+          .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))
+          .map((i) => ({
+            product_name: i.product_name,
+            url: i.products?.slug ? siteCtx().site + "/produit/" + encodeURIComponent(i.products.slug) : siteCtx().site,
+            keys: (i.license_keys ?? []).map((k: { key_value: string }) => { const a = acctParts(k.key_value); return a ? { login: a[0], password: a[1] } : { key: k.key_value }; }),
+            text: neutralInstructions(String((byId[i.products?.email_template_id] ?? def)?.body ?? ""), i.product_name),
+          }));
+        if (!items.length) return json({ error: "rien_a_livrer" }, 400);
+        return json({ email: o.email, items });
+      }
+
+      case "order_instructions_send": { // envoie le PDF au revendeur (email de la commande) en pièce jointe
+        const { data: o } = await db.from("orders").select("email").eq("id", body.id).maybeSingle();
+        if (!o?.email) return json({ error: "commande_introuvable" }, 404);
+        const pdf = String(body.pdf ?? "");
+        if (!/^[A-Za-z0-9+/=]+$/.test(pdf) || pdf.length > 4_000_000) return json({ error: "pdf_invalide" }, 400);
+        const fname = (str(body.filename, 80) || "instructions.pdf").replace(/[^\w.\- ]+/g, "").replace(/\s+/g, "-") || "instructions.pdf";
+        const prod = str(body.product, 120);
+        const text = "Bonjour,\n\nVoici en pièce jointe le document d'instructions" + (prod ? " pour " + prod : "") + ", à transmettre tel quel à votre client.\nIl contient les identifiants et la procédure d'installation, sans prix ni numéro de commande.\n\nBonne vente !";
+        const r = await resendSend(o.email, {
+          subject: "Instructions à transmettre à votre client" + (prod ? " — " + prod : ""),
+          html: wrapHtml(text.split("\n\n").map((p) => `<p style="margin:0 0 12px;line-height:1.6">${esc(p).replace(/\n/g, "<br>")}</p>`).join("")),
+          text, attachments: [{ filename: fname.endsWith(".pdf") ? fname : fname + ".pdf", content: pdf }],
+        });
+        if (!r.ok) return json({ error: r.reason }, 400);
+        return json({ ok: true, to: o.email });
       }
 
       case "order_note": {
