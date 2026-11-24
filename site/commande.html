@@ -57,6 +57,25 @@ async function startPay(btn, msg) {
   btn.disabled = false; btn.textContent = "Payer maintenant";
 }
 
+// bouton « Télécharger » (lien à usage unique, recliquable 30 min)
+function dlBlock(body, dl, label, withNote = true) {
+  if (dl.state === "ready") {
+    const b = el("button", { class: "btn block", style: "margin-top:10px", text: label });
+    b.addEventListener("click", async () => {
+      b.disabled = true; b.textContent = "Préparation…";
+      try {
+        const d = await LO.api("download", { t: dl.token });
+        if (d.ok && d.url) { b.textContent = "Téléchargement lancé ✔ (recliquer si besoin)"; b.disabled = false; location.href = d.url; }
+        else b.textContent = "Lien déjà utilisé";
+      } catch (_) { b.disabled = false; b.textContent = "Erreur, réessayer"; }
+    });
+    body.append(b);
+    if (withNote) body.append(el("p", { class: "note", text: "Le lien de téléchargement ne fonctionne qu'une seule fois. Lancez-le depuis l'ordinateur où vous installez le logiciel. Le téléchargement ne démarre pas ou s'arrête ? Recliquez sur le bouton : c'est possible pendant 30 minutes. Si Windows ou l'antivirus affiche un avertissement, choisissez « Conserver » puis « Exécuter quand même » : le fichier est le programme d'installation officiel." }));
+  } else {
+    body.append(el("p", { class: "note", text: (label.startsWith("Télécharger ") && label !== "Télécharger le logiciel" ? label.slice(12) + " : l" : "L") + "ien de téléchargement déjà utilisé ou expiré. Écrivez-nous pour en recevoir un nouveau." }));
+  }
+}
+
 function itemBlock(i) {
   const [lab, cls] = ITEM[i.status] || ["", "t-ko"];
   const box = el("div", { class: "line", style: "grid-template-columns:64px 1fr" },
@@ -74,7 +93,9 @@ function itemBlock(i) {
       c.addEventListener("click", async () => { try { await navigator.clipboard.writeText(v); c.textContent = "Copié ✔"; } catch (_) { c.textContent = "Sélectionnez et copiez"; } });
       return c;
     };
-    for (const k of i.keys) {
+    i.keys.forEach((k, n) => {
+      // pack : nom du logiciel de cette clé (ex. « Windows 11 Professionnel »)
+      if (i.key_names?.[n]) body.append(el("div", { class: "note", style: "margin-top:10px;font-weight:700", text: i.key_names[n] }));
       // compte (Office 365…) : identifiant et mot de passe, chacun avec son bouton « Copier »
       const a = String(k).match(/^Identifiant : (.+?) \| Mot de passe : (.+)$/);
       if (a) {
@@ -88,25 +109,18 @@ function itemBlock(i) {
             el("a", { class: "btn", href: "https://c2rsetup.officeapps.live.com/c2r/download.aspx?ProductreleaseID=O365ProPlusRetail&platform=x64&language=fr-fr&version=O16GA", rel: "noopener", text: "⬇ Microsoft 365 pour Windows" }),
             el("a", { class: "btn", href: "https://go.microsoft.com/fwlink/?linkid=525133", rel: "noopener", text: "⬇ Microsoft 365 pour Mac" })));
       } else body.append(el("div", { class: "key" }, k), copyBtn(k));
-    }
+    });
   }
   if (i.keys_hidden || i.download?.state === "need_name") {
     body.append(el("p", { class: "note", style: "margin-top:8px;font-weight:700", text: "🔒 " + (i.keys_hidden ? "Votre clé est prête" : "Votre logiciel est prêt") + " : indiquez vos coordonnées ci-dessus pour l'afficher." }));
-  } else if (i.download) {
-    if (i.download.state === "ready") {
-      const b = el("button", { class: "btn block", style: "margin-top:10px", text: "Télécharger le logiciel" });
-      b.addEventListener("click", async () => {
-        b.disabled = true; b.textContent = "Préparation…";
-        try {
-          const d = await LO.api("download", { t: i.download.token });
-          if (d.ok && d.url) { b.textContent = "Téléchargement lancé ✔ (recliquer si besoin)"; b.disabled = false; location.href = d.url; }
-          else b.textContent = "Lien déjà utilisé";
-        } catch (_) { b.disabled = false; b.textContent = "Erreur, réessayer"; }
-      });
-      body.append(b, el("p", { class: "note", text: "Le lien de téléchargement ne fonctionne qu'une seule fois. Lancez-le depuis l'ordinateur où vous installez le logiciel. Le téléchargement ne démarre pas ou s'arrête ? Recliquez sur le bouton : c'est possible pendant 30 minutes. Si Windows ou l'antivirus affiche un avertissement, choisissez « Conserver » puis « Exécuter quand même » : le fichier est le programme d'installation officiel." }));
-    } else {
-      body.append(el("p", { class: "note", text: "Lien de téléchargement déjà utilisé ou expiré. Écrivez-nous pour en recevoir un nouveau." }));
-    }
+  } else if (i.download) dlBlock(body, i.download, "Télécharger le logiciel");
+  // pack : un bouton de téléchargement par logiciel inclus
+  const packDl = i.pack_downloads || [];
+  if (packDl.some((d) => d.state === "need_name")) {
+    if (!i.keys_hidden) body.append(el("p", { class: "note", style: "margin-top:8px;font-weight:700", text: "🔒 Vos logiciels sont prêts : indiquez vos coordonnées ci-dessus pour les afficher." }));
+  } else {
+    packDl.forEach((d) => dlBlock(body, d, "Télécharger " + (d.name || "le logiciel"), false));
+    if (packDl.some((d) => d.state === "ready")) body.append(el("p", { class: "note", text: "Chaque lien de téléchargement ne fonctionne qu'une seule fois. Lancez-le depuis l'ordinateur où vous installez le logiciel. Le téléchargement ne démarre pas ou s'arrête ? Recliquez sur le bouton : c'est possible pendant 30 minutes. Si Windows ou l'antivirus affiche un avertissement, choisissez « Conserver » puis « Exécuter quand même » : c'est le programme d'installation officiel." }));
   }
   if (i.can_claim && !CUR.need_name) {
     const msg = el("p", { class: "msg" });

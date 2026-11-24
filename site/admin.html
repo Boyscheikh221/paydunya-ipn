@@ -270,6 +270,7 @@
               <option value="file">Logiciel à télécharger seulement</option>
               <option value="stock">Identifiants / codes (pris dans le stock)</option>
               <option value="manual">Service : je le traite moi-même</option>
+              <option value="pack">📦 Pack : plusieurs produits (clés prises dans leurs stocks)</option>
             </select>
             </div>
           </div>
@@ -286,9 +287,17 @@
           <label>ou lien de téléchargement</label>
           <input id="pLink" placeholder="https://… (Google Drive, site de Microsoft…)">
         </div>
+        <div id="pPackBox" class="box hidden" style="margin:12px 0 0;background:#f4f8ff">
+          <label>📦 Produits inclus dans le pack</label>
+          <p class="small" style="margin:4px 0 8px">À chaque vente du pack, une clé (ou le nombre indiqué) est prise dans le stock de chaque produit ci-dessous. Le client reçoit ses clés séparées, chacune avec le nom du logiciel, et le lien de téléchargement de chaque logiciel. Le pack n'a pas de stock à remplir : son stock disponible est celui du produit qui en a le moins.</p>
+          <div id="pPackRows"></div>
+          <button id="pPackAdd" class="grey" type="button">+ Ajouter un produit au pack</button>
+        </div>
         <div id="pKeysBox" class="box hidden" style="margin:12px 0 0;background:#fafbfc">
           <label>Ajouter des licences au stock (une par ligne) · <span id="pKeysInfo" class="small"></span></label>
           <textarea id="pKeys" rows="4" placeholder="XXXXX-XXXXX-XXXXX-XXXXX-XXXXX"></textarea>
+          <label>Origine de ces clés (facultatif) <span class="small">: fournisseur, lot, prix d'achat… La date et l'heure de saisie sont ajoutées automatiquement.</span></label>
+          <input id="pKeysNote" maxlength="200" placeholder="ex. Fournisseur Abdou, lot du 24/11">
           <div class="grid" style="margin-top:6px"><div><label>Type de clé</label><select id="pKeysKind"><option value="single">Usage unique : 1 clé = 1 client</option><option value="multi">Multi-postes : 1 clé pour plusieurs appareils (5, 10…)</option><option value="unlimited">Réutilisable sans limite (sérialiseur)</option></select></div>
           <div id="pKeysUsesBox" class="hidden"><label>Nombre d'appareils / d'activations par clé</label><input id="pKeysUses" type="number" min="1" max="100000" placeholder="ex. 5"><div class="small">La clé part à ce nombre de clients, puis elle est épuisée.</div></div></div>
         </div>
@@ -342,6 +351,8 @@
         </div>
         <label id="kTextLabel">Collez une clé (ou un identifiant) par ligne</label>
         <textarea id="kText" class="mono" placeholder="XXXXX-XXXXX-XXXXX-XXXXX-XXXXX&#10;YYYYY-YYYYY-YYYYY-YYYYY-YYYYY"></textarea>
+        <label>Origine de ces clés (facultatif) <span class="small">: fournisseur, lot, prix d'achat… La date et l'heure de saisie sont ajoutées automatiquement. Si une clé ne marche pas, vous saurez d'où elle vient.</span></label>
+        <input id="kNote" maxlength="200" placeholder="ex. Fournisseur Abdou, lot du 24/11">
         <div class="grid" id="kKindBox" style="margin-top:6px"><div><label>Type de clé</label><select id="kKind"><option value="single">Usage unique : 1 clé = 1 client</option><option value="multi">Multi-postes : 1 clé pour plusieurs appareils (5, 10…)</option><option value="unlimited">Réutilisable sans limite (sérialiseur)</option></select></div>
           <div id="kUsesBox" class="hidden"><label>Nombre d'appareils / d'activations par clé</label><input id="kUses" type="number" min="1" max="100000" placeholder="ex. 5"><div class="small">La clé part à ce nombre de clients, puis elle est épuisée.</div></div></div>
         <div class="bar" style="margin-top:10px"><button id="kImport" class="green">Ajouter au stock</button><span id="kMsg" class="small"></span></div>
@@ -354,7 +365,7 @@
           <button id="kRefresh" class="grey">Actualiser</button>
           <button id="kShow" class="grey">Afficher les clés</button>
         </div>
-        <div class="tablewrap"><table><thead><tr><th>Clé / identifiant</th><th>Produit</th><th>Statut</th><th>Ajoutée</th><th>Envoyée à</th><th>Actions</th></tr></thead><tbody id="kRows"></tbody></table></div>
+        <div class="tablewrap"><table><thead><tr><th>Clé / identifiant</th><th>Produit</th><th>Statut</th><th>Saisie le · origine</th><th>Envoyée à</th><th>Actions</th></tr></thead><tbody id="kRows"></tbody></table></div>
       </div>
     </section>
 
@@ -701,6 +712,7 @@ const STOCK_TYPES = ["key", "key_file", "stock"];
 let stock = []; // stock de clés par produit (rempli par le tableau de bord)
 const METHOD = { whatsapp: "💬 WhatsApp", wave: "Wave", orange_money: "Orange Money", free_money: "Free Money", especes: "Espèces", paydunya: "PayDunya", manuel: "Transfert manuel", autre: "Autre" };
 const ERR = {
+  pack_invalide: "Pack invalide : choisissez des produits livrés avec une clé ou des identifiants (pas un autre pack).", pack_sans_stock: "Un pack n'a pas de stock propre : ajoutez les clés dans le stock de chaque produit du pack.",
   rien_a_noter: "Rien à noter : le client a déjà donné son avis sur tous ses produits, ou la commande n'a pas d'adresse email valide.",
   integrateur_pas_branche: "Cet intégrateur n'est pas encore branché au site : demandez à Claude de le brancher quand votre compte est actif.",
   cles_manquantes: "Enregistrez d'abord toutes les clés de cet intégrateur.", cle_invalide: "Clé invalide (pas d'espace, vérifiez le copier-coller).",
@@ -834,7 +846,7 @@ function openTab(t, keepDetail) {
 async function loadRefs() {
   const [p, c, t] = await Promise.all([api({ action: "products_list" }), api({ action: "categories_list" }), api({ action: "templates_list" }).catch(() => ({ rows: [] }))]);
   products = p.rows; categories = c.rows; templates = t.rows || [];
-  const stockProds = products.filter((x) => STOCK_TYPES.includes(x.delivery_type));
+  const stockProds = products.filter((x) => STOCK_TYPES.includes(x.delivery_type) && !isPack(x)); // un pack n'a pas de stock propre
   const fill = (id, list, first) => { const s = $(id), keep = s.value; s.replaceChildren(); if (first) s.append(new Option(first, "")); for (const x of list) s.append(new Option(x.name, x.id)); if (keep) s.value = keep; };
   fill("kProd", stockProds); fill("kFilterProd", stockProds, "Tous les produits"); kAcctUi(); fill("pCat", catTree().map((c) => ({ id: c.id, name: (c.parent_id ? "↳ " : "") + c.name })), "— Sans catégorie —");
   fill("cParent", categories.filter((c) => !c.parent_id), "— Catégorie principale —");
@@ -1175,7 +1187,7 @@ function buildInstructionsPdf(J, item) {
   };
   doc.setFont("helvetica", "normal"); doc.setFontSize(10.5); doc.setTextColor(...N);
   doc.text(item.keys.some((k) => k.login) ? "Voici vos identifiants et la marche à suivre." : "Voici votre clé et la marche à suivre.", M, y); y += 8;
-  for (const k of item.keys) { if (k.login) { box("Identifiant (adresse de connexion)", k.login); box("Mot de passe", k.password); } else box("Clé d'activation", k.key); }
+  for (const k of item.keys) { if (k.login) { box((k.label ? k.label + " : i" : "I") + "dentifiant (adresse de connexion)", k.login); box("Mot de passe", k.password); } else box(k.label ? "Clé d'activation " + k.label : "Clé d'activation", k.key); }
   y += 2;
   // texte : paragraphes, titres **...**, listes « - », liens [texte](url) et boutons [[texte]](url) cliquables
   const LH = 5.6, FS = 10.5;
@@ -1264,7 +1276,8 @@ async function loadOrders() {
     for (const i of items) {
       const box = el("div", null, "item");
       box.append(el("strong", (i.quantity > 1 ? i.quantity + " × " : "") + i.product_name), " ", tag(i.status), el("br"), el("span", TYPES[i.delivery_type] + " · " + fcfa(i.unit_price * i.quantity), "small"));
-      for (const k of i.license_keys || []) box.append(el("br"), el("span", mask(k.key_value), "mono small"));
+      for (const k of i.license_keys || []) box.append(el("br"), k.products?.name && k.products.name !== i.product_name ? el("span", k.products.name + " : ", "small") : "", el("span", mask(k.key_value), "mono small"),
+        k.note || k.added_at ? el("span", " · saisie " + dt(k.added_at) + (k.note ? " · 📝 " + k.note : ""), "small") : "");
       const ls = (i.downloads || []).sort((a, b) => b.created_at.localeCompare(a.created_at));
       if (ls[0]) box.append(el("br"), el("span", "Lien : ", "small"), tag(linkState(ls[0])));
       const acts = el("div", null, "acts"); acts.style.marginTop = "4px";
@@ -1366,12 +1379,30 @@ async function loadFiles(selectName) {
   s.value = keep || "";
 }
 // produit physique : quantité à la place du type de livraison, des fichiers et des clés
+// ---------- packs ----------
+const isPack = (p) => !!(p && p.bundle && p.bundle.length);
+function packRow(r = {}) {
+  const row = el("div", null, "bar"); row.style.margin = "4px 0";
+  const sel = document.createElement("select"); sel.className = "grow";
+  sel.append(new Option("— Choisir un produit —", ""));
+  for (const p of products) if (STOCK_TYPES.includes(p.delivery_type) && !isPack(p) && p.id !== $("pId").value) sel.append(new Option(p.name + (p.active ? "" : " (brouillon)"), p.id));
+  if (r.component_id) sel.value = r.component_id;
+  const q = Object.assign(document.createElement("input"), { type: "number", min: 1, max: 10, value: r.qty || 1, title: "Nombre de clés de ce produit par pack" }); q.style.width = "70px";
+  row.append(sel, el("span", "clé(s) ×", "small"), q, btn("✖", "grey", () => row.remove()));
+  $("pPackRows").append(row);
+}
+$("pPackAdd").addEventListener("click", () => packRow());
+function packPayload() {
+  return [...$("pPackRows").children].map((r) => ({ component_id: r.querySelector("select").value, qty: Number(r.querySelector("input").value) || 1 })).filter((x) => x.component_id);
+}
 function syncType() {
   const phys = $("pPhysical").checked, t = $("pType").value;
   $("pQtyBox").classList.toggle("hidden", !phys); $("pTypeBox").classList.toggle("hidden", phys);
   $("pFileBox").classList.toggle("hidden", phys || !["key_file", "file"].includes(t));
   $("pKeysBox").classList.toggle("hidden", phys || !STOCK_TYPES.includes(t));
-  $("pTwoWrap").classList.toggle("hidden", phys || !["key", "key_file"].includes(t));
+  $("pPackBox").classList.toggle("hidden", phys || t !== "pack");
+  if (!phys && t === "pack" && !$("pPackRows").children.length) { packRow(); packRow(); }
+  $("pTwoWrap").classList.toggle("hidden", phys || !["key", "key_file", "pack"].includes(t));
   $("pAutoLbl").classList.toggle("hidden", phys);
 }
 $("pPhysical").addEventListener("change", syncType);
@@ -1413,7 +1444,7 @@ async function loadProducts() {
     td(el("strong", p.name), p.featured ? el("span", " ★", "small") : null, p.image_url ? null : el("div", "⚠️ sans photo : invisible dans les résultats enrichis Google", "small")),
     td(catName[p.category_id] || "—"),
     td(fcfa(p.price_fcfa)),
-    td(TYPES[p.delivery_type] || p.delivery_type, el("br"), el("span", p.delivery_type === "physical" ? (p.stock_qty == null ? "quantité illimitée" : p.stock_qty + " en stock") : p.auto_deliver ? "automatique" : "manuelle", "small")),
+    td(isPack(p) ? "📦 Pack (" + p.bundle.length + " produits)" : TYPES[p.delivery_type] || p.delivery_type, el("br"), el("span", p.delivery_type === "physical" ? (p.stock_qty == null ? "quantité illimitée" : p.stock_qty + " en stock") : p.auto_deliver ? "automatique" : "manuelle", "small")),
     td(tag(p.active ? "pub" : "draft"), p.sku ? el("div", p.sku, "small mono") : null),
     td(btn("Modifier", "grey", () => editProduct(p)), " ",
       p.active ? btn("Repasser en brouillon", "grey", async () => { await api({ action: "product_status", id: p.id, active: false }); toast("Produit caché (brouillon) ✔"); await loadProducts(); })
@@ -1429,7 +1460,8 @@ function editProduct(p) {
   const ext = /^https:\/\//i.test(p.installer_path || "");
   $("pPhysical").checked = p.delivery_type === "physical"; $("pQty").value = p.stock_qty ?? ""; $("pWeight").value = p.weight_g ?? ""; $("pSku").value = p.sku || "";
   $("pSeoT").value = p.seo_title || ""; $("pSeoD").value = p.seo_description || ""; seoPrev();
-  $("pType").value = p.delivery_type === "physical" ? "key" : p.delivery_type; $("pLink").value = ext ? p.installer_path : ""; $("pKeys").value = ""; resetKind("pKeys"); keysInfo(p);
+  $("pPackRows").replaceChildren(); for (const r of p.bundle || []) packRow(r);
+  $("pType").value = p.delivery_type === "physical" ? "key" : isPack(p) ? "pack" : p.delivery_type; $("pLink").value = ext ? p.installer_path : ""; $("pKeys").value = ""; resetKind("pKeys"); keysInfo(p);
   syncType(); loadFiles(ext ? "" : p.installer_path || "").catch(() => {});
   $("pAuto").checked = p.auto_deliver !== false; $("pActive").value = p.active ? "1" : "0"; $("pFeatured").checked = p.featured;
   $("pLow").value = p.low_stock_threshold; $("pSort").value = p.sort || 0; $("pTpl").value = p.email_template_id || ""; $("pTwo").checked = !!p.two_step; $("pInstTpl").value = p.install_template_id || ""; twoVis();
@@ -1438,7 +1470,7 @@ function editProduct(p) {
 function resetProduct() {
   $("pFormTitle").textContent = "Nouveau produit";
   for (const id of ["pId", "pName", "pPrice", "pCompare", "pWholesale", "pDesc", "pImg", "pFile"]) $(id).value = "";
-  $("pCat").value = ""; $("pType").value = "key"; $("pPhysical").checked = false; $("pQty").value = ""; $("pWeight").value = ""; $("pSku").value = ""; $("pSeoT").value = ""; $("pSeoD").value = ""; seoPrev(); $("pLink").value = ""; $("pKeys").value = ""; resetKind("pKeys"); keysInfo(null); syncType(); $("pImgPrev").classList.add("hidden"); $("pImgMsg").textContent = "";
+  $("pCat").value = ""; $("pType").value = "key"; $("pPackRows").replaceChildren(); $("pKeysNote").value = ""; $("pPhysical").checked = false; $("pQty").value = ""; $("pWeight").value = ""; $("pSku").value = ""; $("pSeoT").value = ""; $("pSeoD").value = ""; seoPrev(); $("pLink").value = ""; $("pKeys").value = ""; resetKind("pKeys"); keysInfo(null); syncType(); $("pImgPrev").classList.add("hidden"); $("pImgMsg").textContent = "";
   $("pAuto").checked = true; $("pActive").value = "1"; $("pFeatured").checked = false; $("pLow").value = 5; $("pSort").value = 0; $("pTpl").value = ""; $("pTwo").checked = false; $("pInstTpl").value = ""; twoVis();
 }
 $("pReset").addEventListener("click", resetProduct);
@@ -1448,18 +1480,20 @@ async function saveProduct(publish) {
       if (!(Number($("pPrice").value) > 0)) return toast("Mettez d'abord un prix (plus de 0 F) avant de publier ce produit.");
       $("pActive").value = "1";
     }
-    const phys = $("pPhysical").checked, link = $("pLink").value.trim();
+    const phys = $("pPhysical").checked, link = $("pLink").value.trim(), pack = !phys && $("pType").value === "pack";
     if (link && !/^https:\/\/\S+$/i.test(link)) return toast("Le lien doit commencer par https://");
+    const bundle = pack ? packPayload() : [];
+    if (pack && bundle.length < 2) return toast("Un pack doit contenir au moins 2 produits.");
     const saved = await api({ action: "product_save", id: $("pId").value || undefined, name: $("pName").value, category_id: $("pCat").value, stock_qty: $("pQty").value,
       price_fcfa: $("pPrice").value, compare_price_fcfa: $("pCompare").value, wholesale_price_fcfa: $("pWholesale").value, description: $("pDesc").value, image_url: $("pImg").value,
-      delivery_type: phys ? "physical" : $("pType").value, installer_path: link || $("pFile").value, auto_deliver: $("pAuto").checked, active: $("pActive").value === "1", sku: $("pSku").value, weight_g: $("pWeight").value, seo_title: $("pSeoT").value, seo_description: $("pSeoD").value,
+      delivery_type: phys ? "physical" : pack ? "key" : $("pType").value, installer_path: pack ? "" : link || $("pFile").value, bundle, auto_deliver: $("pAuto").checked, active: $("pActive").value === "1", sku: $("pSku").value, weight_g: $("pWeight").value, seo_title: $("pSeoT").value, seo_description: $("pSeoD").value,
       featured: $("pFeatured").checked, low_stock_threshold: $("pLow").value, sort: $("pSort").value, email_template_id: $("pTpl").value, two_step: $("pTwo").checked, install_template_id: $("pInstTpl").value });
     let msg = "Produit enregistré ✔";
-    if (!phys && STOCK_TYPES.includes($("pType").value) && $("pKeys").value.trim()) {
+    if (!phys && !pack && STOCK_TYPES.includes($("pType").value) && $("pKeys").value.trim()) {
       const kp = kindPayload("pKeys");
       if (kp.error) msg += " · licences NON ajoutées : " + kp.error;
       else {
-        const k = await api({ action: "keys_import", product_id: saved.row.id, text: $("pKeys").value, ...kp });
+        const k = await api({ action: "keys_import", product_id: saved.row.id, text: $("pKeys").value, note: $("pKeysNote").value, ...kp });
         msg += " · " + (k.added ?? 0) + " licence(s) ajoutée(s)" + (k.duplicates ? ", " + k.duplicates + " déjà en stock" : "");
       }
     }
@@ -1522,7 +1556,7 @@ async function loadKeys() {
     return tr(td(el("span", mask(k.key_value), "mono")), td(names[k.product_id] || ""), td(k.reusable && k.max_uses && k.status === "sent" && !k.source_key_id ? el("span", "épuisée", "tag") : tag(k.status),
       k.source_key_id ? el("span", " copie d'une clé multi-postes / réutilisable", "small")
       : k.reusable && k.max_uses ? el("span", " 🖥 multi-postes : " + (k.uses ?? 0) + " / " + k.max_uses + " utilisé(s)", "small")
-      : k.reusable ? el("span", " ♻ réutilisable" + (k.uses ? " (" + k.uses + " envoi(s))" : ""), "small") : null), td(dt(k.added_at)), td(who), td(acts));
+      : k.reusable ? el("span", " ♻ réutilisable" + (k.uses ? " (" + k.uses + " envoi(s))" : ""), "small") : null), td(dt(k.added_at), k.note ? el("div", "📝 " + k.note, "small") : null), td(who), td(acts));
   }));
   if (!rows.length) $("kRows").append(tr(td("Aucun élément.")));
 }
@@ -1554,8 +1588,8 @@ $("kImport").addEventListener("click", async () => {
       }
       kp.reusable = false; delete kp.max_uses;
     }
-    const d = await api({ action: "keys_import", product_id: $("kProd").value, text, ...kp });
-    $("kText").value = ""; $("kLogin").value = ""; $("kPass").value = ""; resetKind("k");
+    const d = await api({ action: "keys_import", product_id: $("kProd").value, text, note: $("kNote").value, ...kp });
+    $("kText").value = ""; $("kNote").value = ""; $("kLogin").value = ""; $("kPass").value = ""; resetKind("k");
     $("kMsg").textContent = d.added + " ajouté(s), " + d.duplicates + " doublon(s) ignoré(s)" + (d.delivered ? ", " + d.delivered + " commande(s) en attente livrée(s)" : "") + ".";
     await loadKeys();
   } catch (e) { $("kMsg").textContent = e.message === "aucune_cle" ? "Aucune clé trouvée dans le texte." : errMsg(e); }

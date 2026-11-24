@@ -1,0 +1,227 @@
+-- 49 — Packs de produits + origine des clés
+--   product_bundle_items : un produit « pack » regroupe plusieurs produits ; une vente du pack prend
+--     1 clé (× quantité) dans le stock de chaque produit du pack (les clés gardent le produit d'origine).
+--   license_keys.note : origine de la clé (fournisseur, lot…) ; added_at = date et heure de saisie (automatique).
+--   Les copies des clés réutilisables gardent la note de la clé d'origine.
+alter table public.license_keys add column if not exists note text;
+
+create table if not exists public.product_bundle_items (
+  bundle_id    uuid not null references public.products(id) on delete cascade,
+  component_id uuid not null references public.products(id) on delete cascade,
+  qty          int  not null default 1 check (qty between 1 and 10),
+  primary key (bundle_id, component_id),
+  check (bundle_id <> component_id)
+);
+create index if not exists product_bundle_items_component on public.product_bundle_items (component_id);
+alter table public.product_bundle_items enable row level security;
+revoke all on table public.product_bundle_items from anon, authenticated;
+grant all on table public.product_bundle_items to service_role;
+
+-- Prend des clés du stock d'un produit pour un article de commande, jusqu'à p_qty au total.
+-- Ordre : usage unique, puis multi-postes, puis réutilisables sans limite. Renvoie le nombre de clés de ce produit sur l'article.
+create or replace function public.take_keys(p_item uuid, p_product uuid, p_qty int)
+returns int
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  got int;
+  needed int;
+  rk public.license_keys;
+  used int;
+  n int;
+begin
+  select count(*) into got from public.license_keys where order_item_id = p_item and product_id = p_product;
+  needed := p_qty - got;
+  if needed > 0 then
+    with picked as (
+      select id from public.license_keys
+       where product_id = p_product and status = 'available' and not reusable
+       order by added_at, id
+       for update skip locked
+       limit needed
+    )
+    update public.license_keys k
+       set status = 'sent', order_item_id = p_item, order_id = null, sent_at = now()
+      from picked where k.id = picked.id;
+    select count(*) into got from public.license_keys where order_item_id = p_item and product_id = p_product;
+  end if;
+  while got < p_qty loop
+    select * into rk from public.license_keys
+     where product_id = p_product and status = 'available' and reusable and source_key_id is null
+     order by (max_uses is null), added_at, id limit 1
+     for update skip locked;
+    exit when not found;
+    if rk.max_uses is null then
+      n := p_qty - got; used := 0;
+    else
+      select count(*) into used from public.license_keys where source_key_id = rk.id;
+      n := greatest(0, least(p_qty - got, rk.max_uses - used));
+    end if;
+    if n > 0 then
+      insert into public.license_keys (product_id, key_value, status, reusable, source_key_id, order_item_id, sent_at, note)
+      select p_product, rk.key_value, 'sent', true, rk.id, p_item, now(), rk.note
+        from generate_series(1, n);
+      got := got + n;
+    end if;
+    if rk.max_uses is not null and used + n >= rk.max_uses then
+      update public.license_keys set status = 'sent', sent_at = now() where id = rk.id;  -- épuisée
+    else
+      update public.license_keys set sent_at = now() where id = rk.id;
+    end if;
+  end loop;
+  return got;
+end;
+$$;
+revoke all on function public.take_keys(uuid, uuid, int) from public, anon, authenticated;
+grant execute on function public.take_keys(uuid, uuid, int) to service_role;
+
+create or replace function public.deliver_order_v3(p_order_id uuid, p_tokens text[], p_days int default 7, p_force boolean default false)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  o public.orders;
+  it record;
+  needed int;
+  got int;
+  ti int := 1;
+  waiting int := 0;
+  manual int := 0;
+  p public.products;
+  global_auto boolean;
+  rk public.license_keys;
+  used int;
+  n int;
+  installing int := 0;
+  two_step boolean;
+  short boolean;
+  comp record;
+  src record;
+begin
+  select coalesce((select (value)::text::boolean from public.settings where key = 'auto_delivery'), true) into global_auto;
+  select * into o from public.orders where id = p_order_id for update;
+  if not found then return jsonb_build_object('ok', false, 'reason', 'not_found'); end if;
+  if o.status = 'cancelled' then return jsonb_build_object('ok', false, 'reason', 'cancelled'); end if;
+  if o.status = 'delivered' then return jsonb_build_object('ok', true, 'reason', 'already_delivered'); end if;
+
+  update public.orders set paid_at = coalesce(paid_at, now()) where id = o.id;
+
+  for it in select * from public.order_items where order_id = o.id
+      and (status in ('pending','waiting_stock')
+           or (p_force and status = 'to_process' and delivery_type not in ('manual','physical'))
+           or (status = 'awaiting_install' and claim_requested_at is not null))
+      order by created_at loop
+    select * into p from public.products where id = it.product_id;
+
+    -- produit physique : on retire la quantité du stock une seule fois (à la sortie de « pending »),
+    -- puis l'admin expédie à la main
+    if it.delivery_type = 'physical' then
+      if it.status = 'pending' then
+        update public.products set stock_qty = greatest(0, stock_qty - it.quantity)
+         where id = it.product_id and stock_qty is not null;
+      end if;
+      update public.order_items set status = 'to_process' where id = it.id;
+      manual := manual + 1;
+      continue;
+    end if;
+
+    -- service à faire à la main, ou livraison automatique désactivée : l'admin s'en occupe
+    if it.delivery_type = 'manual' or (not p_force and not (global_auto and coalesce(p.auto_deliver, true))) then
+      update public.order_items set status = 'to_process' where id = it.id;
+      manual := manual + 1;
+      continue;
+    end if;
+
+    -- livraison en 2 temps : d'abord le logiciel (lien à usage unique), la clé seulement
+    -- quand le client a cliqué « J'ai fini l'installation » (claim_requested_at)
+    two_step := coalesce(p.two_step, false) and it.delivery_type in ('key','key_file');
+    if two_step and it.claim_requested_at is null then
+      -- logiciel(s) : celui du produit, ou ceux des produits du pack
+      for src in select x.id from public.products x
+                  where coalesce(x.installer_path, '') <> '' and x.delivery_type in ('key_file','file')
+                    and (x.id = it.product_id or x.id in (select component_id from public.product_bundle_items where bundle_id = it.product_id))
+                    and not exists (select 1 from public.downloads d where d.order_item_id = it.id and d.product_id = x.id) loop
+        if ti > coalesce(array_length(p_tokens, 1), 0) then
+          return jsonb_build_object('ok', false, 'reason', 'tokens_missing');
+        end if;
+        insert into public.downloads (token, email, note, status, max_downloads, expires_at, activated_at, order_id, order_item_id, product_id)
+        values (p_tokens[ti], o.email, o.ref, 'active', 1, now() + make_interval(days => greatest(1, least(p_days, 90))), now(), o.id, it.id, src.id);
+        ti := ti + 1;
+      end loop;
+      update public.order_items set status = 'awaiting_install' where id = it.id;
+      continue;
+    end if;
+
+    -- clés / identifiants : 1 par unité achetée.
+    -- D'abord les clés à usage unique (jamais réutilisées), puis, s'il en manque,
+    -- une clé « réutilisable » du stock : elle reste disponible, on en garde une copie pour la commande.
+    -- clés / identifiants : 1 par unité achetée (take_keys : usage unique d'abord, puis multi-postes, puis sans limite).
+    -- Pack : 1 clé (× quantité du composant) prise dans le stock de CHAQUE produit du pack.
+    if it.delivery_type in ('key','key_file','stock') then
+      short := false;
+      if exists (select 1 from public.product_bundle_items where bundle_id = it.product_id) then
+        for comp in select component_id, qty from public.product_bundle_items where bundle_id = it.product_id loop
+          if public.take_keys(it.id, comp.component_id, it.quantity * comp.qty) < it.quantity * comp.qty then short := true; end if;
+        end loop;
+      else
+        short := public.take_keys(it.id, it.product_id, it.quantity) < it.quantity;
+      end if;
+      if short then
+        update public.order_items set status = 'waiting_stock' where id = it.id;
+        waiting := waiting + 1;
+        continue;
+      end if;
+    end if;
+
+    -- logiciel : un lien à usage unique
+    for src in select x.id from public.products x
+                where coalesce(x.installer_path, '') <> '' and x.delivery_type in ('key_file','file')
+                  and ((x.id = it.product_id and it.delivery_type in ('key_file','file'))
+                       or x.id in (select component_id from public.product_bundle_items where bundle_id = it.product_id))
+                  and not exists (select 1 from public.downloads d where d.order_item_id = it.id and d.product_id = x.id) loop
+      if ti > coalesce(array_length(p_tokens, 1), 0) then
+        return jsonb_build_object('ok', false, 'reason', 'tokens_missing');
+      end if;
+      insert into public.downloads (token, email, note, status, max_downloads, expires_at, activated_at, order_id, order_item_id, product_id)
+      values (p_tokens[ti], o.email, o.ref, 'active', 1, now() + make_interval(days => greatest(1, least(p_days, 90))), now(), o.id, it.id, src.id);
+      ti := ti + 1;
+    end loop;
+
+    update public.order_items set status = 'delivered', delivered_at = now() where id = it.id;
+  end loop;
+
+  -- état global de la commande
+  select count(*) filter (where status = 'waiting_stock'),
+         count(*) filter (where status = 'to_process'),
+         count(*) filter (where status = 'awaiting_install')
+    into waiting, manual, installing
+    from public.order_items where order_id = o.id;
+
+  update public.orders set
+    status = case when waiting > 0 then 'paid' when manual > 0 then 'processing' when installing > 0 then 'installing' else 'delivered' end,
+    delivered_at = case when waiting = 0 and manual = 0 and installing = 0 then now() else null end
+  where id = o.id;
+
+  return jsonb_build_object('ok', waiting = 0, 'reason',
+    case when waiting > 0 then 'out_of_stock' when manual > 0 then 'to_process' when installing > 0 then 'awaiting_install' else 'delivered' end);
+end;
+$$;
+
+revoke all on function public.deliver_order_v3(uuid, text[], int, boolean) from public, anon, authenticated;
+grant execute on function public.deliver_order_v3(uuid, text[], int, boolean) to service_role;
+
+-- Pack Office 2024 + Windows 11 (SQL 48) : ses 2 produits, livraison en 2 temps comme Office et Windows
+insert into public.product_bundle_items (bundle_id, component_id, qty)
+select b.id, c.id, 1 from public.products b, public.products c
+ where b.slug = 'pack-office-2024-windows-11-professionnel'
+   and c.slug in ('microsoft-office-2024-professionnel-plus-licence-1-pc', 'microsoft-windows-11-professionnel-licence-1-pc')
+on conflict do nothing;
+update public.products set two_step = true, delivery_type = 'key', installer_path = null
+ where slug = 'pack-office-2024-windows-11-professionnel';
+select string_agg(c.name || ' x' || i.qty, ' + ') as pack from public.product_bundle_items i
+  join public.products b on b.id = i.bundle_id join public.products c on c.id = i.component_id
+ where b.slug = 'pack-office-2024-windows-11-professionnel';

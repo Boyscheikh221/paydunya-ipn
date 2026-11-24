@@ -165,6 +165,9 @@ type Ctx = { o: any; items: Item[]; link: string; wa: string; install?: string }
 // Compte (Office 365…) rangé dans le stock sous la forme « Identifiant : x | Mot de passe : y »
 const acctParts = (v: string) => { const m = String(v ?? "").match(/^Identifiant : (.+?) \| Mot de passe : (.+)$/); return m ? [m[1], m[2]] : null; };
 const keyBox = (v: string) => `<div style="font-family:Consolas,Menlo,monospace;font-weight:700;font-size:15px;background:#eff5ff;border:2px dashed ${EM.B};border-radius:8px;padding:10px 12px;margin:6px 0;word-break:break-all;color:${EM.N};-webkit-user-select:all;user-select:all">${esc(v)}</div>`;
+// pack : chaque clé porte le nom du produit dont elle vient (ex. « Windows 11 Professionnel »)
+// deno-lint-ignore no-explicit-any
+const keyLabel = (i: Item, k: any) => k?.products?.name && k.products.name !== i.product_name ? String(k.products.name) : "";
 function keysHtml(items: Item[]) {
   return items.map((i) => {
     const ks = (i.license_keys ?? []) as { key_value: string }[];
@@ -173,12 +176,14 @@ function keysHtml(items: Item[]) {
     return `<div style="margin:10px 0"><div style="font-size:13px;color:#5b6b86">${label} — ${esc(i.product_name)} :</div>` +
       ks.map((k) => {
         const a = acctParts(k.key_value);
-        return a ? `<div style="font-size:13px;color:#5b6b86;margin-top:6px">Identifiant (adresse de connexion)</div>${keyBox(a[0])}<div style="font-size:13px;color:#5b6b86">Mot de passe</div>${keyBox(a[1])}` : keyBox(k.key_value);
+        const lbl = keyLabel(i, k);
+        return (lbl ? `<div style="font-size:13px;color:#5b6b86;margin-top:8px;font-weight:700">${esc(lbl)}</div>` : "") +
+          (a ? `<div style="font-size:13px;color:#5b6b86;margin-top:6px">Identifiant (adresse de connexion)</div>${keyBox(a[0])}<div style="font-size:13px;color:#5b6b86">Mot de passe</div>${keyBox(a[1])}` : keyBox(k.key_value));
       }).join("") + "</div>";
   }).join("");
 }
 function keysText(items: Item[]) {
-  return items.filter((i) => (i.license_keys ?? []).length).map((i) => i.product_name + " :\n" + i.license_keys.map((k: { key_value: string }) => { const a = acctParts(k.key_value); return a ? "  Identifiant : " + a[0] + "\n  Mot de passe : " + a[1] : "  " + k.key_value; }).join("\n")).join("\n");
+  return items.filter((i) => (i.license_keys ?? []).length).map((i) => i.product_name + " :\n" + i.license_keys.map((k: { key_value: string }) => { const a = acctParts(k.key_value), lbl = keyLabel(i, k); return (lbl ? "  " + lbl + " :\n" : "") + (a ? "  Identifiant : " + a[0] + "\n  Mot de passe : " + a[1] : "  " + k.key_value); }).join("\n")).join("\n");
 }
 const productsHtml = (items: Item[]) => "<ul style=\"margin:6px 0;padding-left:20px\">" + items.map((i) => `<li><b>${i.quantity > 1 ? i.quantity + " × " : ""}${esc(i.product_name)}</b>${["key_file", "file"].includes(i.delivery_type) ? " — logiciel à télécharger depuis votre page de commande (lien à usage unique)" : ""}${i.status === "to_process" ? " — notre équipe vous contacte sur WhatsApp" : ""}</li>`).join("") + "</ul>";
 const productsText = (items: Item[]) => items.map((i) => "- " + (i.quantity > 1 ? i.quantity + " x " : "") + i.product_name).join("\n");
@@ -314,7 +319,7 @@ async function resendSend(to: string, mail: { subject: string; html: string; tex
 async function sendDeliveryEmail(orderId: string, force = false, templateId?: string): Promise<{ sent: boolean; count?: number; reason?: string }> {
   if (!(Deno.env.get("RESEND_API_KEY") ?? "").trim()) return { sent: false, reason: "resend_non_configure" };
   const { data: o } = await db.from("orders")
-    .select("id, ref, public_token, invoice_no, customer_name, email, amount_fcfa, status, emailed_at, order_items(id, product_name, delivery_type, quantity, status, created_at, license_keys(key_value), products(email_template_id))")
+    .select("id, ref, public_token, invoice_no, customer_name, email, amount_fcfa, status, emailed_at, order_items(id, product_name, delivery_type, quantity, status, created_at, license_keys(key_value, products(name)), products(email_template_id))")
     .eq("id", orderId).maybeSingle();
   if (!o || !o.email) return { sent: false, reason: "commande_introuvable" };
   if (!force && o.status !== "delivered") return { sent: false, reason: "pas_encore_livree" };
@@ -589,7 +594,7 @@ async function deliver(orderId: string, force = false, emails = true) {
 // Livre les commandes payées qui attendaient du stock pour ce produit (les plus anciennes d'abord)
 // Unités de stock par produit : clés à usage unique + activations restantes des clés multi-postes.
 // Une clé réutilisable sans limite rend le produit « illimité » (unlimited).
-async function keyUnits(ids: string[]) {
+async function keyUnitsRaw(ids: string[]) {
   const out: Record<string, { units: number; unlimited: boolean }> = {};
   if (!ids.length) return out;
   const { data } = await db.from("license_keys").select("id, product_id, reusable, max_uses")
@@ -608,9 +613,33 @@ async function keyUnits(ids: string[]) {
   }
   return out;
 }
+
+// Packs : un produit « pack » regroupe plusieurs produits (table product_bundle_items).
+// Unités d'un pack = le plus petit stock de ses produits (divisé par la quantité de chacun).
+async function keyUnits(ids: string[]) {
+  const out: Record<string, { units: number; unlimited: boolean; pack?: boolean }> = {};
+  if (!ids.length) return out;
+  const { data: b } = await db.from("product_bundle_items").select("bundle_id, component_id, qty").in("bundle_id", ids);
+  const packs: Record<string, { component_id: string; qty: number }[]> = {};
+  for (const r of b ?? []) (packs[r.bundle_id] ??= []).push(r);
+  const raw = await keyUnitsRaw([...new Set([...ids.filter((id) => !packs[id]), ...(b ?? []).map((r) => r.component_id)])]);
+  for (const id of ids) {
+    if (packs[id]) {
+      let units = Infinity, unlimited = true;
+      for (const r of packs[id]) {
+        const u = raw[r.component_id] ?? { units: 0, unlimited: false };
+        if (!u.unlimited) { unlimited = false; units = Math.min(units, Math.floor(u.units / Math.max(1, r.qty))); }
+      }
+      out[id] = { units: unlimited ? 0 : units, unlimited, pack: true };
+    } else if (raw[id]) out[id] = raw[id];
+  }
+  return out;
+}
 async function deliverWaiting(productId: string) {
+  // les packs qui contiennent ce produit attendent peut-être aussi ces clés
+  const { data: pk } = await db.from("product_bundle_items").select("bundle_id").eq("component_id", productId);
   const { data } = await db.from("order_items").select("order_id, orders!inner(paid_at, status)")
-    .eq("product_id", productId).eq("status", "waiting_stock").limit(200);
+    .in("product_id", [productId, ...(pk ?? []).map((r) => r.bundle_id)]).eq("status", "waiting_stock").limit(200);
   // deno-lint-ignore no-explicit-any
   const ids = [...new Set((data ?? []).sort((a: any, b: any) => String(a.orders.paid_at).localeCompare(String(b.orders.paid_at))).map((r) => r.order_id))];
   let n = 0;
@@ -656,7 +685,7 @@ async function buildNotifications(): Promise<Notif[]> {
   const low: string[] = [];
   for (const p of stockProds) {
     const u = units[p.id] ?? { units: 0, unlimited: false };
-    if (u.unlimited) continue;
+    if (u.unlimited || u.pack) continue; // pack : l'alerte vient de ses produits
     if (u.units <= (p.low_stock_threshold ?? 0)) low.push(p.name + " (" + u.units + ")");
   }
   for (const p of (prods ?? []).filter((p) => p.active && p.delivery_type === "physical" && p.stock_qty != null)) {
@@ -905,7 +934,7 @@ Deno.serve(async (req) => {
       // ================= Commandes =================
       case "orders_list": {
         let q = db.from("orders")
-          .select("*, order_items(id, product_id, product_name, delivery_type, unit_price, quantity, status, created_at, claim_requested_at, license_keys(key_value), downloads(token, status, download_count, max_downloads, expires_at, created_at))")
+          .select("*, order_items(id, product_id, product_name, delivery_type, unit_price, quantity, status, created_at, claim_requested_at, license_keys(key_value, note, added_at, products(name)), downloads(token, status, download_count, max_downloads, expires_at, created_at))")
           .order("created_at", { ascending: false }).limit(300);
         if (body.status) q = q.eq("status", str(body.status, 20));
         const s = str(body.q, 80).replace(/[,()*]/g, " ").trim();
@@ -939,7 +968,7 @@ Deno.serve(async (req) => {
         // « clé directement » : on saute l'étape du lien de téléchargement (produit en 2 temps)
         if (body.mode === "key") await db.from("order_items").update({ claim_requested_at: new Date().toISOString() }).eq("order_id", c.o.id);
         const result = await deliver(c.o.id, true, body.send_email !== false); // emails automatiques (installation ou clé)
-        const { data: o2 } = await db.from("orders").select("emailed_at, order_items(id, status, install_emailed_at, license_keys(key_value))").eq("id", c.o.id).maybeSingle();
+        const { data: o2 } = await db.from("orders").select("emailed_at, order_items(id, status, install_emailed_at, license_keys(key_value, products(name)))").eq("id", c.o.id).maybeSingle();
         // deno-lint-ignore no-explicit-any
         const its = (o2?.order_items ?? []) as any[];
         // deno-lint-ignore no-explicit-any
@@ -1063,7 +1092,7 @@ Deno.serve(async (req) => {
       // ===== PDF d'instructions « neutre » pour un revendeur (sans prix, sans n° de commande, sans adresse du site) =====
       case "order_instructions": {
         const { data: o } = await db.from("orders")
-          .select("id, email, customer_name, order_items(id, product_name, delivery_type, status, created_at, license_keys(key_value), products(email_template_id, slug))")
+          .select("id, email, customer_name, order_items(id, product_name, delivery_type, status, created_at, license_keys(key_value, products(name)), products(email_template_id, slug))")
           .eq("id", body.id).maybeSingle();
         if (!o) return json({ error: "commande_introuvable" }, 404);
         const { data: tpls } = await db.from("email_templates").select("id, body, is_default, kind");
@@ -1074,7 +1103,7 @@ Deno.serve(async (req) => {
           .map((i) => ({
             product_name: i.product_name,
             url: i.products?.slug ? siteCtx().site + "/produit/" + encodeURIComponent(i.products.slug) : siteCtx().site,
-            keys: (i.license_keys ?? []).map((k: { key_value: string }) => { const a = acctParts(k.key_value); return a ? { login: a[0], password: a[1] } : { key: k.key_value }; }),
+            keys: (i.license_keys ?? []).map((k: { key_value: string }) => { const a = acctParts(k.key_value), label = keyLabel(i, k) || undefined; return a ? { login: a[0], password: a[1], label } : { key: k.key_value, label }; }),
             text: neutralInstructions(String((byId[i.products?.email_template_id] ?? def)?.body ?? ""), i.product_name),
           }));
         if (!items.length) return json({ error: "rien_a_livrer" }, 400);
@@ -1152,6 +1181,9 @@ Deno.serve(async (req) => {
         const { data: p } = await db.from("products").select("id, delivery_type").eq("id", body.product_id).maybeSingle();
         if (!p) return json({ error: "produit_introuvable" }, 400);
         if (!STOCK_TYPES.includes(p.delivery_type)) return json({ error: "produit_sans_stock" }, 400);
+        const { count: isPack } = await db.from("product_bundle_items").select("bundle_id", { count: "exact", head: true }).eq("bundle_id", p.id);
+        if (isPack) return json({ error: "pack_sans_stock" }, 400); // un pack prend les clés de ses produits
+        const note = str(body.note, 200) || null; // origine de la clé (fournisseur, lot…) ; la date et l'heure de saisie sont automatiques
         // clé multi-postes : nombre d'activations (ex. 5 ou 10 appareils) ; vide = usage unique ou illimitée
         const maxUses = Number(body.max_uses) >= 1 ? clamp(Math.floor(Number(body.max_uses)), 1, 100000) : null;
         // produit « Identifiants » : « adresse ; mot de passe » (ou séparés par une tabulation) devient « Identifiant : … | Mot de passe : … »
@@ -1165,7 +1197,7 @@ Deno.serve(async (req) => {
         const known = new Set((have ?? []).map((k) => k.key_value));
         const fresh = unique.filter((k) => !known.has(k));
         const { data, error } = fresh.length
-          ? await db.from("license_keys").insert(fresh.map((k) => ({ product_id: p.id, key_value: k, reusable: body.reusable === true || maxUses != null, max_uses: maxUses }))).select("id")
+          ? await db.from("license_keys").insert(fresh.map((k) => ({ product_id: p.id, key_value: k, reusable: body.reusable === true || maxUses != null, max_uses: maxUses, note }))).select("id")
           : { data: [], error: null };
         if (error) return json({ error: error.message }, 500);
         const added = data?.length ?? 0;
@@ -1232,9 +1264,14 @@ Deno.serve(async (req) => {
 
       // ================= Produits =================
       case "products_list": {
-        const { data, error } = await db.from("products").select("*").order("sort").order("name");
+        const [{ data, error }, { data: b }] = await Promise.all([
+          db.from("products").select("*").order("sort").order("name"),
+          db.from("product_bundle_items").select("bundle_id, component_id, qty"),
+        ]);
         if (error) return json({ error: error.message }, 500);
-        return json({ rows: data });
+        const bundles: Record<string, { component_id: string; qty: number }[]> = {};
+        for (const r of b ?? []) (bundles[r.bundle_id] ??= []).push({ component_id: r.component_id, qty: r.qty });
+        return json({ rows: (data ?? []).map((p) => ({ ...p, bundle: bundles[p.id] ?? [] })) });
       }
       case "product_status": { // publier / remettre en brouillon depuis la liste
         const id = str(body.id, 40);
@@ -1248,6 +1285,16 @@ Deno.serve(async (req) => {
         return json({ ok: true, active });
       }
       case "product_save": {
+        // pack : liste des produits inclus (chacun avec sa quantité) ; le pack se livre en clés prises dans leurs stocks
+        const bundle = Array.isArray(body.bundle) ? (body.bundle as { component_id?: string; qty?: number }[]).slice(0, 10)
+          .map((r) => ({ component_id: str(r?.component_id, 40), qty: clamp(Math.floor(Number(r?.qty) || 1), 1, 10) }))
+          .filter((r, k, a) => r.component_id && r.component_id !== body.id && a.findIndex((x) => x.component_id === r.component_id) === k) : null;
+        if (bundle?.length) {
+          const { data: comps } = await db.from("products").select("id, delivery_type").in("id", bundle.map((r) => r.component_id));
+          const { data: nested } = await db.from("product_bundle_items").select("bundle_id").in("bundle_id", bundle.map((r) => r.component_id));
+          if ((comps ?? []).length !== bundle.length || (comps ?? []).some((c) => !STOCK_TYPES.includes(c.delivery_type)) || (nested ?? []).length) return json({ error: "pack_invalide" }, 400);
+          body.delivery_type = "key"; body.installer_path = null;
+        }
         const dtype = DELIVERY_TYPES.includes(body.delivery_type) ? body.delivery_type : "key";
         const row = {
           slug: slugify(str(body.slug, 80) || str(body.name, 120)),
@@ -1281,7 +1328,14 @@ Deno.serve(async (req) => {
         const r = body.id ? await db.from("products").update(row).eq("id", body.id).select().single()
           : await db.from("products").insert(row).select().single();
         if (r.error) return json({ error: r.error.message.includes("sku") ? "sku_deja_utilise" : r.error.message.includes("duplicate") ? "code_deja_utilise" : r.error.message }, 400);
-        return json({ row: r.data });
+        if (bundle) {
+          await db.from("product_bundle_items").delete().eq("bundle_id", r.data.id);
+          if (bundle.length) {
+            const { error: eb } = await db.from("product_bundle_items").insert(bundle.map((x) => ({ bundle_id: r.data.id, ...x })));
+            if (eb) return json({ error: eb.message }, 500);
+          }
+        }
+        return json({ row: { ...r.data, bundle: bundle ?? [] } });
       }
 
       // ================= Avis clients =================
