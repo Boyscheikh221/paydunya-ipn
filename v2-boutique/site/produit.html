@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Produit — licenceoff.com</title>
+<link rel="stylesheet" href="/shop.css?v=17">
+<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="64x64" href="/img/profil-64.png"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+<meta property="og:image" content="https://www.licenceoff.com/img/partage.jpg">
+</head>
+<body>
+<main class="wrap">
+  <div id="view"><div class="product"><div class="skeleton"></div><div class="skeleton"></div></div></div>
+</main>
+<script src="/shop.js?v=17"></script>
+<script>
+LO.page("shop");
+const { el, $, fcfa } = LO;
+const slug = LO.slugFromPath("produit", "p");
+
+function show(p) {
+  const par = p.category_parent;
+  const catPath = p.category ? LO.url.category(p.category, par ? par.slug : null) : null;
+  // titre et description Google : ceux de l'admin s'ils existent, sinon le nom et le début de la description
+  LO.seo({ title: p.seo_title || p.name + " — licenceoff.com", description: (p.seo_description || p.description || p.name).replace(/\s+/g, " ").slice(0, 160), path: LO.url.product(p.slug), image: p.image_url || null });
+  const rt = p.rating;
+  LO.jsonLd({ "@context": "https://schema.org", "@type": "Product", name: p.name, description: p.seo_description || p.description || p.name, image: p.image_url || undefined, sku: p.sku || undefined,
+    aggregateRating: rt ? { "@type": "AggregateRating", ratingValue: rt.avg, reviewCount: rt.count, bestRating: 5, worstRating: 1 } : undefined,
+    review: rt ? (p.reviews || []).slice(0, 5).map((v) => ({ "@type": "Review", author: { "@type": "Person", name: v.name }, datePublished: String(v.date).slice(0, 10), reviewBody: v.comment || undefined, reviewRating: { "@type": "Rating", ratingValue: v.rating, bestRating: 5 } })) : undefined,
+    url: LO.SITE + LO.url.product(p.slug), category: p.category_name || undefined,
+    // prix et disponibilité réels ; les avis ne viennent que d'acheteurs vérifiés, validés dans l'admin
+    offers: { "@type": "Offer", price: p.price_fcfa, priceCurrency: "XOF", availability: "https://schema.org/" + (p.in_stock ? "InStock" : "OutOfStock"),
+      itemCondition: "https://schema.org/NewCondition", url: LO.SITE + LO.url.product(p.slug), seller: { "@type": "Organization", name: "licenceoff.com", url: LO.SITE } } });
+  const off = p.compare_price_fcfa && p.compare_price_fcfa > p.price_fcfa ? Math.round(100 - p.price_fcfa * 100 / p.compare_price_fcfa) : 0;
+  const qtyIn = el("input", { type: "number", min: "1", max: String(p.max_qty || 20), value: "1", "aria-label": "Quantité" });
+  const clampQ = () => { qtyIn.value = Math.max(1, Math.min(p.max_qty || 20, Math.floor(Number(qtyIn.value) || 1))); };
+  qtyIn.addEventListener("change", clampQ);
+  const qty = el("div", { class: "qty" },
+    el("button", { type: "button", text: "−", "aria-label": "Moins", onclick: () => { qtyIn.value = Number(qtyIn.value) - 1; clampQ(); } }),
+    qtyIn,
+    el("button", { type: "button", text: "+", "aria-label": "Plus", onclick: () => { qtyIn.value = Number(qtyIn.value) + 1; clampQ(); } }));
+  const add = el("button", { class: "btn", disabled: !p.in_stock, text: "Ajouter au panier",
+    onclick: () => { clampQ(); LO.addToCart(p, Number(qtyIn.value)); LO.toast("Ajouté au panier ✔"); } });
+  const buy = el("button", { class: "btn orange", disabled: !p.in_stock, text: "Acheter maintenant",
+    onclick: () => { clampQ(); LO.addToCart(p, Number(qtyIn.value)); location.href = LO.url.cart; } });
+
+  $("#view").replaceChildren(LO.crumbs([["Accueil", LO.url.home], ["Boutique", LO.url.shop], ...(par ? [[par.name, LO.url.category(par.slug)]] : []), ...(catPath ? [[p.category_name || "Catégorie", catPath]] : []), [p.name]]), el("div", { class: "product" },
+    el("div", { class: "img" }, p.image_url ? el("img", { src: p.image_url, alt: p.name }) : el("span", { class: "ph", style: "font-size:64px;font-weight:800;color:#94a3b8", text: LO.initials(p.name) })),
+    el("div", {},
+      el("h1", { text: p.name }),
+      rt ? el("a", { class: "rating-line", href: "#avis" }, starsEl(rt.avg), el("span", { text: String(rt.avg).replace(".", ",") + "/5 · " + rt.count + " avis" })) : null,
+      el("div", { class: "price" }, fcfa(p.price_fcfa), off ? el("s", { text: fcfa(p.compare_price_fcfa) }) : null,
+        off ? el("span", { class: "tag t-wait", style: "margin-left:8px;vertical-align:middle", text: "-" + off + " %" }) : null),
+      el("p", { class: p.in_stock ? "" : "msg", text: p.in_stock ? "✔ En stock" : "Rupture de stock pour le moment. Écrivez-nous sur WhatsApp pour être prévenu." }),
+      el("div", { style: "display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:16px 0" }, qty, add, buy, favBtn(p)),
+      el("ul", { class: "perks" },
+        el("li", { text: LO.DELIVERY_TEXT[p.delivery_type] || "Livraison rapide" }),
+        el("li", { text: "Paiement sécurisé : Wave, Orange Money, carte" }),
+        el("li", { text: "Assistance à l'installation sur WhatsApp" })),
+      p.description ? el("div", {}, el("h2", { style: "font-size:18px;margin:26px 0 8px", text: "Description" }), el("div", { class: "desc", text: p.description })) : null,
+    )), reviewsEl(p));
+}
+
+// favori : réservé aux clients connectés (sinon, on propose de se connecter)
+function favBtn(p) {
+  const b = el("button", { class: "fav-btn", type: "button", "aria-pressed": "false", title: "Ajouter à mes favoris" }, LO.icon(LO.ICONS.heart, 18), el("span", { text: "Favori" }));
+  let on = false;
+  const paint = () => { b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); b.lastChild.textContent = on ? "Dans mes favoris" : "Favori"; };
+  if (LO.acct()) LO.boutique({ action: "fav", s: LO.acct(), slug: p.slug }).then((d) => { if (d.fav != null) { on = d.fav; paint(); } }).catch(() => {});
+  b.addEventListener("click", async () => {
+    if (!LO.acct()) { LO.toast("Connectez-vous pour garder vos favoris"); setTimeout(() => (location.href = "/compte?retour=" + encodeURIComponent(location.pathname)), 900); return; }
+    const d = await LO.boutique({ action: "fav", s: LO.acct(), slug: p.slug, set: !on }).catch(() => ({}));
+    if (d.error === "non_connecte") { LO.setAcct(""); location.href = "/compte"; return; }
+    if (d.fav != null) { on = d.fav; paint(); LO.toast(on ? "Ajouté à vos favoris ♥" : "Retiré de vos favoris"); }
+  });
+  return b;
+}
+function starsEl(n) {
+  const r = Math.round(n);
+  return el("span", { class: "stars", "aria-label": String(n).replace(".", ",") + " sur 5" }, "★".repeat(r), el("span", { class: "off", text: "★".repeat(5 - r) }));
+}
+function reviewsEl(p) {
+  const list = p.reviews || [];
+  return el("section", { class: "reviews", id: "avis" },
+    el("h2", { style: "font-size:20px;margin:0 0 6px", text: "Avis clients" }),
+    p.rating ? el("div", { class: "rating-line" }, starsEl(p.rating.avg), el("b", { text: String(p.rating.avg).replace(".", ",") + "/5" }), el("span", { class: "note", text: "· " + p.rating.count + " avis d'acheteurs vérifiés" }))
+      : el("p", { class: "note", text: "Pas encore d'avis. Après votre achat, vous pourrez noter ce produit depuis votre page de commande." }),
+    ...list.map((v) => el("div", { class: "review" },
+      el("div", { class: "rating-line", style: "margin:0" }, starsEl(v.rating), el("b", { text: v.name }), el("span", { class: "note", text: new Date(v.date).toLocaleDateString("fr-FR") })),
+      v.comment ? el("p", { style: "margin:6px 0 0", text: v.comment }) : null,
+      v.reply ? el("div", { class: "reply" }, el("b", { text: "Réponse de licenceoff.com : " }), v.reply) : null)));
+}
+
+if (!slug) location.replace(LO.url.shop);
+LO.boutique({ action: "product", slug }).then((d) => {
+  if (d.product) { show(d.product); LO.track("view", { slug: d.product.slug });
+    LO.px("ViewContent", { content_ids: [d.product.slug], content_type: "product", content_name: d.product.name, value: d.product.price_fcfa, currency: "XOF" }); }
+  else $("#view").replaceChildren(el("div", { class: "empty" }, el("h1", { text: "Produit introuvable" }), el("p", { text: "Ce produit n'existe plus ou a changé d'adresse." }), el("a", { class: "btn", href: LO.url.shop, text: "Retour à la boutique" })));
+}).catch(() => $("#view").replaceChildren(el("div", { class: "empty", text: "Erreur de chargement. Réessayez dans un instant." })));
+</script>
+</body>
+</html>

@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Mon compte — licenceoff.com</title>
+<meta name="theme-color" content="#1E4FB8">
+<link rel="stylesheet" href="/shop.css?v=17">
+<style>
+  .acc-sec { margin-bottom: 16px; }
+  .acc-sec h2 { margin: 0 0 8px; font-size: 18px; }
+  .ord { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: center; padding: 12px 0; border-top: 1px solid #E5E7EB; }
+  .ord:first-of-type { border-top: 0; }
+  .chips2 { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip2 { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border: 1px solid #E5E7EB; border-radius: 99px; cursor: pointer; font-weight: 600; font-size: 14px; background: #fff; }
+  .chip2:has(input:checked) { background: #EEF3FC; border-color: var(--bleu); color: var(--bleu); }
+  .chip2 input { accent-color: var(--bleu); }
+  .danger { background: none; border: 0; color: var(--rouge, #DC2626); cursor: pointer; padding: 0; font: inherit; font-size: 14px; text-decoration: underline; }
+</style>
+<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="64x64" href="/img/profil-64.png"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+<meta property="og:image" content="https://www.licenceoff.com/img/partage.jpg">
+</head>
+<body>
+<main class="wrap" style="max-width:1080px">
+  <div id="view" style="margin:24px 0 40px"><div class="skeleton"></div></div>
+</main>
+<script src="/shop.js?v=17"></script>
+<script>
+LO.page("");
+const { el, $, fcfa } = LO;
+const ST = { pending: ["En attente de paiement", "t-wait"], paid: ["Payée", "t-info"], processing: ["En cours", "t-info"], installing: ["À installer", "t-info"], delivered: ["Livrée ✔", "t-ok"], cancelled: ["Annulée", "t-ko"] };
+const api = (p) => LO.boutique({ ...p, s: LO.acct() });
+
+function loginView(msg) {
+  const email = el("input", { class: "field", type: "email", placeholder: "votre@email.com", autocomplete: "email" });
+  const info = el("p", { class: "note", text: msg || "" });
+  const b = el("button", { class: "btn orange", style: "margin-top:10px", text: "Recevoir mon lien de connexion" });
+  b.addEventListener("click", async () => {
+    if (!/^\S+@\S+\.\S+$/.test(email.value.trim())) { info.textContent = "Indiquez une adresse email valide."; return; }
+    b.disabled = true;
+    const r = await LO.boutique({ action: "account_login", email: email.value.trim() }).catch(() => ({}));
+    if (r && r.error === "trop_de_demandes") { info.textContent = "Trop de demandes en ce moment. Réessayez dans une heure, ou écrivez-nous sur WhatsApp."; b.disabled = false; return; }
+    info.textContent = "📩 C'est envoyé ! Ouvrez l'email reçu sur " + email.value.trim() + " et cliquez sur « Ouvrir mon compte » (valable 30 minutes). Pensez aux spams.";
+    b.disabled = false;
+  });
+  email.addEventListener("keydown", (e) => { if (e.key === "Enter") b.click(); });
+  $("#view").replaceChildren(el("div", { class: "panel", style: "max-width:480px;margin:0 auto" },
+    el("h1", { style: "margin:0 0 6px", text: "Mon compte" }),
+    el("p", { class: "note", text: "Pas de mot de passe : entrez votre email, vous recevez un lien de connexion. Vous retrouverez toutes vos commandes passées avec cet email, vos clés, vos favoris et des suggestions pour vous." }),
+    el("label", { text: "Votre email" }), email, b, info,
+    el("p", { class: "note", style: "margin-top:16px", text: "Vous pouvez aussi commander sans compte, comme avant." })));
+}
+
+function grid(list) { return el("div", { class: "grid" }, ...list.map((p) => LO.productCard(p))); }
+
+function dash(d) {
+  const first = (d.me.name || "").split(/\s+/)[0];
+  const out = el("button", { class: "rm", text: "Se déconnecter" });
+  out.addEventListener("click", async () => { await api({ action: "account_logout" }).catch(() => {}); LO.setAcct(""); loginView("Vous êtes déconnecté."); });
+
+  // centres d'intérêt : catégories principales et sous-catégories
+  const tops = d.categories.filter((c) => !c.parent);
+  const box = (c) => { const i = el("input", { type: "checkbox", value: c.slug }); i.checked = d.me.interests.includes(c.slug); return el("label", { class: "chip2" }, i, c.name); };
+  const interests = el("div", {}, ...tops.map((t) => el("div", { style: "margin:8px 0" }, el("div", { class: "chips2" }, box(t), ...d.categories.filter((c) => c.parent === t.slug).map(box)))));
+  const name = el("input", { class: "field", value: d.me.name, placeholder: "Votre nom" });
+  const phone = el("input", { class: "field", value: d.me.phone, placeholder: "Numéro WhatsApp" });
+  const mkt = el("input", { type: "checkbox" }); mkt.checked = !!d.me.marketing;
+  const mktRow = el("label", { class: "note", style: "display:flex;gap:8px;align-items:flex-start;margin-top:10px;cursor:pointer" }, mkt, "Recevoir les offres et nouveautés licenceoff.com par email");
+  const save = el("button", { class: "btn", style: "margin-top:10px", text: "Enregistrer" });
+  save.addEventListener("click", async () => {
+    save.disabled = true;
+    await api({ action: "account_save", name: name.value, phone: phone.value, interests: [...interests.querySelectorAll("input:checked")].map((i) => i.value), marketing: mkt.checked });
+    save.disabled = false; LO.toast("Enregistré ✔"); load();
+  });
+
+  const consentOk = (() => { try { return localStorage.getItem("lo_consent") === "yes"; } catch (_) { return false; } })();
+  const clear = el("button", { class: "danger", text: "Effacer mon historique" });
+  clear.addEventListener("click", async () => { if (!confirm("Effacer vos produits vus et vos recherches ?")) return; await api({ action: "account_history_clear" }); LO.toast("Historique effacé"); load(); });
+  const del = el("button", { class: "danger", text: "Supprimer mon compte" });
+  del.addEventListener("click", async () => {
+    if (!confirm("Supprimer définitivement votre compte, vos favoris et votre historique ? Vos commandes restent enregistrées pour la facturation.")) return;
+    await api({ action: "account_delete" }); LO.setAcct(""); loginView("Votre compte a été supprimé.");
+  });
+
+  $("#view").replaceChildren(
+    el("div", { style: "display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap" },
+      el("h1", { style: "margin:0", text: "Bonjour" + (first ? " " + first : "") + " 👋" }), out),
+    el("p", { class: "note", text: "Connecté avec " + d.me.email }),
+
+    el("div", { class: "panel acc-sec" }, el("h2", { text: "Mes commandes" }),
+      d.orders.length ? el("div", {}, ...d.orders.map((o) => el("div", { class: "ord" },
+        el("div", {}, el("b", { text: o.ref }), el("span", { class: "note", text: " · " + new Date(o.date).toLocaleDateString("fr-FR") }), el("div", { class: "note", text: o.items })),
+        el("div", { style: "display:flex;gap:10px;align-items:center" }, el("span", { class: "tag " + (ST[o.status] || ["", ""])[1], text: (ST[o.status] || [o.status])[0] }), el("b", { text: fcfa(o.amount) }),
+          el("a", { class: "btn light", href: "/commande?o=" + encodeURIComponent(o.token), text: "Clés et liens" }),
+          o.invoice ? el("a", { class: "btn light", href: "/facture?o=" + encodeURIComponent(o.token), target: "_blank", rel: "noopener", text: "🧾 Facture" }) : null))))
+        : el("p", { class: "note", text: "Aucune commande avec cet email pour l'instant." })),
+
+    el("div", { class: "panel acc-sec" }, el("h2", { text: "♥ Mes favoris" }),
+      d.favorites.length ? grid(d.favorites) : el("p", { class: "note", text: "Appuyez sur « Favori » sur une fiche produit pour la retrouver ici." })),
+
+    d.suggestions.length ? el("div", { class: "panel acc-sec" }, el("h2", { text: "Suggestions pour vous" }), grid(d.suggestions.slice(0, 8))) : null,
+
+    el("div", { class: "panel acc-sec" }, el("h2", { text: "Mes centres d'intérêt" }),
+      el("p", { class: "note", text: "Cochez ce qui vous intéresse : vos suggestions s'adaptent." }), interests,
+      el("h2", { style: "margin-top:16px", text: "Mes informations" }), el("label", { text: "Nom" }), name, el("label", { text: "WhatsApp" }), phone, mktRow, save),
+
+    el("div", { class: "panel acc-sec" }, el("h2", { text: "Mon historique" }),
+      consentOk ? null : el("p", { class: "note" }, "L'historique n'est enregistré que si vous acceptez les cookies. ",
+        el("a", { href: "#", text: "Gérer les cookies", onclick: (e) => { e.preventDefault(); LO.cookieBar(true); } })),
+      d.recent.length ? el("div", {}, el("p", { class: "note", text: "Vus récemment" }), grid(d.recent)) : el("p", { class: "note", text: "Aucun produit vu pour l'instant." }),
+      d.searches.length ? el("p", { class: "note", style: "margin-top:12px" }, "Vos recherches : ", ...d.searches.map((q, i) => el("a", { href: LO.url.search(q), text: (i ? ", " : "") + q }))) : null,
+      el("div", { style: "display:flex;gap:18px;flex-wrap:wrap;margin-top:14px" }, clear, del)),
+  );
+}
+
+async function load() {
+  if (!LO.acct()) return loginView();
+  const d = await api({ action: "account_me" }).catch(() => ({ error: "net" }));
+  if (d.error) {
+    if (d.error === "non_connecte") LO.setAcct("");
+    return loginView(d.error === "net" ? "Erreur de connexion, réessayez." : "Votre session a expiré, reconnectez-vous.");
+  }
+  dash(d);
+}
+
+(async () => {
+  const q = new URLSearchParams(location.search);
+  if (q.get("retour")) try { sessionStorage.setItem("lo_retour", q.get("retour")); } catch (_) {}
+  const t = q.get("t");
+  if (t) {
+    history.replaceState(null, "", "/compte");
+    const d = await LO.boutique({ action: "account_session", t, v: LO.visitorId() }).catch(() => ({ error: "net" }));
+    if (!d.s) return loginView(d.error === "lien_expire" ? "Ce lien a expiré ou a déjà servi. Demandez-en un nouveau." : "Erreur, réessayez.");
+    LO.setAcct(d.s);
+    let back = ""; try { back = sessionStorage.getItem("lo_retour") || ""; sessionStorage.removeItem("lo_retour"); } catch (_) {}
+    if (/^\/(?![\/\\])/.test(back) && !/[\\\s]/.test(back)) { location.href = back; return; }
+  }
+  load();
+})();
+</script>
+</body>
+</html>

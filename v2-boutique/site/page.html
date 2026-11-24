@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>licenceoff.com</title>
+<meta name="theme-color" content="#1E4FB8">
+<link rel="stylesheet" href="/shop.css?v=17">
+<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="64x64" href="/img/profil-64.png"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+<meta property="og:image" content="https://www.licenceoff.com/img/partage.jpg">
+</head>
+<body>
+<main>
+  <article class="post" id="view"><div class="skeleton"></div></article>
+</main>
+<script src="/shop.js?v=17"></script>
+<script>
+// page libre créée dans l'admin (À propos, Conditions de vente, promo…)
+const slug = LO.slugFromPath("page", "s");
+LO.page("page:" + slug);
+const { el, $ } = LO;
+LO.boutique({ action: "page", slug }).then((d) => {
+  const p = d.page;
+  if (!p) {
+    document.title = "Page introuvable — licenceoff.com";
+    $("#view").replaceChildren(LO.crumbs([["Accueil", LO.url.home], ["Page introuvable"]]), el("h1", { text: "Page introuvable" }),
+      el("p", { text: "Cette page n'existe plus ou a changé d'adresse." }), el("a", { class: "btn", href: LO.url.home, text: "Retour à l'accueil" }));
+    return;
+  }
+  LO.seo({ title: p.seo_title || p.title + " — licenceoff.com", description: (p.seo_description || p.content || p.title).replace(/[#*\[\]]/g, "").replace(/\s+/g, " ").slice(0, 160), path: LO.url.page(p.slug), image: p.image_url || null });
+  const content = el("div", { class: "content" }); content.append(LO.richText(p.content));
+  $("#view").replaceChildren(...[
+    LO.crumbs([["Accueil", LO.url.home], [p.title]]),
+    el("h1", { text: p.title }),
+    p.image_url ? el("div", { class: "cv" }, el("img", { src: p.image_url, alt: "" })) : null,
+    content].filter(Boolean));
+}).catch(() => $("#view").replaceChildren(el("p", { text: "Erreur de chargement. Réessayez dans un instant." })));
+</script>
+</body>
+</html>
