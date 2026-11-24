@@ -86,7 +86,9 @@ export default {
       if (!target) return env.ASSETS.fetch(request);
       const res = await env.ASSETS.fetch(new Request(url.origin + target, request));
       const ua = request.headers.get("user-agent") || "";
-      if (!BOTS.test(ua) || request.method !== "GET" || !res.ok) return res;
+      // ?apercu=1 : permet de vérifier l'aperçu depuis un navigateur normal
+      const forced = url.searchParams.get("apercu") === "1";
+      if ((!BOTS.test(ua) && !forced) || request.method !== "GET" || !res.ok) return res;
       const info = await previewFor(path).catch(() => null);
       if (!info) return res;
       const html = injectMeta(await res.text(), info);
