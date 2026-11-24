@@ -764,11 +764,15 @@ async function handle(req: Request): Promise<Response> {
     }
     // ---------- Pages libres (créées dans l'admin) ----------
     case "nav": { // liens du menu et du pied de page
-      const [{ data }, { data: px }] = await Promise.all([
+      const [{ data }, { data: px }, { data: ga }] = await Promise.all([
         db.from("pages").select("slug, title, in_menu, in_footer").eq("published", true).order("sort").order("title"),
         db.from("settings").select("value").eq("key", "meta_pixel_id").maybeSingle(),
+        db.from("settings").select("key, value").in("key", ["google_ads_id", "google_ads_purchase_label"]),
       ]);
-      return json({ pixel: /^\d{5,20}$/.test(String(px?.value ?? "")) ? String(px?.value) : "", menu: (data ?? []).filter((p) => p.in_menu).map((p) => ({ slug: p.slug, title: p.title })),
+      const gset = Object.fromEntries((ga ?? []).map((r) => [r.key, String(r.value ?? "")]));
+      const gadsId = /^AW-\d{6,15}$/.test(gset.google_ads_id ?? "") ? gset.google_ads_id : "";
+      const gadsLabel = gadsId && /^[A-Za-z0-9_-]{4,40}$/.test(gset.google_ads_purchase_label ?? "") ? gset.google_ads_purchase_label : "";
+      return json({ pixel: /^\d{5,20}$/.test(String(px?.value ?? "")) ? String(px?.value) : "", gads: gadsId, gads_purchase: gadsLabel, menu: (data ?? []).filter((p) => p.in_menu).map((p) => ({ slug: p.slug, title: p.title })),
         footer: (data ?? []).filter((p) => p.in_footer).map((p) => ({ slug: p.slug, title: p.title })) });
     }
     case "page": {

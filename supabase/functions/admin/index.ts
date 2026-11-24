@@ -1410,7 +1410,7 @@ Deno.serve(async (req) => {
         return json({ settings: Object.fromEntries((data ?? []).map((r) => [r.key, r.value])) });
       }
       case "settings_set": {
-        const allowed = ["auto_delivery", "payout_threshold", "default_discount_pct", "admin_email", "shipping_home_fcfa", "shipping_bus_fcfa", "weekly_report", "meta_pixel_id",
+        const allowed = ["auto_delivery", "payout_threshold", "default_discount_pct", "admin_email", "shipping_home_fcfa", "shipping_bus_fcfa", "weekly_report", "meta_pixel_id", "google_ads_id", "google_ads_purchase_label",
           "invoice_legal_name", "invoice_address", "invoice_phone", "invoice_email", "invoice_ninea", "invoice_rc", "invoice_vat_enabled"];
         // informations légales imprimées sur les factures et devis
         const TEXT_MAX: Record<string, number> = { invoice_legal_name: 100, invoice_address: 300, invoice_phone: 40, invoice_email: 200, invoice_ninea: 40, invoice_rc: 60 };
@@ -1422,6 +1422,8 @@ Deno.serve(async (req) => {
         if (key === "shipping_home_fcfa" || key === "shipping_bus_fcfa") value = clamp(Math.round(Number(body.value) || 0), 0, 1_000_000);
         if (TEXT_MAX[key]) value = str(body.value, TEXT_MAX[key]);
         if (key === "meta_pixel_id") { value = str(body.value, 30).replace(/\s/g, ""); if (value && !/^\d{5,20}$/.test(value as string)) return json({ error: "pixel_invalide" }, 400); }
+        if (key === "google_ads_id") { value = str(body.value, 30).replace(/\s/g, "").toUpperCase(); if (value && !/^AW-\d{6,15}$/.test(value as string)) return json({ error: "google_ads_invalide" }, 400); }
+        if (key === "google_ads_purchase_label") { value = str(body.value, 60).replace(/\s/g, "").replace(/^AW-\d+\//i, ""); if (value && !/^[A-Za-z0-9_-]{4,40}$/.test(value as string)) return json({ error: "libelle_invalide" }, 400); }
         if (key === "admin_email") { value = str(body.value, 200).toLowerCase(); if (value && !/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/.test(value as string)) return json({ error: "email_invalide" }, 400); }
         const { error } = await db.from("settings").upsert({ key, value, updated_at: new Date().toISOString() });
         if (error) return json({ error: error.message }, 500);

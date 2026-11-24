@@ -682,6 +682,12 @@
         <div class="grid"><div><label>ID du pixel Meta (chiffres)</label><input id="sPixel" inputmode="numeric" placeholder="ex. 123456789012345"></div></div>
         <div class="bar" style="margin-top:10px"><button id="sSavePixel" class="green">Enregistrer</button></div>
       </div>
+      <div class="box">
+        <h2 style="margin:0 0 4px">Publicités Google Ads</h2>
+        <div class="small">La balise Google se charge seulement chez les visiteurs qui acceptent les cookies. Ne collez pas le code de Google dans le site : remplissez seulement ces deux cases. Laissez vide pour ne rien charger.<br>Le libellé se trouve dans Google Ads → Objectifs → Conversions → votre conversion « Achat » → extrait d'événement : c'est la partie après la barre dans <code>'send_to': 'AW-…/<b>libellé</b>'</code>.</div>
+        <div class="grid"><div><label>ID Google Ads</label><input id="sGadsId" placeholder="ex. AW-123456789"></div><div><label>Libellé de la conversion « Achat »</label><input id="sGadsLabel" placeholder="ex. AbCdEfGhIjk"></div></div>
+        <div class="bar" style="margin-top:10px"><button id="sSaveGads" class="green">Enregistrer</button></div>
+      </div>
     </section>
   </main>
 </div>
@@ -718,6 +724,8 @@ const ERR = {
   cles_manquantes: "Enregistrez d'abord toutes les clés de cet intégrateur.", cle_invalide: "Clé invalide (pas d'espace, vérifiez le copier-coller).",
   secret_serveur_absent: "Le chiffrement n'est pas disponible sur le serveur.",
   titre_obligatoire: "Le titre est obligatoire.",
+  google_ads_invalide: "L'ID Google Ads commence par AW- suivi de chiffres (ex. AW-123456789).",
+  libelle_invalide: "Le libellé contient seulement des lettres, chiffres, - ou _ (la partie après la barre dans send_to).",
   pixel_invalide: "L'ID du pixel Meta ne contient que des chiffres (Gestionnaire d'événements Meta).",
   devis_deja_converti: "Ce devis est déjà devenu une commande.", devis_introuvable: "Devis introuvable.",
   prix_manquant: "Mettez d'abord un prix (plus de 0 F) avant de publier ce produit.",
@@ -1948,7 +1956,7 @@ async function loadSettings() {
   const t = $("autoTag"); t.textContent = on ? "Activée" : "Désactivée"; t.className = "tag s-" + (on ? "on" : "off");
   const b = $("autoToggle"); b.textContent = on ? "Désactiver" : "Activer"; b.className = on ? "red" : "green";
   $("sThreshold").value = settings.payout_threshold ?? 10000; $("sDiscount").value = settings.default_discount_pct ?? 10; $("sAdminEmail").value = settings.admin_email || "";
-  $("sPixel").value = settings.meta_pixel_id || "";
+  $("sPixel").value = settings.meta_pixel_id || ""; $("sGadsId").value = settings.google_ads_id || ""; $("sGadsLabel").value = settings.google_ads_purchase_label || "";
   $("sInvName").value = settings.invoice_legal_name || ""; $("sInvAddr").value = settings.invoice_address || ""; $("sInvPhone").value = settings.invoice_phone || "";
   $("sInvEmail").value = settings.invoice_email || ""; $("sInvNinea").value = settings.invoice_ninea || ""; $("sInvRc").value = settings.invoice_rc || ""; $("sInvVat").checked = settings.invoice_vat_enabled === true;
   $("sShipHome").value = settings.shipping_home_fcfa ?? 1500; $("sShipBus").value = settings.shipping_bus_fcfa ?? 1000;
@@ -1981,6 +1989,13 @@ $("sSaveShip").addEventListener("click", async () => {
 });
 $("sSavePixel").addEventListener("click", async () => {
   try { await api({ action: "settings_set", key: "meta_pixel_id", value: $("sPixel").value }); toast("Pixel Meta enregistré ✔ (actif sur le site d'ici 5 minutes)"); await loadSettings(); } catch (e) { toast(errMsg(e)); }
+});
+$("sSaveGads").addEventListener("click", async () => {
+  try {
+    await api({ action: "settings_set", key: "google_ads_id", value: $("sGadsId").value });
+    await api({ action: "settings_set", key: "google_ads_purchase_label", value: $("sGadsLabel").value });
+    toast("Google Ads enregistré ✔ (actif sur le site d'ici 5 minutes)"); await loadSettings();
+  } catch (e) { toast(errMsg(e)); }
 });
 $("sSavePar").addEventListener("click", async () => {
   try {

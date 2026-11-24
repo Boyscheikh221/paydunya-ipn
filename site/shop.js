@@ -180,7 +180,7 @@ const LO = (() => {
     let d = null;
     try { const c = JSON.parse(sessionStorage.getItem(KEY) || "null"); if (c && Date.now() - c.at < 300000) d = c.d; } catch (_) {}
     if (!d) { try { d = await boutique({ action: "nav" }); sessionStorage.setItem(KEY, JSON.stringify({ at: Date.now(), d })); } catch (_) { return; } }
-    pixelId = d.pixel || ""; loadPixel();
+    pixelId = d.pixel || ""; gadsId = d.gads || ""; gadsPurchase = d.gads_purchase || ""; loadPixel(); loadGoogle();
     const m = document.getElementById("navPages"), f = document.getElementById("footPages");
     if (m) m.replaceChildren(...(d.menu || []).map((p) => el("a", { href: url.page(p.slug), class: active === "page:" + p.slug ? "on" : null, text: p.title })));
     if (f && (d.footer || []).length) { f.append(...d.footer.map((p) => el("a", { href: url.page(p.slug), text: p.title }))); f.classList.remove("hidden"); }
@@ -268,11 +268,11 @@ const LO = (() => {
     if (!force && consent()) return;
     document.querySelector(".cookie-bar")?.remove();
     document.body.append(el("div", { class: "cookie-bar", role: "dialog", "aria-label": "Cookies" },
-      el("p", {}, "Nous utilisons le stockage de votre navigateur pour votre panier (indispensable) et, si vous l'acceptez, pour mesurer les visites et nos publicités (Meta). ",
+      el("p", {}, "Nous utilisons le stockage de votre navigateur pour votre panier (indispensable) et, si vous l'acceptez, pour mesurer les visites et nos publicités (Meta, Google). ",
         el("a", { href: url.privacy, text: "En savoir plus" })),
       el("div", { class: "cb-btns" },
         el("button", { class: "btn light", text: "Refuser", onclick: () => setConsent("no") }),
-        el("button", { class: "btn", text: "Accepter", onclick: () => { setConsent("yes"); hit(); loadPixel(); } }))));
+        el("button", { class: "btn", text: "Accepter", onclick: () => { setConsent("yes"); hit(); loadPixel(); loadGoogle(); } }))));
   }
 
   // ---------- pixel Meta (publicités) : chargé SEULEMENT si le visiteur accepte les cookies ----------
@@ -290,9 +290,44 @@ const LO = (() => {
     }
     for (const a of pxQueue.splice(0)) window.fbq("track", ...a);
   }
+  // ---------- balise Google Ads : chargée SEULEMENT si le visiteur accepte les cookies (comme le pixel Meta) ----------
+  // ID (AW-…) et libellé de la conversion « Achat » réglés dans l'admin (Réglages).
+  let gadsId = "", gadsPurchase = "", gQueue = [];
+  function loadGoogle() {
+    if (!gadsId || consent() !== "yes") { if (consent() === "no") gQueue = []; return; }
+    if (!window.gtag) {
+      window.dataLayer = window.dataLayer || [];
+      window.gtag = function () { window.dataLayer.push(arguments); };
+      window.gtag("consent", "default", { ad_storage: "granted", ad_user_data: "granted", ad_personalization: "granted", analytics_storage: "granted" });
+      const t = document.createElement("script"); t.async = true; t.src = "https://www.googletagmanager.com/gtag/js?id=" + encodeURIComponent(gadsId);
+      document.head.append(t);
+      window.gtag("js", new Date());
+      window.gtag("config", gadsId);
+    }
+    for (const a of gQueue.splice(0)) gSend(...a);
+  }
+  // traduit un événement Meta en événement Google (mêmes moments : produit vu, panier, commande, achat)
+  function gEvent(event, params, opts) {
+    const p = params || {}, items = (p.contents || (p.content_ids || []).map((id) => ({ id, quantity: 1 }))).map((c) => ({ id: c.id, quantity: c.quantity || 1, price: c.item_price, google_business_vertical: "retail" }));
+    const base = { value: p.value, currency: p.currency || "XOF", items };
+    if (event === "ViewContent") return ["view_item", base];
+    if (event === "AddToCart") return ["add_to_cart", base];
+    if (event === "InitiateCheckout") return ["begin_checkout", base];
+    if (event === "Purchase") return ["conversion", { ...base, send_to: gadsPurchase ? gadsId + "/" + gadsPurchase : undefined, transaction_id: opts?.eventID || "" }];
+    return null;
+  }
+  function gSend(event, params, opts) {
+    const g = gEvent(event, params, opts);
+    if (g && !(g[0] === "conversion" && !gadsPurchase)) window.gtag("event", ...g);
+  }
+  // envoyé tout de suite si la balise est chargée, sinon gardé en attente (les réglages arrivent quelques ms après)
+  function gTrack(event, params, opts) {
+    if (window.gtag && gadsId) gSend(event, params, opts); else gQueue.push([event, params, opts]);
+  }
   // événement : envoyé tout de suite si le pixel est chargé, sinon gardé en attente du chargement (jamais sans accord)
   function px(event, params, opts) {
     if (consent() !== "yes") return;
+    gTrack(event, params, opts);
     const a = opts ? [event, params, opts] : [event, params];
     if (window.fbq && pixelId) window.fbq("track", ...a); else pxQueue.push(a);
   }
