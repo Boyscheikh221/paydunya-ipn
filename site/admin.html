@@ -353,7 +353,9 @@
       <div class="box">
         <h2 id="bTitleH">Nouvel article</h2>
         <input type="hidden" id="bId">
-        <div class="grid"><div><label>Titre</label><input id="bTitle"></div><div><label>Extrait (liste du blog + post Facebook, 1 à 2 phrases)</label><input id="bExcerpt"></div></div>
+        <label>Titre</label><input id="bTitle">
+        <label>✍️ Extrait : 1 phrase qui donne envie de lire. Affiché sur Google, sur Facebook et dans la liste du blog</label>
+        <input id="bExcerpt" maxlength="160" placeholder="Ex. : Activez Windows 11 Pro en 5 minutes avec une clé authentique, sans formatage."><div class="small" id="bExCount"></div>
         <label>🖼️ Image principale (à la une) : affichée en haut de l'article, dans la liste du blog et sur Facebook</label>
         <div class="bar" style="margin:0"><img id="bImgPrev" class="preview hidden" alt=""><input id="bImgFile" type="file" accept="image/*"><input type="hidden" id="bImg"><span id="bImgMsg" class="small"></span></div>
         <label>▶ Ou vidéo principale (lien YouTube, optionnel) : remplace l'image en haut de l'article</label><input id="bVid" placeholder="https://www.youtube.com/watch?v=...">
@@ -1438,11 +1440,14 @@ async function loadBlog() {
   if (!rows.length) $("bRows").append(tr(td("Aucun article pour le moment.")));
 }
 function editPost(p) {
-  $("bTitleH").textContent = "Modifier : " + p.title; $("bId").value = p.id; $("bTitle").value = p.title; $("bExcerpt").value = p.excerpt || "";
+  $("bTitleH").textContent = "Modifier : " + p.title; $("bId").value = p.id; $("bTitle").value = p.title; $("bExcerpt").value = p.excerpt || ""; exCount();
   $("bContent").value = p.content || ""; $("bImg").value = p.cover_url || ""; $("bVid").value = p.cover_video || ""; $("bImgPrev").src = p.cover_url || ""; $("bImgPrev").classList.toggle("hidden", !p.cover_url);
   $("bPub").checked = p.published; window.scrollTo(0, 0);
 }
-function resetPost() { $("bPreview").classList.add("hidden"); $("bContent").classList.remove("hidden"); $("bPrevBtn").textContent = "👁 Aperçu"; $("bEdMsg").textContent = ""; $("bTitleH").textContent = "Nouvel article"; for (const id of ["bId", "bTitle", "bExcerpt", "bContent", "bImg", "bVid"]) $(id).value = ""; $("bImgPrev").classList.add("hidden"); $("bPub").checked = false; $("bImgMsg").textContent = ""; }
+function resetPost() { $("bPreview").classList.add("hidden"); $("bContent").classList.remove("hidden"); $("bPrevBtn").textContent = "👁 Aperçu"; $("bEdMsg").textContent = ""; $("bTitleH").textContent = "Nouvel article"; for (const id of ["bId", "bTitle", "bExcerpt", "bContent", "bImg", "bVid"]) $(id).value = ""; $("bImgPrev").classList.add("hidden"); $("bPub").checked = false; $("bImgMsg").textContent = ""; exCount(); }
+function exCount() { const n = $("bExcerpt").value.trim().length;
+  $("bExCount").textContent = n ? n + " / 160 caractères" + (n < 70 ? " · un peu court, visez 120 à 155" : n <= 155 ? " · ✔ bonne longueur" : " · Google coupera la fin") : "Vide : on prendra automatiquement le début de l'article (150 caractères). Idéal : 120 à 155 caractères.";
+  $("bExCount").style.color = n && (n < 70 || n > 155) ? "#c2410c" : n ? "#15803d" : ""; }
 $("bReset").addEventListener("click", resetPost);
 
 // ---------- éditeur d'article : boutons de mise en forme, images, aperçu ----------
@@ -1536,6 +1541,7 @@ $("bPrevBtn").addEventListener("click", () => {
   if (on) renderPreview();
 });
 $("bImgFile").addEventListener("change", () => uploadImage($("bImgFile"), $("bImg"), $("bImgPrev"), $("bImgMsg")));
+$("bExcerpt").addEventListener("input", exCount); exCount();
 $("bPublish").addEventListener("click", () => { $("bPub").checked = true; $("bSave").click(); });
 $("bSave").addEventListener("click", async () => {
   try { const d = await api({ action: "post_save", id: $("bId").value || undefined, title: $("bTitle").value, excerpt: $("bExcerpt").value, content: $("bContent").value, cover_url: $("bImg").value, cover_video: $("bVid").value, published: $("bPub").checked, facebook: $("bFb").checked });

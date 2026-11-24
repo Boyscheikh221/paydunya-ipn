@@ -408,7 +408,7 @@ async function postToFacebook(p: any): Promise<{ ok: boolean; reason?: string; i
   // Facebook : seulement un extrait (le résumé, sinon le début de l'article) + le lien, jamais l'article entier
   const plain = (t: string) => String(t || "").replace(/!\[[^\]]*\]\([^)]*\)/g, "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/^-{3,}$/gm, "").replace(/[#*>_`]/g, "").replace(/\s+/g, " ").trim();
   const short = (t: string, n: number) => t.length <= n ? t : t.slice(0, n).replace(/\s+\S*$/, "") + "…";
-  const intro = short(plain(p.excerpt) || plain(p.content), 220);
+  const intro = short(plain(p.excerpt) || plain(p.content), 155);
   const vid = ytId(p.cover_video);
   const message = p.title + (intro ? "\n\n" + intro : "") + "\n\n" + (vid ? "▶ Regarder la vidéo et lire l'article : " : "👉 Lire l'article : ") + link;
   // image principale ; si l'article a une vidéo YouTube sans image, on prend sa miniature
