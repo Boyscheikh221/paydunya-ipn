@@ -79,6 +79,10 @@
   .s-pending{background:var(--jaune)} .s-paid{background:var(--bleu)} .s-processing{background:#7c3aed} .s-delivered{background:var(--vert)} .s-cancelled{background:var(--gris)}
   .s-waiting_stock{background:var(--bleu)} .s-installing,.s-awaiting_install{background:#0e7490} .s-to_process{background:#7c3aed}
   .s-available{background:var(--vert)} .s-sent{background:var(--bleu)} .s-disabled{background:var(--gris)}
+  .gal-slots{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+  .gal-slot{border:1px dashed var(--ligne,#d6dce8);border-radius:10px;padding:6px;text-align:center;font-size:12px;background:#fafcff;display:flex;flex-direction:column;gap:4px;align-items:center}
+  .gal-slot img{width:100%;aspect-ratio:1;object-fit:contain;border-radius:8px;background:#fff}
+  .gal-slot input[type=file]{width:100%;font-size:11px}
   .big-total{font-size:1.3rem;font-weight:700;padding:6px 0}
   .s-active{background:var(--vert)} .s-revoked{background:var(--rouge)} .s-used{background:var(--gris)} .s-expired{background:var(--jaune)}
   .s-on,.s-sale,.s-visible,.s-pub{background:var(--vert)} .s-off,.s-hidden,.s-draft{background:var(--gris)}
@@ -276,6 +280,8 @@
             <label>Photo du produit <span class="small">(carrée 1500 × 1500, fond blanc, sans prix ni texte promo ni logo Microsoft ; convertie en JPG automatiquement)</span></label>
             <div class="bar" style="margin:0"><img id="pImgPrev" class="preview sq hidden" alt="Aperçu de la photo"><input id="pImgFile" type="file" accept="image/*" class="grow"></div>
             <input type="hidden" id="pImg"><div id="pImgMsg" class="small"></div>
+            <label style="margin-top:10px">Autres photos <span class="small">(jusqu'à 3 en plus : autres angles, boîte, produit en situation)</span></label>
+            <div id="pGal" class="gal-slots"></div>
           </div>
           <div>
             <div id="pQtyBox" class="hidden grid"><div><label>Quantité disponible (vide = illimitée)</label><input id="pQty" type="number" min="0" placeholder="ex : 10"></div><div><label>Poids (grammes)</label><input id="pWeight" type="number" min="0" placeholder="ex : 250"></div></div>
@@ -919,13 +925,16 @@ async function toJpeg(file, max) {
 }
 async function uploadImage(input, hidden, preview, msg, opt = {}) {
   const f = input.files[0]; if (!f) return;
-  if (f.size > 25 * 1048576) { msg.textContent = "Image trop lourde (max 25 Mo)."; input.value = ""; return; }
+  // contrôle de ce qui entre : seulement des images, pas trop lourdes, assez grandes pour une fiche produit
+  if (!/^image\/(jpeg|png|webp|gif|avif|heic|heif)$/i.test(f.type || "") && !/\.(jpe?g|png|webp|gif|avif|heic|heif)$/i.test(f.name || "")) { msg.textContent = "⛔ Ce fichier n'est pas une photo (JPG, PNG ou WebP seulement)."; input.value = ""; return; }
+  if (f.size > 25 * 1048576) { msg.textContent = "⛔ Image trop lourde (max 25 Mo)."; input.value = ""; return; }
   // aperçu immédiat de la photo choisie, avant même l'envoi
   const before = hidden.value, show = (src) => { preview.src = src; preview.classList.remove("hidden"); };
   const local = URL.createObjectURL(f); show(local);
   try {
     msg.textContent = "Préparation de l'image…";
     const j = await toJpeg(f, opt.max || 1600);
+    if (opt.product && Math.min(j.ow, j.oh) < 500) throw new Error("⛔ Photo refusée : trop petite (" + j.ow + " × " + j.oh + "). Minimum 500 × 500, 1500 × 1500 conseillé.");
     show(URL.createObjectURL(j.file)); URL.revokeObjectURL(local); // aperçu de la version qui sera publiée
     const { url, public_url } = await api({ action: "image_upload_url", filename: j.file.name });
     await putFile(url, j.file, (p) => (msg.textContent = "Envoi… " + p + " %"));
@@ -1575,6 +1584,20 @@ function keysInfo(p) {
   $("pKeysInfo").textContent = s ? (s.available ?? 0) + " envoi(s) possible(s) en stock" + (s.reusable ? " + un sérialiseur réutilisable sans limite" : "") : "";
 }
 $("pType").addEventListener("change", syncType);
+// galerie : 3 emplacements photo en plus de la photo principale
+const galSlots = [];
+for (let n = 0; n < 3; n++) {
+  const box = el("div", null, "gal-slot"), prev = el("img"), hid = el("input"), file = el("input"), msg = el("div", null, "small");
+  hid.type = "hidden"; file.type = "file"; file.accept = "image/*"; prev.alt = "Photo " + (n + 2); prev.classList.add("hidden");
+  const del = btn("✕ Retirer", "grey", () => { hid.value = ""; prev.classList.add("hidden"); prev.removeAttribute("src"); msg.textContent = "Retirée (pensez à enregistrer)"; del.classList.add("hidden"); });
+  del.type = "button"; del.classList.add("hidden");
+  file.addEventListener("change", async () => { await uploadImage(file, hid, prev, msg, { product: true, max: 1500 }); del.classList.toggle("hidden", !hid.value); });
+  box.append(el("b", "Photo " + (n + 2)), prev, file, del, msg);
+  $("pGal").append(box);
+  galSlots.push({ set: (u) => { hid.value = u || ""; msg.textContent = ""; if (u) { prev.src = u; prev.classList.remove("hidden"); } else { prev.removeAttribute("src"); prev.classList.add("hidden"); } del.classList.toggle("hidden", !u); }, get: () => hid.value });
+}
+const setGallery = (list) => galSlots.forEach((g, i) => g.set((list || [])[i] || ""));
+const getGallery = () => galSlots.map((g) => g.get()).filter(Boolean);
 $("pImgFile").addEventListener("change", () => uploadImage($("pImgFile"), $("pImg"), $("pImgPrev"), $("pImgMsg"), { product: true, max: 1500 }));
 $("pUploadBtn").addEventListener("click", async () => {
   const f = $("pUpload").files[0], msg = $("pUpMsg"), b = $("pUploadBtn");
@@ -1610,7 +1633,7 @@ function editProduct(p) {
   $("pFormTitle").textContent = "Modifier : " + p.name + (p.active ? "" : " (📝 brouillon, caché du site)");
   $("pId").value = p.id; $("pName").value = p.name; $("pCat").value = p.category_id || ""; $("pPrice").value = p.price_fcfa;
   $("pCompare").value = p.compare_price_fcfa || ""; $("pWholesale").value = p.wholesale_price_fcfa ?? ""; $("pDesc").value = p.description || ""; $("pImg").value = p.image_url || "";
-  $("pImgPrev").src = p.image_url || ""; $("pImgPrev").classList.toggle("hidden", !p.image_url); $("pImgMsg").textContent = "";
+  $("pImgPrev").src = p.image_url || ""; $("pImgPrev").classList.toggle("hidden", !p.image_url); $("pImgMsg").textContent = ""; setGallery(p.gallery);
   const ext = /^https:\/\//i.test(p.installer_path || "");
   $("pPhysical").checked = p.delivery_type === "physical"; $("pQty").value = p.stock_qty ?? ""; $("pWeight").value = p.weight_g ?? ""; $("pSku").value = p.sku || "";
   $("pSeoT").value = p.seo_title || ""; $("pSeoD").value = p.seo_description || ""; seoPrev();
@@ -1624,7 +1647,7 @@ function editProduct(p) {
 function resetProduct() {
   $("pFormTitle").textContent = "Nouveau produit";
   for (const id of ["pId", "pName", "pPrice", "pCompare", "pWholesale", "pDesc", "pImg", "pFile"]) $(id).value = "";
-  $("pCat").value = ""; $("pType").value = "key"; $("pPackRows").replaceChildren(); $("pKeysNote").value = ""; $("pPhysical").checked = false; $("pQty").value = ""; $("pWeight").value = ""; $("pSku").value = ""; $("pSeoT").value = ""; $("pSeoD").value = ""; seoPrev(); $("pLink").value = ""; $("pKeys").value = ""; resetKind("pKeys"); fillSrc(null); keysInfo(null); syncType(); $("pImgPrev").classList.add("hidden"); $("pImgMsg").textContent = "";
+  $("pCat").value = ""; $("pType").value = "key"; $("pPackRows").replaceChildren(); $("pKeysNote").value = ""; $("pPhysical").checked = false; $("pQty").value = ""; $("pWeight").value = ""; $("pSku").value = ""; $("pSeoT").value = ""; $("pSeoD").value = ""; seoPrev(); $("pLink").value = ""; $("pKeys").value = ""; resetKind("pKeys"); fillSrc(null); keysInfo(null); syncType(); $("pImgPrev").classList.add("hidden"); $("pImgMsg").textContent = ""; setGallery([]);
   $("pAuto").checked = true; $("pActive").value = "1"; $("pFeatured").checked = false; $("pLow").value = 5; $("pSort").value = 0; $("pTpl").value = ""; $("pTwo").checked = false; $("pInstTpl").value = ""; twoVis();
 }
 $("pReset").addEventListener("click", resetProduct);
@@ -1639,7 +1662,7 @@ async function saveProduct(publish) {
     const bundle = pack ? packPayload() : [];
     if (pack && bundle.length < 2) return toast("Un pack doit contenir au moins 2 produits.");
     const saved = await api({ action: "product_save", id: $("pId").value || undefined, name: $("pName").value, category_id: $("pCat").value, stock_qty: $("pQty").value,
-      price_fcfa: $("pPrice").value, compare_price_fcfa: $("pCompare").value, wholesale_price_fcfa: $("pWholesale").value, description: $("pDesc").value, image_url: $("pImg").value,
+      price_fcfa: $("pPrice").value, compare_price_fcfa: $("pCompare").value, wholesale_price_fcfa: $("pWholesale").value, description: $("pDesc").value, image_url: $("pImg").value, gallery: getGallery(),
       delivery_type: phys ? "physical" : pack ? "key" : $("pType").value, installer_path: pack ? "" : link || $("pFile").value, bundle, auto_deliver: $("pAuto").checked, active: $("pActive").value === "1", sku: $("pSku").value, weight_g: $("pWeight").value, seo_title: $("pSeoT").value, seo_description: $("pSeoD").value,
       featured: $("pFeatured").checked, low_stock_threshold: $("pLow").value, sort: $("pSort").value, email_template_id: $("pTpl").value, two_step: $("pTwo").checked, install_template_id: $("pInstTpl").value, key_source_id: pack || phys ? "" : $("pSrc").value });
     let msg = "Produit enregistré ✔";

@@ -55,7 +55,7 @@ function newRef(): string {
 }
 const str = (v: unknown, max: number) => String(v ?? "").trim().slice(0, max);
 const STOCK_TYPES = ["key", "key_file", "stock"];
-const PRODUCT_FIELDS = "id, slug, name, description, image_url, price_fcfa, compare_price_fcfa, delivery_type, featured, sort, category_id, stock_qty, sku, seo_title, seo_description";
+const PRODUCT_FIELDS = "id, slug, name, description, image_url, gallery, price_fcfa, compare_price_fcfa, delivery_type, featured, sort, category_id, stock_qty, sku, seo_title, seo_description";
 
 // ================= Origine de la commande (pub Facebook, Google Ads, WhatsApp…) =================
 const SITE_CHANNELS = ["google_ads", "facebook_ads", "facebook", "google", "whatsapp", "direct", "autre"];
@@ -457,6 +457,7 @@ function publicProduct(p: any, counts: Record<string, number>, cats: Record<stri
   const left = physical ? p.stock_qty : counts[p.id] ?? 0;
   return {
     slug: p.slug, name: p.name, description: p.description ?? "", image_url: p.image_url ?? "",
+    gallery: Array.isArray(p.gallery) ? p.gallery.filter((u: string) => /^https:\/\//.test(String(u))).slice(0, 3) : [],
     price_fcfa: p.price_fcfa, compare_price_fcfa: p.compare_price_fcfa ?? null,
     promo_name: p.promo_name ?? null, promo_ends_at: p.promo_ends_at ?? null,
     sku: p.sku ?? null, seo_title: p.seo_title ?? null, seo_description: p.seo_description ?? null,
@@ -575,7 +576,7 @@ async function setting(key: string, def: number) {
 async function productFeed(kind: string) {
   const site = (Deno.env.get("SITE_URL") ?? "https://www.licenceoff.com").trim().replace(/\/$/, "");
   const [{ data: prods }, { data: cats }] = await Promise.all([
-    db.from("products").select("id, slug, name, description, image_url, price_fcfa, compare_price_fcfa, delivery_type, stock_qty, category_id, sku, seo_description").eq("active", true).order("sort").order("name"),
+    db.from("products").select("id, slug, name, description, image_url, gallery, price_fcfa, compare_price_fcfa, delivery_type, stock_qty, category_id, sku, seo_description").eq("active", true).order("sort").order("name"),
     db.from("categories").select("id, name, parent_id"),
   ]);
   const catById = Object.fromEntries((cats ?? []).map((c) => [c.id, c]));
@@ -596,7 +597,9 @@ async function productFeed(kind: string) {
       id: p.slug, title: String(p.name).slice(0, 150), description: plain(p.description || p.seo_description || p.name) || p.name,
       availability: pub.in_stock ? "in stock" : "out of stock", condition: "new",
       price: (promo ? p.compare_price_fcfa : p.price_fcfa) + " XOF", sale_price: promo ? p.price_fcfa + " XOF" : "",
-      link: site + "/produit/" + encodeURIComponent(p.slug), image_link: img, brand, product_type: type,
+      link: site + "/produit/" + encodeURIComponent(p.slug), image_link: img,
+      // photos supplémentaires de la galerie (Google et Meta acceptent une liste séparée par des virgules)
+      additional_image_link: (Array.isArray(p.gallery) ? p.gallery : []).filter((u: string) => /^https:\/\//.test(String(u))).slice(0, 3).join(","), brand, product_type: type,
       // logiciels : 313 ; caméras : chemin texte de la taxonomie Google (accepté par Google et Meta)
       google_product_category: /cam[ée]ra|surveillance/i.test(p.name + " " + type) ? "Cameras & Optics > Cameras > Surveillance Cameras" : p.delivery_type === "physical" ? "" : "313",
       mpn: p.sku ?? "", identifier_exists: "no",
@@ -604,7 +607,7 @@ async function productFeed(kind: string) {
   });
   const headers = { ...cors, "Cache-Control": "public, max-age=3600" };
   if (kind === "csv") {
-    const cols = ["id", "title", "description", "availability", "condition", "price", "sale_price", "link", "image_link", "brand", "product_type", "google_product_category", "mpn", "identifier_exists"];
+    const cols = ["id", "title", "description", "availability", "condition", "price", "sale_price", "link", "image_link", "additional_image_link", "brand", "product_type", "google_product_category", "mpn", "identifier_exists"];
     const q = (v: string) => '"' + String(v ?? "").replace(/"/g, '""') + '"';
     // deno-lint-ignore no-explicit-any
     const body = [cols.join(","), ...rows.map((r: any) => cols.map((k) => q(r[k])).join(","))].join("\n") + "\n";

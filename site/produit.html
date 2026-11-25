@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Produit — licenceoff.com</title>
-<link rel="stylesheet" href="/shop.css?v=26">
+<link rel="stylesheet" href="/shop.css?v=27">
 <link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="64x64" href="/img/profil-64.png"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
 <meta property="og:image" content="https://www.licenceoff.com/img/partage.jpg">
 </head>
@@ -12,7 +12,7 @@
 <main class="wrap">
   <div id="view"><div class="product"><div class="skeleton"></div><div class="skeleton"></div></div></div>
 </main>
-<script src="/shop.js?v=26"></script>
+<script src="/shop.js?v=27"></script>
 <script>
 LO.page("shop");
 const { el, $, fcfa } = LO;
@@ -22,9 +22,27 @@ function show(p) {
   const par = p.category_parent;
   const catPath = p.category ? LO.url.category(p.category, par ? par.slug : null) : null;
   // titre et description Google : ceux de l'admin s'ils existent, sinon le nom et le début de la description
+  // galerie : photo principale + jusqu'à 3 photos (miniatures cliquables, glisser sur mobile)
+  function gallery(p) {
+    const pics = [p.image_url, ...(p.gallery || [])].filter(Boolean);
+    if (!pics.length) return el("div", { class: "img" }, el("span", { class: "ph", style: "font-size:64px;font-weight:800;color:#94a3b8", text: LO.initials(p.name) }));
+    const main = el("img", { src: pics[0], alt: p.name });
+    if (pics.length === 1) return el("div", { class: "img" }, main);
+    let cur = 0;
+    const thumbs = pics.map((u, i) => el("button", { type: "button", class: "thumb" + (i ? "" : " on"), "aria-label": "Photo " + (i + 1), onclick: () => show(i) }, el("img", { src: u, alt: "", loading: "lazy" })));
+    const show = (i) => { cur = (i + pics.length) % pics.length; main.src = pics[cur]; main.alt = p.name + " — photo " + (cur + 1); thumbs.forEach((t, k) => t.classList.toggle("on", k === cur)); };
+    const box = el("div", { class: "img" }, main,
+      el("button", { type: "button", class: "gnav prev", "aria-label": "Photo précédente", text: "‹", onclick: () => show(cur - 1) }),
+      el("button", { type: "button", class: "gnav next", "aria-label": "Photo suivante", text: "›", onclick: () => show(cur + 1) }));
+    let x0 = null; // glisser sur mobile
+    box.addEventListener("touchstart", (e) => { x0 = e.touches[0].clientX; }, { passive: true });
+    box.addEventListener("touchend", (e) => { if (x0 == null) return; const dx = e.changedTouches[0].clientX - x0; if (Math.abs(dx) > 40) show(cur + (dx < 0 ? 1 : -1)); x0 = null; });
+    for (const u of pics.slice(1)) { const im = new Image(); im.src = u; } // préchargement
+    return el("div", { class: "gallery" }, box, el("div", { class: "thumbs" }, ...thumbs));
+  }
   LO.seo({ title: p.seo_title || p.name + " — licenceoff.com", description: (p.seo_description || p.description || p.name).replace(/\s+/g, " ").slice(0, 160), path: LO.url.product(p.slug), image: p.image_url || null });
   const rt = p.rating;
-  LO.jsonLd({ "@context": "https://schema.org", "@type": "Product", name: p.name, description: p.seo_description || p.description || p.name, image: p.image_url || undefined, sku: p.sku || undefined,
+  LO.jsonLd({ "@context": "https://schema.org", "@type": "Product", name: p.name, description: p.seo_description || p.description || p.name, image: [p.image_url, ...(p.gallery || [])].filter(Boolean).length ? [p.image_url, ...(p.gallery || [])].filter(Boolean) : undefined, sku: p.sku || undefined,
     aggregateRating: rt ? { "@type": "AggregateRating", ratingValue: rt.avg, reviewCount: rt.count, bestRating: 5, worstRating: 1 } : undefined,
     review: rt ? (p.reviews || []).slice(0, 5).map((v) => ({ "@type": "Review", author: { "@type": "Person", name: v.name }, datePublished: String(v.date).slice(0, 10), reviewBody: v.comment || undefined, reviewRating: { "@type": "Rating", ratingValue: v.rating, bestRating: 5 } })) : undefined,
     url: LO.SITE + LO.url.product(p.slug), category: p.category_name || undefined,
@@ -45,7 +63,7 @@ function show(p) {
     onclick: () => { clampQ(); LO.addToCart(p, Number(qtyIn.value)); location.href = LO.url.cart; } });
 
   $("#view").replaceChildren(LO.crumbs([["Accueil", LO.url.home], ["Boutique", LO.url.shop], ...(par ? [[par.name, LO.url.category(par.slug)]] : []), ...(catPath ? [[p.category_name || "Catégorie", catPath]] : []), [p.name]]), el("div", { class: "product" },
-    el("div", { class: "img" }, p.image_url ? el("img", { src: p.image_url, alt: p.name }) : el("span", { class: "ph", style: "font-size:64px;font-weight:800;color:#94a3b8", text: LO.initials(p.name) })),
+    gallery(p),
     el("div", {},
       el("h1", { text: p.name }),
       rt ? el("a", { class: "rating-line", href: "#avis" }, starsEl(rt.avg), el("span", { text: String(rt.avg).replace(".", ",") + "/5 · " + rt.count + " avis" })) : null,
