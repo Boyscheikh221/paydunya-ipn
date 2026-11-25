@@ -831,7 +831,7 @@ const STOCK_TYPES = ["key", "key_file", "stock"];
 let stock = []; // stock de clés par produit (rempli par le tableau de bord)
 const METHOD = { whatsapp: "💬 WhatsApp", wave: "Wave", orange_money: "Orange Money", free_money: "Free Money", especes: "Espèces", paydunya: "PayDunya", manuel: "Transfert manuel", autre: "Autre" };
 const ERR = {
-  pack_invalide: "Pack invalide : choisissez des produits livrés avec une clé ou des identifiants (pas un autre pack).", paiement_non_valide: "Validez d'abord le paiement de la commande avant de libérer une clé.", rien_a_expedier: "Aucun produit physique à expédier dans cette commande.", lien_invalide: "Le lien doit commencer par https://", commande_annulee: "Cette commande est annulée.", pas_de_produit_physique: "Cette commande n'a pas de produit physique.", pas_dans_le_pack: "Ce produit ne fait pas partie du pack.", deja_livre: "Cet article est déjà livré.", stock_source_invalide: "Stock commun impossible : choisissez un produit avec son propre stock de clés (pas un pack, ni un produit qui prend déjà ses clés ailleurs).", pack_sans_stock: "Un pack n'a pas de stock propre : ajoutez les clés dans le stock de chaque produit du pack.",
+  pack_invalide: "Pack invalide : choisissez des produits livrés avec une clé ou des identifiants (pas un autre pack).", paiement_non_valide: "Validez d'abord le paiement de la commande avant de libérer une clé.", rien_a_expedier: "Aucun produit physique à expédier dans cette commande.", produit_vendu: "Ce produit a déjà été vendu : il ne peut pas être supprimé (l'historique des commandes en a besoin). Laissez-le en brouillon, il reste caché du site.", produit_publie: "Repassez d'abord le produit en brouillon avant de le supprimer.", produit_source: "D'autres produits prennent leurs clés dans le stock de celui-ci : changez-les d'abord.", lien_invalide: "Le lien doit commencer par https://", commande_annulee: "Cette commande est annulée.", pas_de_produit_physique: "Cette commande n'a pas de produit physique.", pas_dans_le_pack: "Ce produit ne fait pas partie du pack.", deja_livre: "Cet article est déjà livré.", stock_source_invalide: "Stock commun impossible : choisissez un produit avec son propre stock de clés (pas un pack, ni un produit qui prend déjà ses clés ailleurs).", pack_sans_stock: "Un pack n'a pas de stock propre : ajoutez les clés dans le stock de chaque produit du pack.",
   rien_a_noter: "Rien à noter : le client a déjà donné son avis sur tous ses produits, ou la commande n'a pas d'adresse email valide.",
   integrateur_pas_branche: "Cet intégrateur n'est pas encore branché au site : demandez à Claude de le brancher quand votre compte est actif.",
   cles_manquantes: "Enregistrez d'abord toutes les clés de cet intégrateur.", cle_invalide: "Clé invalide (pas d'espace, vérifiez le copier-coller).",
@@ -1666,7 +1666,13 @@ async function loadProducts() {
     td(tag(p.active ? "pub" : "draft"), p.sku ? el("div", p.sku, "small mono") : null),
     td(btn("Modifier", "grey", () => editProduct(p)), " ",
       p.active ? btn("Repasser en brouillon", "grey", async () => { await api({ action: "product_status", id: p.id, active: false }); toast("Produit caché (brouillon) ✔"); await loadProducts(); })
-        : btn("✅ Publier", "green", async () => { await api({ action: "product_status", id: p.id, active: true }); toast("Produit publié ✔ : visible sur le site"); await loadProducts(); })))));
+        : btn("✅ Publier", "green", async () => { await api({ action: "product_status", id: p.id, active: true }); toast("Produit publié ✔ : visible sur le site"); await loadProducts(); }),
+      // brouillon : suppression définitive (refusée si le produit a déjà été vendu : on garde l'historique)
+      p.active ? null : " ", p.active ? null : btn("🗑 Supprimer", "red", async () => {
+        if (!confirm("Supprimer définitivement « " + p.name + " » ?\nSes clés encore en stock seront supprimées aussi. Cette action est irréversible.")) return;
+        try { const d = await api({ action: "product_delete", id: p.id }); toast("Produit supprimé ✔" + (d.keys ? " (" + d.keys + " clé(s) du stock supprimée(s))" : "")); if ($("pId").value === p.id) resetProduct(); await loadProducts(); }
+        catch (e) { toast(errMsg(e)); }
+      })))));
   renderCategories();
 }
 function editProduct(p) {

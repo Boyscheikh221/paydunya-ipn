@@ -1472,6 +1472,23 @@ Deno.serve(async (req) => {
         if (r.error) return json({ error: r.error.message.includes("duplicate") ? "code_deja_utilise" : r.error.message }, 400);
         return json({ row: r.data });
       }
+      case "product_delete": { // 🗑 brouillon jamais vendu : suppression définitive (avec ses clés encore en stock)
+        const id = str(body.id, 40);
+        const { data: p } = await db.from("products").select("id, name, active").eq("id", id).maybeSingle();
+        if (!p) return json({ error: "produit_introuvable" }, 404);
+        if (p.active) return json({ error: "produit_publie" }, 400);
+        const cnt = async (t: string, col = "product_id") => (await db.from(t).select("id", { count: "exact", head: true }).eq(col, id)).count ?? 0;
+        if (await cnt("order_items") || await cnt("orders") || await cnt("downloads")) return json({ error: "produit_vendu" }, 400);
+        if (await cnt("products", "key_source_id")) return json({ error: "produit_source" }, 400);
+        const { count: used } = await db.from("license_keys").select("id", { count: "exact", head: true }).eq("product_id", id).neq("status", "available");
+        if (used) return json({ error: "produit_vendu" }, 400);
+        const { data: gone } = await db.from("license_keys").delete().eq("product_id", id).select("id");
+        const { error } = await db.from("products").delete().eq("id", id);
+        if (error) return json({ error: error.message }, 500);
+        await logEvent("warn", "produits", "Produit supprimé (brouillon)", { produit: p.name, cles_supprimees: gone?.length ?? 0 });
+        return json({ ok: true, keys: gone?.length ?? 0 });
+      }
+
       case "category_delete": { // les produits restent, sans catégorie
         const { error } = await db.from("categories").delete().eq("id", body.id);
         if (error) return json({ error: error.message }, 500);
