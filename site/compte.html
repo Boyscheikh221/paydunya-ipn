@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex">
 <title>Mon compte — licenceoff.com</title>
 <meta name="theme-color" content="#1E4FB8">
-<link rel="stylesheet" href="/shop.css?v=28">
+<link rel="stylesheet" href="/shop.css?v=29">
 <style>
   .acc-sec { margin-bottom: 16px; }
   .acc-sec h2 { margin: 0 0 8px; font-size: 18px; }
@@ -26,7 +26,7 @@
   <div data-crumbs='[["Accueil","/"],["Mon compte"]]' style="margin-top:14px"></div>
   <div id="view" style="margin:24px 0 40px"><div class="skeleton"></div></div>
 </main>
-<script src="/shop.js?v=28"></script>
+<script src="/shop.js?v=29"></script>
 <script>
 LO.page("");
 const { el, $, fcfa } = LO;
@@ -88,6 +88,13 @@ function dash(d) {
     el("div", { style: "display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap" },
       el("h1", { style: "margin:0", text: "Bonjour" + (first ? " " + first : "") + " 👋" }), out),
     el("p", { class: "note", text: "Connecté avec " + d.me.email }),
+
+    // programme de fidélité : solde et derniers mouvements
+    d.loyalty ? el("div", { class: "panel acc-sec pts-box" }, el("h2", { style: "margin-top:0", text: "🎁 Mes points fidélité : " + d.loyalty.balance }),
+      el("p", { class: "note", text: "= " + fcfa(d.loyalty.balance * d.loyalty.value) + " de réduction. 1 point par 1 000 F d'achat (crédité à la livraison), " + d.loyalty.review_points + " points par avis validé. Utilisables au panier dès " + d.loyalty.min + " points, jusqu'à 20 % de la commande. Valables 12 mois." }),
+      d.loyalty.history.length ? el("ul", { class: "pts-hist" }, ...d.loyalty.history.map((h) => el("li", {},
+        el("span", { text: new Date(h.date).toLocaleDateString("fr-FR") + " · " + (h.note || "") }),
+        el("span", { class: h.points > 0 ? "plus" : "moins", text: (h.points > 0 ? "+" : "") + h.points })))) : el("p", { class: "note", text: "Pas encore de points : ils arrivent avec votre prochain achat ou votre prochain avis." })) : null,
 
     el("div", { class: "panel acc-sec" }, el("h2", { text: "Mes commandes" }),
       d.orders.length ? el("div", {}, ...d.orders.map((o) => el("div", { class: "ord" },

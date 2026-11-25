@@ -1780,7 +1780,29 @@ Deno.serve(async (req) => {
         // consentement aux offres par email
         const { data: mk } = await db.from("marketing_contacts").select("email, optin, optin_at, unsub_at").limit(50000);
         const mkBy = Object.fromEntries((mk ?? []).map((m) => [m.email, m]));
-        return json({ rows: [...by.values()].map((c) => ({ ...c, codes: [...c.codes], marketing: mkBy[c.email]?.optin === true, marketing_at: mkBy[c.email]?.optin_at ?? null })) });
+        // points fidélité : solde de chaque client qui a déjà des points
+        const { data: lp } = await db.from("loyalty_points").select("email").limit(50000);
+        const pts: Record<string, number> = {};
+        await Promise.all([...new Set((lp ?? []).map((r) => r.email))].map(async (e) => { const { data } = await db.rpc("loyalty_balance", { p_email: e }); pts[e] = Number(data) || 0; }));
+        return json({ rows: [...by.values()].map((c) => ({ ...c, codes: [...c.codes], points: pts[c.email] ?? 0, marketing: mkBy[c.email]?.optin === true, marketing_at: mkBy[c.email]?.optin_at ?? null })) });
+      }
+      case "loyalty_history": { // 🎁 points fidélité d'un client : solde et mouvements
+        const email = str(body.email, 200).toLowerCase();
+        const [{ data: rows }, { data: bal }] = await Promise.all([db.rpc("loyalty_valid_rows", { p_email: email }), db.rpc("loyalty_balance", { p_email: email })]);
+        // deno-lint-ignore no-explicit-any
+        return json({ balance: Number(bal) || 0, rows: ((rows ?? []) as any[]).reverse().slice(0, 100) });
+      }
+      case "loyalty_adjust": { // 🎁 geste commercial ou correction : ajouter (+) ou retirer (−) des points à la main
+        const email = str(body.email, 200).toLowerCase();
+        const points = Math.trunc(Number(body.points));
+        if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/.test(email)) return json({ error: "email_invalide" }, 400);
+        if (!points || Math.abs(points) > 100000) return json({ error: "points_invalides" }, 400);
+        const note = str(body.note, 120) || (points > 0 ? "Geste commercial" : "Correction");
+        const { error } = await db.from("loyalty_points").insert({ email, points, kind: "adjust", note });
+        if (error) return json({ error: error.message }, 500);
+        await logEvent("info", "fidelite", (points > 0 ? "+" : "") + points + " points fidélité pour " + email, { motif: note });
+        const { data: bal } = await db.rpc("loyalty_balance", { p_email: email });
+        return json({ ok: true, balance: Number(bal) || 0 });
       }
       case "email_stats": { // emails envoyés (7 jours, 30 jours, 12 mois, total) et inscrits aux offres
         const cnt = async (days?: number) => {

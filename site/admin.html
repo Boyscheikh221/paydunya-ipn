@@ -671,7 +671,7 @@
       <h1>Clients</h1>
       <div class="box" id="clStats" style="display:flex;gap:18px;flex-wrap:wrap"></div>
       <div class="bar"><input id="clSearch" class="grow" placeholder="Rechercher : nom, email, téléphone, code parrain"><label class="check" style="margin:0"><input type="checkbox" id="clOptin"> Seulement les inscrits aux offres</label><button id="clCsv" class="grey">Exporter (CSV)</button></div>
-      <div class="box"><div class="tablewrap"><table><thead><tr><th>Client</th><th>Commandes</th><th>Dépensé</th><th>Première / dernière</th><th>Parrain</th><th>IP</th><th>Messages</th></tr></thead><tbody id="clRows"></tbody></table></div></div>
+      <div class="box"><div class="tablewrap"><table><thead><tr><th>Client</th><th>Commandes</th><th>Dépensé</th><th>🎁 Points</th><th>Première / dernière</th><th>Parrain</th><th>IP</th><th>Messages</th></tr></thead><tbody id="clRows"></tbody></table></div></div>
     </section>
 
     <section id="tab-reviews" class="hidden">
@@ -843,6 +843,7 @@ const STOCK_TYPES = ["key", "key_file", "stock"];
 let stock = []; // stock de clés par produit (rempli par le tableau de bord)
 const METHOD = { whatsapp: "💬 WhatsApp", wave: "Wave", orange_money: "Orange Money", free_money: "Free Money", especes: "Espèces", paydunya: "PayDunya", manuel: "Transfert manuel", autre: "Autre" };
 const ERR = {
+  points_invalides: "Nombre de points invalide (entre -100000 et 100000, sans 0).",
   pack_invalide: "Pack invalide : choisissez des produits livrés avec une clé ou des identifiants (pas un autre pack).", paiement_non_valide: "Validez d'abord le paiement de la commande avant de libérer une clé.", rien_a_expedier: "Aucun produit physique à expédier dans cette commande.", produit_vendu: "Ce produit a déjà été vendu : il ne peut pas être supprimé (l'historique des commandes en a besoin). Laissez-le en brouillon, il reste caché du site.", produit_publie: "Repassez d'abord le produit en brouillon avant de le supprimer.", produit_source: "D'autres produits prennent leurs clés dans le stock de celui-ci : changez-les d'abord.", lien_invalide: "Le lien doit commencer par https://", commande_annulee: "Cette commande est annulée.", pas_de_produit_physique: "Cette commande n'a pas de produit physique.", pas_dans_le_pack: "Ce produit ne fait pas partie du pack.", deja_livre: "Cet article est déjà livré.", stock_source_invalide: "Stock commun impossible : choisissez un produit avec son propre stock de clés (pas un pack, ni un produit qui prend déjà ses clés ailleurs).", pack_sans_stock: "Un pack n'a pas de stock propre : ajoutez les clés dans le stock de chaque produit du pack.",
   rien_a_noter: "Rien à noter : le client a déjà donné son avis sur tous ses produits, ou la commande n'a pas d'adresse email valide.",
   integrateur_pas_branche: "Cet intégrateur n'est pas encore branché au site : demandez à Claude de le brancher quand votre compte est actif.",
@@ -1518,7 +1519,7 @@ async function loadOrders() {
         o.shipping_method ? shipInfo(o) : null),
       cItems,
       td(el("strong", fcfa(o.amount_fcfa)), el("br"), el("span", METHOD[o.payment_method] || o.payment_method || "—", "small"), el("br"), el("span", o.payment_ref || "", "small mono")),
-      td(tag(o.status), o.key_locked && o.status === "pending" ? el("div", "🔒 Clé verrouillée", "small") : null, o.emailed_at ? el("div", "✉ email envoyé " + dt(o.emailed_at), "small") : null, o.review_asked_at ? el("div", "⭐ avis demandé " + dt(o.review_asked_at), "small") : null, o.note ? el("div", o.note, "small") : null),
+      td(tag(o.status), o.key_locked && o.status === "pending" ? el("div", "🔒 Clé verrouillée", "small") : null, o.emailed_at ? el("div", "✉ email envoyé " + dt(o.emailed_at), "small") : null, o.review_asked_at ? el("div", "⭐ avis demandé " + dt(o.review_asked_at), "small") : null, o.points_used ? el("div", "🎁 " + o.points_used + " points utilisés (− " + fcfa(o.points_discount_fcfa) + ")", "small") : null, o.note ? el("div", o.note, "small") : null),
       td(acts)));
   }
 }
@@ -2650,10 +2651,28 @@ function renderClients() {
         el("div", "Recherches : " + (a.searches.join(", ") || "—"), "small"));
     }
     return tr(td(el("strong", c.name || "—"), c.account ? el("span", " 👤", "small") : null, c.marketing ? el("span", " ✅ offres", "small") : null, el("br"), el("span", c.email, "small"), el("br"), el("span", c.phone || "", "small")), td(det, acc), td(el("strong", fcfa(c.spent)), el("br"), el("span", c.paid_orders + " payée(s)", "small")),
+      td(el("strong", String(c.points || 0)), el("br"), btn("🎁 Gérer", "grey", () => loyaltyManage(c.email))),
       td(el("span", dt(c.first) + " / " + dt(c.last), "small")), td((c.codes || []).join(", ") || "—"), td(el("span", c.ip || "—", "small mono")),
       td(btn(c.messages ? "✉️ " + c.messages + " message(s)" : "✉️ Écrire", "grey", () => openMessages(c.email))));
   }));
   if (!list.length) $("clRows").append(tr(td("Aucun client.")));
+}
+// 🎁 points fidélité d'un client : voir les mouvements, ajouter ou retirer des points (geste commercial, correction)
+async function loyaltyManage(email) {
+  try {
+    const h = await api({ action: "loyalty_history", email });
+    const last = h.rows.slice(0, 8).map((r) => "  " + dt(r.created_at) + "  " + (r.points > 0 ? "+" : "") + r.points + "  " + (r.note || "")).join("\n");
+    const v = prompt("🎁 " + email + "\nSolde : " + h.balance + " points (= " + fcfa(h.balance * 10) + ")\n" + (last ? "\nDerniers mouvements :\n" + last + "\n" : "") +
+      "\nAjouter ou retirer des points ? Tapez par exemple 100 ou -50 (laisser vide pour annuler) :", "");
+    if (v == null || !v.trim()) return;
+    const n = Math.trunc(Number(v.replace(/\s/g, "")));
+    if (!n) return toast("Nombre de points invalide.");
+    const note = prompt("Motif (visible par le client dans son compte) :", n > 0 ? "Geste commercial" : "Correction");
+    if (note == null) return;
+    const r = await api({ action: "loyalty_adjust", email, points: n, note });
+    toast("✔ " + (n > 0 ? "+" : "") + n + " points. Nouveau solde : " + r.balance + " points");
+    loadClients();
+  } catch (e) { toast(errMsg(e)); }
 }
 $("clSearch").addEventListener("input", renderClients);
 $("clOptin").addEventListener("change", renderClients);

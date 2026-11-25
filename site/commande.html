@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
 <title>Ma commande — licenceoff.com</title>
-<link rel="stylesheet" href="/shop.css?v=28">
+<link rel="stylesheet" href="/shop.css?v=29">
 <link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="64x64" href="/img/profil-64.png"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
 <meta property="og:image" content="https://www.licenceoff.com/img/partage.jpg">
 </head>
@@ -15,7 +15,7 @@
   <div data-crumbs='[["Accueil","/"],["Ma commande"]]' style="margin-top:14px"></div>
   <div id="view" style="padding:24px 0"><div class="skeleton"></div></div>
 </main>
-<script src="/shop.js?v=28"></script>
+<script src="/shop.js?v=29"></script>
 <script>
 LO.page("shop");
 const { el, $, fcfa } = LO;
@@ -181,7 +181,8 @@ function nameForm() {
     el("p", { class: "note", style: "margin:8px 0 0" }, "Vos données servent uniquement à votre commande et à votre compte. ", el("a", { href: "/confidentialite", text: "Confidentialité" })));
 }
 
-// avis client : 1 par article livré, publié après validation
+// avis client : 1 par article livré, publié après validation (+ points fidélité)
+let RV_PTS = 50;
 function reviewForm(i) {
   let note = 0;
   const stars = el("div", { class: "stars-in", role: "radiogroup", "aria-label": "Note" });
@@ -194,16 +195,17 @@ function reviewForm(i) {
     if (!note) { msg.textContent = "Choisissez une note de 1 à 5 étoiles."; return; }
     send.disabled = true;
     const d = await LO.boutique({ action: "review", o: token, i: i.id, rating: note, comment: txt.value }).catch(() => ({ error: "net" }));
-    if (d.ok || d.error === "deja_note") { det.replaceChildren(el("p", { class: "note", style: "margin:0", text: "⭐ Merci ! Votre avis sera visible après vérification." })); return; }
+    if (d.ok || d.error === "deja_note") { det.replaceChildren(el("p", { class: "note", style: "margin:0", text: "⭐ Merci ! Votre avis sera visible après vérification, et vos " + RV_PTS + " points fidélité seront alors crédités." })); return; }
     send.disabled = false; msg.textContent = "Erreur, réessayez.";
   });
   // encart visible (pas replié) : l'invitation remplace les emails de demande d'avis
   const phys = i.delivery_type === "physical";
   const det = el("div", { class: "review-box" },
-    el("p", { class: "rv-title", text: phys ? "⭐ Colis bien reçu ? Donnez votre avis" : "⭐ Votre clé est activée ? Donnez votre avis" }),
-    el("p", { class: "note", style: "margin:4px 0 0", text: phys
-      ? "Notez le produit de 1 à 5 étoiles et, si vous voulez, laissez un commentaire. 30 secondes, et cela aide les autres clients."
-      : "Une fois votre clé activée, revenez sur cette page pour noter le produit de 1 à 5 étoiles et, si vous voulez, laisser un commentaire. 30 secondes, et cela aide les autres clients." }),
+    el("p", { class: "rv-title", text: (phys ? "⭐ Colis bien reçu ? Donnez votre avis" : "⭐ Votre clé est activée ? Donnez votre avis") + " et gagnez " + RV_PTS + " points" }),
+    el("p", { class: "note", style: "margin:4px 0 0", text: (phys
+      ? "Notez le produit de 1 à 5 étoiles et, si vous voulez, laissez un commentaire. "
+      : "Une fois votre clé activée, revenez sur cette page pour noter le produit de 1 à 5 étoiles et, si vous voulez, laisser un commentaire. ")
+      + "🎁 Vous gagnez " + RV_PTS + " points fidélité (" + (RV_PTS * 10).toLocaleString("fr-FR") + " F de réduction sur une prochaine commande) dès que votre avis est validé." }),
     stars, txt, send, msg);
   return det;
 }
@@ -312,7 +314,18 @@ async function load() {
       pay, msg, manual));
     if (autoPay && !o.has_paydunya) { autoPay = false; setTimeout(() => startPay(pay, msg), 300); }
   }
+  if (o.loyalty) RV_PTS = o.loyalty.review_points || RV_PTS;
   parts.push(el("div", { class: "panel" }, el("h2", { style: "margin:0 0 4px;font-size:18px", text: "Articles" }), ...o.items.map(itemBlock)));
+  // programme de fidélité : points de cette commande et solde
+  if (o.loyalty) {
+    const L = o.loyalty;
+    parts.push(el("div", { class: "pts-box", style: "margin-top:14px" },
+      el("b", { text: "🎁 Points fidélité : " + L.balance + " point(s) = " + fcfa(L.balance * L.value) + " de réduction" }),
+      el("p", { class: "note", style: "margin:4px 0 0", text: [
+        L.earn ? (L.credited ? "Cette commande vous a rapporté " + L.earn + " points." : "Cette commande vous rapportera " + L.earn + " points, crédités à la livraison.") : "",
+        L.used ? L.used + " points utilisés sur cette commande." : "",
+        "Chaque avis validé rapporte " + L.review_points + " points. Utilisez vos points au panier dès " + L.min + " points, en étant connecté à votre compte." ].filter(Boolean).join(" ") })));
+  }
   if (!LO.acct()) parts.push(el("div", { class: "panel note", style: "display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center" },
     el("span", { text: "Retrouvez toutes vos commandes, vos clés et vos favoris dans votre compte (sans mot de passe)." }), el("a", { class: "btn light", href: "/compte", text: "Mon compte" })));
   if (o.shipping) parts.push(el("div", { class: "panel" }, el("h2", { style: "margin:0 0 4px;font-size:18px", text: "Livraison" }),

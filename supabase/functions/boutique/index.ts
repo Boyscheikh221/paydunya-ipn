@@ -582,6 +582,24 @@ async function customerFromSession(token: unknown) {
   if (!d || new Date(d.expires_at) < new Date()) return null;
   return d.customers;
 }
+// ================= Programme de fidélité (SQL 59) =================
+// 1 point par 1 000 F payés (crédité à la livraison), 50 points par avis validé ; 1 point = 10 F,
+// utilisable dès 200 points, réduction max 20 % des produits, jamais sous le prix de gros. Points valables 12 mois.
+const PTS = { review: 50, value: 10, min: 200, capPct: 20 };
+async function loyaltyBalance(email: string) {
+  if (!email) return 0;
+  const { data } = await db.rpc("loyalty_balance", { p_email: email.toLowerCase() });
+  return Math.max(0, Number(data) || 0);
+}
+const pointsEarned = (amount: number) => Math.max(0, Math.floor(amount / 1000));
+// deno-lint-ignore no-explicit-any
+function pointsDiscount(priced: any[], total: number, balance: number) {
+  if (balance < PTS.min) return { points: 0, discount: 0 };
+  // marge disponible par article : jusqu'au prix de gros s'il existe
+  const room = priced.reduce((s, x) => s + (x.wholesale != null ? Math.max(0, x.unit - x.wholesale) : x.unit) * x.q, 0);
+  const discount = Math.floor(Math.min(balance * PTS.value, total * PTS.capPct / 100, room) / PTS.value) * PTS.value;
+  return discount > 0 ? { points: discount / PTS.value, discount } : { points: 0, discount: 0 };
+}
 async function setting(key: string, def: number) {
   const { data } = await db.from("settings").select("value").eq("key", key).maybeSingle();
   const n = Number(data?.value);
@@ -1057,7 +1075,12 @@ async function handle(req: Request): Promise<Response> {
       const pScore = (p: { category_id: string | null; featured: boolean }) => (p.category_id ? (score[p.category_id] ?? 0) + (score[byId[p.category_id]?.parent_id] ?? 0) / 2 : 0) + (p.featured ? 0.5 : 0);
       const suggestions = plist.filter((p) => !bought.has(p.id) && !favIds.includes(p.id))
         .map((p) => ({ p, sc: pScore(p) })).sort((a, b) => b.sc - a.sc).slice(0, 8).map((x) => publicProduct(x.p, counts, byId));
-      return json({
+      const { data: lrows } = await db.rpc("loyalty_valid_rows", { p_email: String(c.email).toLowerCase() });
+      // deno-lint-ignore no-explicit-any
+      const loyalty = { balance: await loyaltyBalance(String(c.email)), value: PTS.value, min: PTS.min, review_points: PTS.review,
+        // deno-lint-ignore no-explicit-any
+        history: ((lrows ?? []) as any[]).slice(-30).reverse().map((r) => ({ points: r.points, kind: r.kind, date: r.created_at, note: r.note })) };
+      return json({ loyalty,
         me: { email: c.email, name: c.name ?? "", phone: c.phone ?? "", interests, created_at: c.created_at,
           marketing: !!(await db.from("marketing_contacts").select("optin").eq("email", String(c.email).toLowerCase()).maybeSingle()).data?.optin },
         // deno-lint-ignore no-explicit-any
@@ -1208,6 +1231,28 @@ async function handle(req: Request): Promise<Response> {
     }
 
     // ---------- Nouvelle commande (panier) ----------
+    // ---------- Panier : points fidélité utilisables (client connecté) ----------
+    case "points_quote": {
+      const c = await customerFromSession(body.s);
+      if (!c) return json({ logged: false });
+      const email = String(c.email).toLowerCase();
+      const balance = await loyaltyBalance(email);
+      const want = new Map<string, number>();
+      for (const it of Array.isArray(body.items) ? body.items.slice(0, 30) : []) {
+        const slug = str(it?.slug, 80), q = Math.floor(Number(it?.qty));
+        if (slug && q > 0) want.set(slug, Math.min(20, (want.get(slug) ?? 0) + q));
+      }
+      let pts = { points: 0, discount: 0 };
+      if (want.size && balance >= PTS.min) {
+        const { data: prods } = await db.from("products").select("id, slug, price_fcfa, wholesale_price_fcfa").in("slug", [...want.keys()]).eq("active", true);
+        await applyPromos(prods ?? []);
+        const rc = await findCode(normCode(body.ref));
+        const priced = (prods ?? []).map((p) => ({ q: want.get(p.slug)!, ...referralPrice(p, rc ? Number(rc.discount_pct) : 0) }));
+        pts = pointsDiscount(priced, priced.reduce((s, x) => s + x.unit * x.q, 0), balance);
+      }
+      return json({ logged: true, email, name: c.name ?? "", phone: c.phone ?? "", balance, min: PTS.min, value: PTS.value, usable: pts.points, discount: pts.discount });
+    }
+
     case "create_order": {
       if (str(body.website, 50)) return json({ error: "spam" }, 400); // champ piège invisible
       const mode = await payMode();
@@ -1283,10 +1328,18 @@ async function handle(req: Request): Promise<Response> {
           shipping_lat: okPos ? Math.round(lat * 1e6) / 1e6 : null, shipping_lng: okPos ? Math.round(lng * 1e6) / 1e6 : null };
       }
 
+      // points fidélité : seulement pour le client connecté à son compte, avec l'email de son compte
+      let pts = { points: 0, discount: 0 };
+      if (body.use_points === true) {
+        const c = await customerFromSession(body.s);
+        if (!c || String(c.email).toLowerCase() !== email) return json({ error: "points_compte" }, 400);
+        pts = pointsDiscount(priced, total, await loyaltyBalance(email));
+      }
+
       for (let i = 0; i < 4; i++) {
         const row = {
           ref: newRef(), public_token: newToken(), customer_name: name, email, phone: phoneOut,
-          amount_fcfa: total + Number(ship.shipping_fee_fcfa), payment_method: mode === "whatsapp" ? "whatsapp" : mode, source: "site", ...ship,
+          amount_fcfa: total - pts.discount + Number(ship.shipping_fee_fcfa), points_used: pts.points, points_discount_fcfa: pts.discount, payment_method: mode === "whatsapp" ? "whatsapp" : mode, source: "site", ...ship,
           // CRM / anti-fraude (voir la page Confidentialité)
           ip: (req.headers.get("cf-connecting-ip") ?? req.headers.get("x-forwarded-for")?.split(",")[0] ?? "").trim().slice(0, 64) || null,
           user_agent: (req.headers.get("user-agent") ?? "").slice(0, 200) || null,
@@ -1305,9 +1358,13 @@ async function handle(req: Request): Promise<Response> {
           unit_price: x.unit, quantity: x.q, list_price: x.p.price_fcfa, wholesale_price: x.wholesale, promo_name: x.p.promo_name ?? null,
         })));
         if (e2) { await db.from("orders").delete().eq("id", o.id); await logEvent("error", "boutique", "Une commande n'a pas pu être enregistrée (articles)", { erreur: e2.message, email }); return json({ error: "error" }, 500); }
+        if (pts.points) {
+          const { data: okPts, error: e3 } = await db.rpc("loyalty_spend", { p_email: email, p_order_id: o.id, p_points: pts.points });
+          if (e3 || okPts !== true) { await db.from("orders").delete().eq("id", o.id); return json({ error: "points_insuffisants" }, 409); }
+        }
         // case « recevoir les offres par email » cochée par le client (jamais cochée d'office)
         if (body.marketing === true) await setMarketing(email, true, "commande");
-        await logEvent("info", "boutique", "Nouvelle commande de " + name + " : " + row.amount_fcfa + " FCFA (en attente de paiement)", { articles: priced.map((x) => x.q + " x " + x.p.name), code_parrain: rc?.code ?? null }, row.ref);
+        await logEvent("info", "boutique", "Nouvelle commande de " + name + " : " + row.amount_fcfa + " FCFA (en attente de paiement)", { articles: priced.map((x) => x.q + " x " + x.p.name), code_parrain: rc?.code ?? null, points_fidelite: pts.points || null }, row.ref);
         return json({ ref: row.ref, token: row.public_token, pay_mode: mode,
           wa: mode === "whatsapp" ? waOrderLink(row.ref, priced.map((x) => ({ product_name: x.p.name, quantity: x.q })), row.amount_fcfa) : null });
       }
@@ -1392,7 +1449,7 @@ async function handle(req: Request): Promise<Response> {
       }
       if (!oTok) return json({ error: "not_found" }, 404);
       const { data: o } = await db.from("orders")
-        .select("ref, invoice_no, invoice_at, status, amount_fcfa, vat_rate, customer_name, email, phone, billing_company, billing_address, shipping_address, shipping_fee_fcfa, discount_fcfa, payment_method, payment_ref, paid_at, created_at, fees_fcfa, referral_code, order_items(product_name, quantity, unit_price, list_price, created_at)")
+        .select("ref, invoice_no, invoice_at, status, amount_fcfa, vat_rate, customer_name, email, phone, billing_company, billing_address, shipping_address, shipping_fee_fcfa, discount_fcfa, payment_method, payment_ref, paid_at, created_at, fees_fcfa, referral_code, points_used, points_discount_fcfa, order_items(product_name, quantity, unit_price, list_price, created_at)")
         .eq("public_token", oTok).maybeSingle();
       if (!o || !o.invoice_no) return json({ error: "pas_de_facture" }, 404);
       // deno-lint-ignore no-explicit-any
@@ -1407,6 +1464,7 @@ async function handle(req: Request): Promise<Response> {
       if (o.fees_fcfa > 0) lines.push({ name: "Frais de transaction", qty: 1, unit_price: o.fees_fcfa });
       // anciennes commandes sans prix barré : la remise parrain sur une ligne à part
       if (o.discount_fcfa > 0 && !items.some((i) => i.list_price != null)) lines.push({ name: "Remise (code parrain)", qty: 1, unit_price: -o.discount_fcfa });
+      if (o.points_discount_fcfa > 0) lines.push({ name: "Points fidélité (" + o.points_used + " points)", qty: 1, unit_price: -o.points_discount_fcfa });
       const diff = o.amount_fcfa - lines.reduce((t, l) => t + l.qty * l.unit_price, 0);
       if (diff !== 0) lines.push({ name: diff < 0 ? "Remise" : "Ajustement", qty: 1, unit_price: diff });
       return json({ kind: "invoice", seller, no: o.invoice_no, date: o.invoice_at ?? o.paid_at ?? o.created_at, ref: o.ref,
@@ -1444,7 +1502,7 @@ async function handle(req: Request): Promise<Response> {
       const token = str(body.o, 64);
       if (!token) return json({ error: "not_found" }, 404);
       const { data: o } = await db.from("orders")
-        .select("id, ref, invoice_no, status, amount_fcfa, payment_method, payment_ref, paydunya_token, key_locked, customer_name, email, phone, created_at, delivered_at, shipping_method, shipping_fee_fcfa, shipping_address, shipping_zone, ship_started_at, ship_note, ship_done_at, order_items(id, product_id, product_name, delivery_type, unit_price, quantity, status, created_at, claim_requested_at, manual_link_url, products(slug, image_url, installer_path, manual_key, manual_link))")
+        .select("id, ref, invoice_no, status, amount_fcfa, points_used, payment_method, payment_ref, paydunya_token, key_locked, customer_name, email, phone, created_at, delivered_at, shipping_method, shipping_fee_fcfa, shipping_address, shipping_zone, ship_started_at, ship_note, ship_done_at, order_items(id, product_id, product_name, delivery_type, unit_price, quantity, status, created_at, claim_requested_at, manual_link_url, products(slug, image_url, installer_path, manual_key, manual_link))")
         .eq("public_token", token).maybeSingle();
       if (!o) return json({ error: "not_found" }, 404);
       const paid = ["paid", "processing", "installing", "delivered"].includes(o.status);
@@ -1508,8 +1566,11 @@ async function handle(req: Request): Promise<Response> {
           .in("status", ["paid", "processing", "installing", "delivered"]);
         hello = { first: String(o.customer_name).trim().split(/\s+/)[0], returning: (before ?? 0) > 0 || keysLater };
       }
+      // points fidélité : solde du client et points gagnés avec cette commande (crédités à la livraison)
+      const loyalty = paid ? { balance: await loyaltyBalance(String(o.email)), review_points: PTS.review, value: PTS.value, min: PTS.min,
+        earn: pointsEarned(o.amount_fcfa - (o.shipping_fee_fcfa ?? 0)), credited: o.status === "delivered", used: o.points_used ?? 0 } : null;
       return json({
-        need_name: needName, ask_name: askName, ask_phone: askPhone, email_hint: needName ? maskEmail(o.email) : null, hello,
+        need_name: needName, ask_name: askName, ask_phone: askPhone, email_hint: needName ? maskEmail(o.email) : null, hello, loyalty,
         ref: o.ref, status: o.status, amount_fcfa: o.amount_fcfa, created_at: o.created_at, invoice: !!o.invoice_no && !askName,
         payment_method: o.payment_method, has_payment_ref: !!o.payment_ref, has_paydunya: !!o.paydunya_token, key_locked: !!o.key_locked,
         // commande à finaliser sur WhatsApp (mode « WhatsApp » de la page Paiements)

@@ -257,3 +257,8 @@ footer.site .socials a.so { display: grid; place-items: center; width: 38px; hei
 @media print { .to-top { display: none; } }
 body.no-wa .wa-float { display: none; }
 body.no-wa .to-top { bottom: 20px; }
+/* programme de fidélité */
+.pts-box { margin-top: 14px; padding: 12px 14px; border-radius: 12px; background: #F0FDF4; border: 1px solid #BBF7D0; }
+.pts-hist { list-style: none; padding: 0; margin: 8px 0 0; }
+.pts-hist li { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-top: 1px solid #EEF2F7; font-size: 14px; }
+.pts-hist .plus { color: #15803d; font-weight: 700; } .pts-hist .moins { color: #b91c1c; font-weight: 700; }
