@@ -79,6 +79,7 @@
   .s-pending{background:var(--jaune)} .s-paid{background:var(--bleu)} .s-processing{background:#7c3aed} .s-delivered{background:var(--vert)} .s-cancelled{background:var(--gris)}
   .s-waiting_stock{background:var(--bleu)} .s-installing,.s-awaiting_install{background:#0e7490} .s-to_process{background:#7c3aed}
   .s-available{background:var(--vert)} .s-sent{background:var(--bleu)} .s-disabled{background:var(--gris)}
+  .big-total{font-size:1.3rem;font-weight:700;padding:6px 0}
   .s-active{background:var(--vert)} .s-revoked{background:var(--rouge)} .s-used{background:var(--gris)} .s-expired{background:var(--jaune)}
   .s-on,.s-sale,.s-visible,.s-pub{background:var(--vert)} .s-off,.s-hidden,.s-draft{background:var(--gris)}
   .s-error{background:var(--rouge)} .s-warn{background:var(--jaune)} .s-info{background:var(--bleu)}
@@ -238,7 +239,7 @@
           <div><label>Nom du client</label><input id="nName"></div>
           <div><label>Email</label><input id="nEmail" type="email"></div>
           <div><label>WhatsApp</label><input id="nPhone"></div>
-          <div><label>Montant des produits (vide = calculé)</label><input id="nAmount" type="number" min="0"></div>
+          <div><label>Total des produits</label><div id="nTotal" class="big-total">—</div><div class="small">Le prix de chaque produit est déjà rempli avec le prix du site : changez-le si vous avez vendu à un autre prix.</div></div>
           <div><label>Frais de transaction payés par le client</label><input id="nFees" type="number" min="0" placeholder="0"></div>
           <div><label>Paiement</label><select id="nMethod"><option value="wave">Wave</option><option value="orange_money">Orange Money</option><option value="free_money">Free Money</option><option value="especes">Espèces</option><option value="autre">Autre</option></select></div>
           <div><label>N° de transaction</label><input id="nRef" placeholder="vide = numéro automatique"></div>
@@ -580,7 +581,7 @@
           <div><label>Email du client</label><input id="mEmail" type="email" placeholder="client@gmail.com"></div>
           <div><label>Nom du client</label><input id="mName" placeholder="facultatif"></div>
           <div><label>WhatsApp</label><input id="mPhone" placeholder="facultatif"></div>
-          <div><label>💰 Prix de vente au client (FCFA, sans les frais)</label><input id="mAmount" type="number" min="0" placeholder="prix du produit"><div class="small">Le prix auquel vous avez vendu : il compte dans vos ventes et la comptabilité. Vide = prix du site, 0 = offert.</div></div>
+          <div><label>💰 Prix de vente unitaire (FCFA, sans les frais)</label><div class="bar"><input id="mAmount" type="number" min="0" class="grow"><button id="mAmountReset" class="grey" type="button" title="Remettre le prix du site">↺ prix du site</button></div><div class="small" id="mAmountInfo">Déjà rempli avec le prix du site : changez-le si vous avez vendu à un autre prix (0 = offert). C'est ce prix qui compte dans les ventes, les stats et la facture.</div></div>
           <div><label>Frais de transaction payés par le client (FCFA)</label><input id="mFees" type="number" min="0" placeholder="0"><div class="small">Ajoutés au total, sur une ligne à part de la facture.</div></div>
           <div><label>Paiement</label><select id="mMethod"><option value="wave">Wave</option><option value="orange_money">Orange Money</option><option value="free_money">Free Money</option><option value="especes">Espèces</option><option value="autre">Autre</option></select></div>
           <div><label>N° de transaction</label><input id="mRef" placeholder="vide = numéro automatique"></div>
@@ -1457,24 +1458,37 @@ async function loadOrders() {
 $("oRefresh").addEventListener("click", () => loadOrders().catch((e) => toast(errMsg(e))));
 $("oStatus").addEventListener("change", () => loadOrders().catch((e) => toast(errMsg(e))));
 $("oSearch").addEventListener("keydown", (e) => { if (e.key === "Enter") loadOrders().catch((er) => toast(errMsg(er))); });
+// une ligne par produit : produit, quantité, prix unitaire (pré-rempli avec le prix du site, modifiable)
+function saleLines() {
+  return [...$("nLines").children].map((r) => ({ product_id: r._s.value, qty: Math.max(1, Number(r._q.value) || 1),
+    unit_price: r._u.value.trim() === "" ? (products.find((x) => x.id === r._s.value)?.price_fcfa ?? 0) : Math.max(0, Math.round(Number(r._u.value) || 0)) }));
+}
+function nTotal() { const t = saleLines().reduce((n, i) => n + i.qty * i.unit_price, 0); $("nTotal").textContent = $("nLines").children.length ? fcfa(t) : "—"; return t; }
 function addSaleLine() {
   const row = el("div", null, "bar"); row.style.marginBottom = "6px";
   const s = el("select"); s.className = "grow"; for (const p of products) s.append(new Option(p.name + " — " + fcfa(p.price_fcfa), p.id));
-  const q = el("input"); q.type = "number"; q.min = "1"; q.value = "1"; q.style.width = "80px";
-  row.append(s, q, btn("✕", "grey", () => row.remove()));
-  $("nLines").append(row);
+  const q = el("input"); q.type = "number"; q.min = "1"; q.value = "1"; q.style.width = "70px"; q.title = "Quantité";
+  const u = el("input"); u.type = "number"; u.min = "0"; u.style.width = "120px"; u.title = "Prix unitaire (FCFA)";
+  const def = () => products.find((x) => x.id === s.value)?.price_fcfa ?? 0;
+  const reset = btn("↺", "grey", () => { u.value = def(); nTotal(); }); reset.title = "Remettre le prix du site";
+  u.value = def();
+  s.addEventListener("change", () => { u.value = def(); nTotal(); });
+  q.addEventListener("input", nTotal); u.addEventListener("input", nTotal);
+  row._s = s; row._q = q; row._u = u;
+  row.append(s, el("span", "Qté", "small"), q, el("span", "Prix unitaire", "small"), u, reset, btn("✕", "grey", () => { row.remove(); nTotal(); }));
+  $("nLines").append(row); nTotal();
 }
 $("oNewBtn").addEventListener("click", () => { $("oNew").classList.toggle("hidden"); if (!$("nLines").childNodes.length) addSaleLine(); });
 $("nAddLine").addEventListener("click", addSaleLine);
 $("nCancel").addEventListener("click", () => $("oNew").classList.add("hidden"));
 $("nSave").addEventListener("click", async () => {
   try {
-    const items = [...$("nLines").children].map((r) => ({ product_id: r.querySelector("select").value, qty: Number(r.querySelector("input").value) }));
+    const items = saleLines();
     const d = await api({ action: "order_create", items, name: $("nName").value, email: $("nEmail").value, phone: $("nPhone").value,
-      amount_fcfa: $("nAmount").value, fees_fcfa: $("nFees").value, payment_method: $("nMethod").value, payment_ref: $("nRef").value, channel: $("nChannel").value, deliver: $("nDeliver").value === "yes" });
+      amount_fcfa: items.reduce((n, i) => n + i.qty * i.unit_price, 0), fees_fcfa: $("nFees").value, payment_method: $("nMethod").value, payment_ref: $("nRef").value, channel: $("nChannel").value, deliver: $("nDeliver").value === "yes" });
     toast(d.result && d.result.reason !== "delivered" ? (ERR[d.result.reason] || d.result.reason) : d.result ? "Vente enregistrée et livrée ✔" : "Vente enregistrée ✔");
-    for (const id of ["nName", "nEmail", "nPhone", "nAmount", "nFees", "nRef"]) $(id).value = "";
-    $("nLines").replaceChildren(); $("oNew").classList.add("hidden"); $("oStatus").value = "";
+    for (const id of ["nName", "nEmail", "nPhone", "nFees", "nRef"]) $(id).value = "";
+    $("nLines").replaceChildren(); nTotal(); $("oNew").classList.add("hidden"); $("oStatus").value = "";
     await loadOrders();
   } catch (e) { toast(errMsg(e)); }
 });
@@ -2125,19 +2139,28 @@ function fillProdSelect(id, info) {
   const s = $(id), keep = s.value;
   s.replaceChildren(...products.map((p) => new Option(p.name + " — " + fcfa(p.price_fcfa), p.id)));
   if (keep && products.some((p) => p.id === keep)) s.value = keep;
-  const show = () => { const p = products.find((x) => x.id === s.value); if (id === "mProd" && p) { $("mAmount").placeholder = "prix du site : " + fcfa(p.price_fcfa); $("mModeBox").classList.toggle("hidden", !(p.two_step && ["key", "key_file"].includes(p.delivery_type))); } $(info).textContent = p ? (p.two_step && info === "mTplInfo" ? "Produit en 2 temps : d'abord « " + instNameOf(p) + " » (logiciel + bouton), puis « " + tplNameOf(p) + " » avec la clé quand le client a fini l'installation" : "Modèle d'email utilisé : « " + tplNameOf(p) + " »") + (STOCK_TYPES.includes(p.delivery_type) ? "" : " · ce produit n'a pas de clé en stock (" + TYPES[p.delivery_type] + ")") : ""; };
+  const show = () => { const p = products.find((x) => x.id === s.value); if (id === "mProd" && p) { $("mAmount").value = p.price_fcfa; mAmountInfo(); $("mModeBox").classList.toggle("hidden", !(p.two_step && ["key", "key_file"].includes(p.delivery_type))); } $(info).textContent = p ? (p.two_step && info === "mTplInfo" ? "Produit en 2 temps : d'abord « " + instNameOf(p) + " » (logiciel + bouton), puis « " + tplNameOf(p) + " » avec la clé quand le client a fini l'installation" : "Modèle d'email utilisé : « " + tplNameOf(p) + " »") + (STOCK_TYPES.includes(p.delivery_type) ? "" : " · ce produit n'a pas de clé en stock (" + TYPES[p.delivery_type] + ")") : ""; };
   s.onchange = show; show();
 }
+function mAmountInfo() {
+  const p = products.find((x) => x.id === $("mProd").value), qty = Math.max(1, Number($("mQty").value) || 1);
+  const u = $("mAmount").value.trim() === "" ? (p ? p.price_fcfa : 0) : Math.max(0, Math.round(Number($("mAmount").value) || 0));
+  $("mAmountInfo").textContent = (p && u !== p.price_fcfa ? "Prix modifié (prix du site : " + fcfa(p.price_fcfa) + "). " : "Prix du site. Changez-le si vous avez vendu à un autre prix (0 = offert). ")
+    + "Total : " + (qty > 1 ? qty + " × " + fcfa(u) + " = " : "") + fcfa(u * qty) + ". C'est ce prix qui compte dans les ventes, les stats et la facture.";
+  return u * qty;
+}
+$("mAmount").addEventListener("input", mAmountInfo); $("mQty").addEventListener("input", mAmountInfo);
+$("mAmountReset").addEventListener("click", () => { const p = products.find((x) => x.id === $("mProd").value); if (p) $("mAmount").value = p.price_fcfa; mAmountInfo(); });
 async function loadSend() { await loadRefs(); fillProdSelect("mProd", "mTplInfo"); fillProdSelect("sProd", "sTplInfo"); }
 $("mSend").addEventListener("click", async () => {
   const p = products.find((x) => x.id === $("mProd").value);
   if (!$("mEmail").value.trim()) return $("mEmail").focus();
-  const amt = $("mAmount").value.trim() === "" ? (p ? p.price_fcfa * (Number($("mQty").value) || 1) : 0) : Number($("mAmount").value);
+  const amt = mAmountInfo();
   if (!confirm(($("mLock").checked ? "🔒 Réserver (clé verrouillée) " : "Envoyer ") + $("mQty").value + " × " + (p ? p.name : "") + " à " + $("mEmail").value + " ?\n" + ($("mLock").checked ? "En attente de paiement : " : "Vente enregistrée : ") + fcfa(amt))) return;
   const b = $("mSend"); b.disabled = true;
   try {
     const d = await api({ action: "manual_send", product_id: $("mProd").value, qty: Number($("mQty").value) || 1, email: $("mEmail").value, name: $("mName").value,
-      phone: $("mPhone").value, amount_fcfa: $("mAmount").value, fees_fcfa: $("mFees").value, payment_method: $("mMethod").value, payment_ref: $("mRef").value, channel: $("mChannel").value, mode: $("mLock").checked ? "locked" : $("mMode").value, send_email: $("mMail").checked });
+      phone: $("mPhone").value, amount_fcfa: amt, fees_fcfa: $("mFees").value, payment_method: $("mMethod").value, payment_ref: $("mRef").value, channel: $("mChannel").value, mode: $("mLock").checked ? "locked" : $("mMode").value, send_email: $("mMail").checked });
     const r = $("mResult"); r.classList.remove("hidden");
     const parts = [el("strong", "Commande " + d.order.ref + " enregistrée."), el("br")];
     if (d.locked) {
