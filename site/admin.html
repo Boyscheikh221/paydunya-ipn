@@ -79,6 +79,19 @@
   .s-pending{background:var(--jaune)} .s-paid{background:var(--bleu)} .s-processing{background:#7c3aed} .s-delivered{background:var(--vert)} .s-cancelled{background:var(--gris)}
   .s-waiting_stock{background:var(--bleu)} .s-installing,.s-awaiting_install{background:#0e7490} .s-to_process{background:#7c3aed}
   .s-available{background:var(--vert)} .s-sent{background:var(--bleu)} .s-disabled{background:var(--gris)}
+  .photos{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:4px}
+  .ph{position:relative;aspect-ratio:1;border:1px solid var(--ligne,#d6dce8);border-radius:10px;background:#fff;overflow:hidden;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none}
+  .ph img{width:100%;height:100%;object-fit:contain;pointer-events:none;-webkit-user-drag:none}
+  .ph .main{position:absolute;left:4px;top:4px;background:#1d4ed8;color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:6px}
+  .ph .num{position:absolute;left:4px;top:4px;background:rgba(0,0,0,.55);color:#fff;font-size:10px;padding:2px 6px;border-radius:6px}
+  .ph .x{position:absolute;right:4px;top:4px;width:26px;height:26px;border-radius:50%;border:0;background:rgba(0,0,0,.6);color:#fff;font-size:14px;line-height:26px;padding:0;cursor:pointer}
+  .ph .st{position:absolute;left:0;right:0;bottom:0;background:rgba(255,255,255,.92);font-size:11px;padding:3px 4px;text-align:center}
+  .ph.err{border-color:#dc2626}
+  .ph.drag{opacity:.85;box-shadow:0 8px 24px rgba(0,0,0,.25);z-index:5;cursor:grabbing;transition:none}
+  .ph.over{outline:3px solid #f59e0b;outline-offset:-3px}
+  .ph-add{aspect-ratio:1;border:2px dashed #93a4c3;border-radius:10px;background:#f5f8ff;color:#1d4ed8;font-weight:700;font-size:13px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer;padding:4px;text-align:center}
+  .ph-add b{font-size:28px;line-height:1}
+  @media (max-width:520px){.photos{grid-template-columns:repeat(3,minmax(0,1fr))}}
   .gal-slots{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
   .gal-slot{border:1px dashed var(--ligne,#d6dce8);border-radius:10px;padding:6px;text-align:center;font-size:12px;background:#fafcff;display:flex;flex-direction:column;gap:4px;align-items:center}
   .gal-slot img{width:100%;aspect-ratio:1;object-fit:contain;border-radius:8px;background:#fff}
@@ -277,11 +290,10 @@
         <label class="check" style="margin:12px 0 0;padding:10px 12px;background:#fff7e6;border-radius:10px"><input type="checkbox" id="pPhysical"> <strong>Produit physique</strong> &nbsp;<span class="small">(objet à livrer : clé USB, PC, accessoire… ; décoché = produit digital)</span></label>
         <div class="grid" style="align-items:end">
           <div>
-            <label>Photo du produit <span class="small">(carrée 1500 × 1500, fond blanc, sans prix ni texte promo ni logo Microsoft ; convertie en JPG automatiquement)</span></label>
-            <div class="bar" style="margin:0"><img id="pImgPrev" class="preview sq hidden" alt="Aperçu de la photo"><input id="pImgFile" type="file" accept="image/*" class="grow"></div>
+            <label>Photos du produit <span class="small">(jusqu'à 4 · la 1<sup>re</sup> est la photo principale · glissez une photo pour changer l'ordre · carrées 1500 × 1500, fond blanc, sans prix ni logo Microsoft ; converties en JPG)</span></label>
+            <div id="pPhotos" class="photos"></div>
+            <input id="pPhotoFile" type="file" accept="image/*" multiple class="hidden">
             <input type="hidden" id="pImg"><div id="pImgMsg" class="small"></div>
-            <label style="margin-top:10px">Autres photos <span class="small">(jusqu'à 3 en plus : autres angles, boîte, produit en situation)</span></label>
-            <div id="pGal" class="gal-slots"></div>
           </div>
           <div>
             <div id="pPhysInfo" class="hidden small" style="margin-bottom:8px;padding:8px 10px;background:#f0fdf4;border-radius:8px">📦 Suivi de livraison : après le paiement, le client reçoit « Commande payée, livraison sous 48 h ouvrées ». Dans Commandes, vous cliquez ensuite « 🚚 Expédition en cours » puis « ✅ Livrée » : un email part à chaque étape (le dernier demande un avis).</div>
@@ -1625,21 +1637,92 @@ function keysInfo(p) {
   $("pKeysInfo").textContent = s ? (s.available ?? 0) + " envoi(s) possible(s) en stock" + (s.reusable ? " + un sérialiseur réutilisable sans limite" : "") : "";
 }
 $("pType").addEventListener("change", syncType);
-// galerie : 3 emplacements photo en plus de la photo principale
-const galSlots = [];
-for (let n = 0; n < 3; n++) {
-  const box = el("div", null, "gal-slot"), prev = el("img"), hid = el("input"), file = el("input"), msg = el("div", null, "small");
-  hid.type = "hidden"; file.type = "file"; file.accept = "image/*"; prev.alt = "Photo " + (n + 2); prev.classList.add("hidden");
-  const del = btn("✕ Retirer", "grey", () => { hid.value = ""; prev.classList.add("hidden"); prev.removeAttribute("src"); msg.textContent = "Retirée (pensez à enregistrer)"; del.classList.add("hidden"); });
-  del.type = "button"; del.classList.add("hidden");
-  file.addEventListener("change", async () => { await uploadImage(file, hid, prev, msg, { product: true, max: 1500 }); del.classList.toggle("hidden", !hid.value); });
-  box.append(el("b", "Photo " + (n + 2)), prev, file, del, msg);
-  $("pGal").append(box);
-  galSlots.push({ set: (u) => { hid.value = u || ""; msg.textContent = ""; if (u) { prev.src = u; prev.classList.remove("hidden"); } else { prev.removeAttribute("src"); prev.classList.add("hidden"); } del.classList.toggle("hidden", !u); }, get: () => hid.value });
+// photos du produit façon Marketplace : on en ajoute plusieurs d'un coup, la 1re est la principale, on glisse pour changer l'ordre
+const MAX_PHOTOS = 4;
+let photos = []; // { url, local, msg, err, busy }
+const photoUrls = () => photos.filter((x) => x.url && !x.busy).map((x) => x.url);
+const photosBusy = () => photos.some((x) => x.busy);
+function setPhotos(list) { photos = (list || []).filter(Boolean).slice(0, MAX_PHOTOS).map((url) => ({ url })); $("pImgMsg").textContent = ""; renderPhotos(); }
+function syncPhotoField() { $("pImg").value = photoUrls()[0] || ""; }
+function renderPhotos() {
+  syncPhotoField();
+  const box = $("pPhotos");
+  const tiles = photos.map((ph, i) => {
+    const t = el("div", null, "ph" + (ph.err ? " err" : "")), img = el("img");
+    img.src = ph.local || ph.url || ""; img.alt = "Photo " + (i + 1); img.draggable = false;
+    const x = el("button", "✕", "x"); x.type = "button"; x.title = "Retirer cette photo";
+    x.addEventListener("pointerdown", (e) => e.stopPropagation());
+    x.addEventListener("click", () => { photos.splice(i, 1); $("pImgMsg").textContent = "Photo retirée (pensez à enregistrer)"; renderPhotos(); });
+    t.append(img, el("span", i === 0 ? "Principale" : String(i + 1), i === 0 ? "main" : "num"), x);
+    if (ph.msg) t.append(el("div", ph.msg, "st"));
+    t.dataset.i = i; dragPhoto(t, i);
+    return t;
+  });
+  if (photos.length < MAX_PHOTOS) {
+    const add = el("button", null, "ph-add"); add.type = "button";
+    add.append(el("b", "+"), el("span", photos.length ? "Ajouter" : "Ajouter des photos"));
+    add.addEventListener("click", () => $("pPhotoFile").click());
+    tiles.push(add);
+  }
+  box.replaceChildren(...tiles);
 }
-const setGallery = (list) => galSlots.forEach((g, i) => g.set((list || [])[i] || ""));
-const getGallery = () => galSlots.map((g) => g.get()).filter(Boolean);
-$("pImgFile").addEventListener("change", () => uploadImage($("pImgFile"), $("pImg"), $("pImgPrev"), $("pImgMsg"), { product: true, max: 1500 }));
+// glisser-déposer à la souris et au doigt (pointer events)
+function dragPhoto(t, from) {
+  t.addEventListener("pointerdown", (e) => {
+    if (e.button > 0 || photos.length < 2) return;
+    const sx = e.clientX, sy = e.clientY; let on = false, over = null;
+    const move = (ev) => {
+      const dx = ev.clientX - sx, dy = ev.clientY - sy;
+      if (!on && Math.hypot(dx, dy) < 6) return;
+      if (!on) { on = true; t.classList.add("drag"); }
+      ev.preventDefault();
+      t.style.transform = "translate(" + dx + "px," + dy + "px)";
+      t.style.pointerEvents = "none";
+      const hit = document.elementFromPoint(ev.clientX, ev.clientY)?.closest?.(".ph");
+      t.style.pointerEvents = "";
+      if (over && over !== hit) over.classList.remove("over");
+      over = hit && hit !== t ? hit : null; over?.classList.add("over");
+    };
+    const up = () => {
+      removeEventListener("pointermove", move); removeEventListener("pointerup", up); removeEventListener("pointercancel", up);
+      if (!on) return;
+      const to = over ? Number(over.dataset.i) : from;
+      if (to !== from) { const [m] = photos.splice(from, 1); photos.splice(to, 0, m); $("pImgMsg").textContent = (to === 0 ? "Nouvelle photo principale" : "Ordre des photos changé") + " (pensez à enregistrer)"; }
+      renderPhotos();
+    };
+    addEventListener("pointermove", move, { passive: false }); addEventListener("pointerup", up); addEventListener("pointercancel", up);
+  });
+}
+async function addPhotoFile(f, ph) {
+  try {
+    if (!/^image\/(jpeg|png|webp|gif|avif|heic|heif)$/i.test(f.type || "") && !/\.(jpe?g|png|webp|gif|avif|heic|heif)$/i.test(f.name || "")) throw new Error("⛔ Pas une photo");
+    if (f.size > 25 * 1048576) throw new Error("⛔ Trop lourde (max 25 Mo)");
+    ph.msg = "Préparation…"; renderPhotos();
+    const j = await toJpeg(f, 1500);
+    if (Math.min(j.ow, j.oh) < 500) throw new Error("⛔ Trop petite (" + j.ow + " × " + j.oh + ")");
+    const { url, public_url } = await api({ action: "image_upload_url", filename: j.file.name });
+    await putFile(url, j.file, (p) => { ph.msg = "Envoi… " + p + " %"; renderPhotos(); });
+    ph.url = public_url; ph.busy = false;
+    const warn = [];
+    if (Math.min(j.ow, j.oh) < 1200) warn.push("petite");
+    if (Math.abs(j.ow - j.oh) > Math.max(j.ow, j.oh) * 0.03) warn.push("pas carrée");
+    ph.msg = warn.length ? "⚠️ " + warn.join(", ") : "";
+  } catch (e) {
+    const i = photos.indexOf(ph); if (i >= 0) photos.splice(i, 1);
+    $("pImgMsg").textContent = (f.name ? f.name + " : " : "") + (e && e.message && e.message.startsWith("⛔") ? e.message : errMsg(e));
+  }
+  renderPhotos();
+}
+$("pPhotoFile").addEventListener("change", async () => {
+  const files = [...$("pPhotoFile").files]; $("pPhotoFile").value = "";
+  const room = MAX_PHOTOS - photos.length;
+  if (files.length > room) toast("Maximum " + MAX_PHOTOS + " photos : seules les " + room + " première(s) sont ajoutées.");
+  const added = files.slice(0, Math.max(0, room)).map((f) => { const ph = { local: URL.createObjectURL(f), busy: true, msg: "En attente…" }; photos.push(ph); return [f, ph]; });
+  renderPhotos(); $("pImgMsg").textContent = "";
+  for (const [f, ph] of added) await addPhotoFile(f, ph);
+  if (added.length && !photosBusy()) $("pImgMsg").textContent = photoUrls().length + " photo(s) prête(s) ✔ (pensez à enregistrer)";
+});
+renderPhotos();
 $("pUploadBtn").addEventListener("click", async () => {
   const f = $("pUpload").files[0], msg = $("pUpMsg"), b = $("pUploadBtn");
   if (!f) { msg.textContent = "Choisissez d'abord un fichier sur votre ordinateur."; return; }
@@ -1680,7 +1763,7 @@ function editProduct(p) {
   $("pFormTitle").textContent = "Modifier : " + p.name + (p.active ? "" : " (📝 brouillon, caché du site)");
   $("pId").value = p.id; $("pName").value = p.name; $("pCat").value = p.category_id || ""; $("pPrice").value = p.price_fcfa;
   $("pCompare").value = p.compare_price_fcfa || ""; $("pWholesale").value = p.wholesale_price_fcfa ?? ""; $("pDesc").value = p.description || ""; $("pImg").value = p.image_url || "";
-  $("pImgPrev").src = p.image_url || ""; $("pImgPrev").classList.toggle("hidden", !p.image_url); $("pImgMsg").textContent = ""; setGallery(p.gallery);
+  setPhotos([p.image_url, ...(p.gallery || [])]);
   const ext = /^https:\/\//i.test(p.installer_path || "");
   $("pPhysical").checked = p.delivery_type === "physical"; $("pQty").value = p.stock_qty ?? ""; $("pWeight").value = p.weight_g ?? ""; $("pSku").value = p.sku || "";
   $("pSeoT").value = p.seo_title || ""; $("pSeoD").value = p.seo_description || ""; seoPrev();
@@ -1694,7 +1777,7 @@ function editProduct(p) {
 function resetProduct() {
   $("pFormTitle").textContent = "Nouveau produit";
   for (const id of ["pId", "pName", "pPrice", "pCompare", "pWholesale", "pDesc", "pImg", "pFile"]) $(id).value = "";
-  $("pCat").value = ""; $("pType").value = "key"; $("pPackRows").replaceChildren(); $("pKeysNote").value = ""; $("pPhysical").checked = false; $("pQty").value = ""; $("pWeight").value = ""; $("pSku").value = ""; $("pSeoT").value = ""; $("pSeoD").value = ""; seoPrev(); $("pLink").value = ""; $("pKeys").value = ""; resetKind("pKeys"); fillSrc(null); keysInfo(null); syncType(); $("pImgPrev").classList.add("hidden"); $("pImgMsg").textContent = ""; setGallery([]);
+  $("pCat").value = ""; $("pType").value = "key"; $("pPackRows").replaceChildren(); $("pKeysNote").value = ""; $("pPhysical").checked = false; $("pQty").value = ""; $("pWeight").value = ""; $("pSku").value = ""; $("pSeoT").value = ""; $("pSeoD").value = ""; seoPrev(); $("pLink").value = ""; $("pKeys").value = ""; resetKind("pKeys"); fillSrc(null); keysInfo(null); syncType(); setPhotos([]);
   $("pAuto").checked = true; $("pActive").value = "1"; $("pFeatured").checked = false; $("pLow").value = 5; $("pSort").value = 0; $("pTpl").value = ""; $("pTwo").checked = false; $("pInstTpl").value = ""; twoVis(); $("pManKey").checked = false; $("pManLink").checked = false;
 }
 $("pReset").addEventListener("click", resetProduct);
@@ -1704,12 +1787,13 @@ async function saveProduct(publish) {
       if (!(Number($("pPrice").value) > 0)) return toast("Mettez d'abord un prix (plus de 0 F) avant de publier ce produit.");
       $("pActive").value = "1";
     }
+    if (photosBusy()) return toast("Attendez la fin de l'envoi des photos avant d'enregistrer.");
     const phys = $("pPhysical").checked, link = $("pLink").value.trim(), pack = !phys && $("pType").value === "pack";
     if (link && !/^https:\/\/\S+$/i.test(link)) return toast("Le lien doit commencer par https://");
     const bundle = pack ? packPayload() : [];
     if (pack && bundle.length < 2) return toast("Un pack doit contenir au moins 2 produits.");
     const saved = await api({ action: "product_save", id: $("pId").value || undefined, name: $("pName").value, category_id: $("pCat").value, stock_qty: $("pQty").value,
-      price_fcfa: $("pPrice").value, compare_price_fcfa: $("pCompare").value, wholesale_price_fcfa: $("pWholesale").value, description: $("pDesc").value, image_url: $("pImg").value, gallery: getGallery(),
+      price_fcfa: $("pPrice").value, compare_price_fcfa: $("pCompare").value, wholesale_price_fcfa: $("pWholesale").value, description: $("pDesc").value, image_url: photoUrls()[0] || "", gallery: photoUrls().slice(1),
       delivery_type: phys ? "physical" : pack ? "key" : $("pType").value, installer_path: pack ? "" : link || $("pFile").value, bundle, auto_deliver: $("pAuto").checked, active: $("pActive").value === "1", sku: $("pSku").value, weight_g: $("pWeight").value, seo_title: $("pSeoT").value, seo_description: $("pSeoD").value,
       featured: $("pFeatured").checked, low_stock_threshold: $("pLow").value, sort: $("pSort").value, email_template_id: $("pTpl").value, two_step: $("pTwo").checked, manual_key: !phys && $("pManKey").checked, manual_link: !phys && $("pManLink").checked && ["key_file", "file", "pack"].includes($("pType").value), install_template_id: $("pInstTpl").value, key_source_id: pack || phys ? "" : $("pSrc").value });
     let msg = "Produit enregistré ✔";
