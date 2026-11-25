@@ -201,11 +201,11 @@ function reviewForm(i) {
   // encart visible (pas replié) : l'invitation remplace les emails de demande d'avis
   const phys = i.delivery_type === "physical";
   const det = el("div", { class: "review-box" },
-    el("p", { class: "rv-title", text: (phys ? "⭐ Colis bien reçu ? Donnez votre avis" : "⭐ Votre clé est activée ? Donnez votre avis") + " et gagnez " + RV_PTS + " points" }),
+    el("p", { class: "rv-title", text: (phys ? "⭐ Colis bien reçu ? Donnez votre avis" : "⭐ Votre clé est activée ? Donnez votre avis") + " et gagnez " + RV_PTS + " points fidélité" }),
     el("p", { class: "note", style: "margin:4px 0 0", text: (phys
       ? "Notez le produit de 1 à 5 étoiles et, si vous voulez, laissez un commentaire. "
       : "Une fois votre clé activée, revenez sur cette page pour noter le produit de 1 à 5 étoiles et, si vous voulez, laisser un commentaire. ")
-      + "🎁 Vous gagnez " + RV_PTS + " points fidélité (" + (RV_PTS * 10).toLocaleString("fr-FR") + " F de réduction sur une prochaine commande) dès que votre avis est validé." }),
+      + "🎁 Dès que votre avis est validé, vous gagnez " + RV_PTS + " points fidélité : vos points vous donnent jusqu'à 20 % de réduction sur vos prochaines commandes." }),
     stars, txt, send, msg);
   return det;
 }

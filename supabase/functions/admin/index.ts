@@ -663,9 +663,10 @@ async function sendShipEmail(orderId: string, stage: "paid" | "shipping" | "done
     subject = "Commande " + o.ref + " livrée ✔ Votre avis compte";
     html = hello + P(`Votre commande <b>${esc(o.ref)}</b> a bien été livrée. Merci pour votre confiance !`) + items +
       P("Votre avis aide d'autres clients à acheter en confiance. Cela prend 30 secondes : une note de 1 à 5 étoiles et, si vous le souhaitez, quelques mots.") +
+      P("🎁 En plus, votre avis validé vous rapporte 50 points fidélité : jusqu'à 20 % de réduction sur vos prochaines commandes.") +
       btn(avis, "⭐ Donner mon avis") + P("Un souci avec votre produit ? Répondez à cet email ou écrivez-nous sur WhatsApp, on s'en occupe.") + waButtonHtml(wa);
     text = "Bonjour" + (first ? " " + first : "") + ",\n\nVotre commande " + o.ref + " a bien été livrée. Merci pour votre confiance !\n\n" + list.join("\n") +
-      "\n\nDonner mon avis (30 secondes) : " + avis + "\n\nUn souci ? WhatsApp : https://wa.me/" + wa;
+      "\n\nDonner mon avis (30 secondes) : " + avis + "\nVotre avis validé vous rapporte 50 points fidélité : jusqu'à 20 % de réduction sur vos prochaines commandes." + "\n\nUn souci ? WhatsApp : https://wa.me/" + wa;
   }
   text += "\n\nlicenceoff.com — Dakar, Sénégal";
   const r = await resendSend(o.email, { subject, html: wrapHtml(html, o.ref), text, headers: { "X-Entity-Ref-ID": o.ref + "-" + stage } });
