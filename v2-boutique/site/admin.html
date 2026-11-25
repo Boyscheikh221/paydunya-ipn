@@ -104,6 +104,8 @@
   .item:first-child { border-top:0; padding-top:0; }
   .thumb { width:48px; height:48px; border-radius:8px; object-fit:cover; background:#eef2f7; display:block; }
   .preview { width:120px; height:90px; border-radius:10px; object-fit:cover; background:#eef2f7; border:1px solid var(--ligne); }
+  /* photo produit : aperçu carré, image entière, comme sur les cartes de la boutique */
+  .preview.sq { width:160px; height:160px; object-fit:contain; background:#fff; }
   .chart { display:flex; align-items:flex-end; gap:3px; height:120px; border-bottom:1px solid var(--ligne); }
   .chart .b { flex:1; background:var(--bleu); border-radius:3px 3px 0 0; min-height:2px; position:relative; }
   .chart .b:hover::after { content:attr(data-t); position:absolute; bottom:100%; left:50%; transform:translateX(-50%); background:var(--nuit); color:#fff; font-size:11px; padding:3px 6px; border-radius:6px; white-space:nowrap; }
@@ -158,6 +160,7 @@
     <button data-tab="faq">❓ FAQ</button>
     <button data-tab="links">🔗 Liens</button>
     <button data-tab="logs">📜 Journal <span id="badgeLog" class="badge hidden" title="Erreurs non lues" style="background:var(--rouge)"></span></button>
+    <button data-tab="payments">💳 Paiements</button>
     <button data-tab="settings">⚙️ Réglages</button>
     <div class="bottom"><button id="btnLogout">↩ Déconnexion</button></div>
   </nav>
@@ -208,7 +211,9 @@
         <input id="oSearch" class="grow" placeholder="Rechercher : réf, nom, email, téléphone">
         <button id="oRefresh" class="grey">Actualiser</button>
         <button id="oNewBtn" class="org">+ Vente manuelle</button>
+        <button id="oReviewAll" class="grey" title="Email à tous les clients livrés depuis plus de 24 h, qui n'ont pas encore donné d'avis et n'ont jamais été relancés">⭐ Demander un avis à tous</button>
       </div>
+      <label class="check small" style="margin:4px 0 10px" title="Désactivé : le logo du PDF revendeur n'a aucun lien (le client final ne peut pas trouver vos prix)."><input type="checkbox" id="pdfLogoLink"> 📄 PDF revendeur : logo cliquable vers la page du produit (affiche votre prix public)</label>
       <div id="oNew" class="box hidden">
         <h2>Nouvelle vente (WhatsApp, en direct…)</h2>
         <div id="nLines"></div>
@@ -251,8 +256,8 @@
         <label class="check" style="margin:12px 0 0;padding:10px 12px;background:#fff7e6;border-radius:10px"><input type="checkbox" id="pPhysical"> <strong>Produit physique</strong> &nbsp;<span class="small">(objet à livrer : clé USB, PC, accessoire… ; décoché = produit digital)</span></label>
         <div class="grid" style="align-items:end">
           <div>
-            <label>Photo du produit <span class="small">(indispensable pour apparaître dans Google avec le prix et les étoiles)</span></label>
-            <div class="bar" style="margin:0"><img id="pImgPrev" class="preview hidden" alt=""><input id="pImgFile" type="file" accept="image/*" class="grow"></div>
+            <label>Photo du produit <span class="small">(carrée 1500 × 1500, fond blanc, sans prix ni texte promo ni logo Microsoft ; convertie en JPG automatiquement)</span></label>
+            <div class="bar" style="margin:0"><img id="pImgPrev" class="preview sq hidden" alt="Aperçu de la photo"><input id="pImgFile" type="file" accept="image/*" class="grow"></div>
             <input type="hidden" id="pImg"><div id="pImgMsg" class="small"></div>
           </div>
           <div>
@@ -265,6 +270,7 @@
               <option value="file">Logiciel à télécharger seulement</option>
               <option value="stock">Identifiants / codes (pris dans le stock)</option>
               <option value="manual">Service : je le traite moi-même</option>
+              <option value="pack">📦 Pack : plusieurs produits (clés prises dans leurs stocks)</option>
             </select>
             </div>
           </div>
@@ -281,9 +287,17 @@
           <label>ou lien de téléchargement</label>
           <input id="pLink" placeholder="https://… (Google Drive, site de Microsoft…)">
         </div>
+        <div id="pPackBox" class="box hidden" style="margin:12px 0 0;background:#f4f8ff">
+          <label>📦 Produits inclus dans le pack</label>
+          <p class="small" style="margin:4px 0 8px">À chaque vente du pack, une clé (ou le nombre indiqué) est prise dans le stock de chaque produit ci-dessous. Le client reçoit ses clés séparées, chacune avec le nom du logiciel, et le lien de téléchargement de chaque logiciel. Le pack n'a pas de stock à remplir : son stock disponible est celui du produit qui en a le moins.</p>
+          <div id="pPackRows"></div>
+          <button id="pPackAdd" class="grey" type="button">+ Ajouter un produit au pack</button>
+        </div>
         <div id="pKeysBox" class="box hidden" style="margin:12px 0 0;background:#fafbfc">
           <label>Ajouter des licences au stock (une par ligne) · <span id="pKeysInfo" class="small"></span></label>
           <textarea id="pKeys" rows="4" placeholder="XXXXX-XXXXX-XXXXX-XXXXX-XXXXX"></textarea>
+          <label>Origine de ces clés (facultatif) <span class="small">: fournisseur, lot, prix d'achat… La date et l'heure de saisie sont ajoutées automatiquement.</span></label>
+          <input id="pKeysNote" maxlength="200" placeholder="ex. Fournisseur Abdou, lot du 24/11">
           <div class="grid" style="margin-top:6px"><div><label>Type de clé</label><select id="pKeysKind"><option value="single">Usage unique : 1 clé = 1 client</option><option value="multi">Multi-postes : 1 clé pour plusieurs appareils (5, 10…)</option><option value="unlimited">Réutilisable sans limite (sérialiseur)</option></select></div>
           <div id="pKeysUsesBox" class="hidden"><label>Nombre d'appareils / d'activations par clé</label><input id="pKeysUses" type="number" min="1" max="100000" placeholder="ex. 5"><div class="small">La clé part à ce nombre de clients, puis elle est épuisée.</div></div></div>
         </div>
@@ -329,9 +343,17 @@
       <div class="box">
         <h2>Ajouter au stock</h2>
         <div class="grid"><div><label>Produit</label><select id="kProd"></select></div></div>
-        <label>Collez une clé (ou un identifiant) par ligne</label>
+        <div id="kAcct" class="hidden">
+          <p class="small" style="margin:6px 0">👤 Ce produit se livre avec un <b>compte</b> (ex. Office 365) : remplissez l'adresse et le mot de passe fournis par votre fournisseur. Un compte = une vente : il part à un seul client, avec la procédure de votre modèle d'email.</p>
+          <div class="grid"><div><label>Identifiant (adresse de connexion)</label><input id="kLogin" autocomplete="off" spellcheck="false" placeholder="ex. nom@domaine.com"></div>
+            <div><label>Mot de passe du compte</label><input id="kPass" autocomplete="off" spellcheck="false" class="mono"></div></div>
+          <p class="small" style="margin:8px 0 0">Plusieurs comptes d'un coup ? Collez-les plutôt dans la grande case, un par ligne : <span class="mono">adresse ; mot de passe</span></p>
+        </div>
+        <label id="kTextLabel">Collez une clé (ou un identifiant) par ligne</label>
         <textarea id="kText" class="mono" placeholder="XXXXX-XXXXX-XXXXX-XXXXX-XXXXX&#10;YYYYY-YYYYY-YYYYY-YYYYY-YYYYY"></textarea>
-        <div class="grid" style="margin-top:6px"><div><label>Type de clé</label><select id="kKind"><option value="single">Usage unique : 1 clé = 1 client</option><option value="multi">Multi-postes : 1 clé pour plusieurs appareils (5, 10…)</option><option value="unlimited">Réutilisable sans limite (sérialiseur)</option></select></div>
+        <label>Origine de ces clés (facultatif) <span class="small">: fournisseur, lot, prix d'achat… La date et l'heure de saisie sont ajoutées automatiquement. Si une clé ne marche pas, vous saurez d'où elle vient.</span></label>
+        <input id="kNote" maxlength="200" placeholder="ex. Fournisseur Abdou, lot du 24/11">
+        <div class="grid" id="kKindBox" style="margin-top:6px"><div><label>Type de clé</label><select id="kKind"><option value="single">Usage unique : 1 clé = 1 client</option><option value="multi">Multi-postes : 1 clé pour plusieurs appareils (5, 10…)</option><option value="unlimited">Réutilisable sans limite (sérialiseur)</option></select></div>
           <div id="kUsesBox" class="hidden"><label>Nombre d'appareils / d'activations par clé</label><input id="kUses" type="number" min="1" max="100000" placeholder="ex. 5"><div class="small">La clé part à ce nombre de clients, puis elle est épuisée.</div></div></div>
         <div class="bar" style="margin-top:10px"><button id="kImport" class="green">Ajouter au stock</button><span id="kMsg" class="small"></span></div>
         <p class="small">Les doublons sont ignorés. Une clé à usage unique envoyée ne repart jamais. Une clé multi-postes repart jusqu'à son nombre d'appareils puis s'épuise. Une clé réutilisable sans limite repart à chaque commande. Ordre d'envoi : usage unique, puis multi-postes, puis sans limite. Les commandes payées qui attendaient du stock sont livrées automatiquement.</p>
@@ -343,7 +365,7 @@
           <button id="kRefresh" class="grey">Actualiser</button>
           <button id="kShow" class="grey">Afficher les clés</button>
         </div>
-        <div class="tablewrap"><table><thead><tr><th>Clé / identifiant</th><th>Produit</th><th>Statut</th><th>Ajoutée</th><th>Envoyée à</th><th>Actions</th></tr></thead><tbody id="kRows"></tbody></table></div>
+        <div class="tablewrap"><table><thead><tr><th>Clé / identifiant</th><th>Produit</th><th>Statut</th><th>Saisie le · origine</th><th>Envoyée à</th><th>Actions</th></tr></thead><tbody id="kRows"></tbody></table></div>
       </div>
     </section>
 
@@ -596,6 +618,20 @@
         <div class="bar" style="margin-top:10px"><button id="lMore" class="grey hidden">Voir plus ancien</button></div></div>
     </section>
 
+    <section id="tab-payments" class="hidden">
+      <h1>Paiements</h1>
+      <div class="box">
+        <h2 style="margin:0 0 6px">Comment vos clients paient</h2>
+        <div class="small" style="margin-bottom:10px">Choisissez le mode actif du site. Un intégrateur ne peut être activé que lorsqu'il est branché et que ses clés sont enregistrées.</div>
+        <div id="payModes"></div>
+      </div>
+      <div class="box">
+        <h2 style="margin:0 0 6px">Clés des intégrateurs</h2>
+        <div class="small" style="margin-bottom:6px">🔒 Les clés sont chiffrées par le serveur dès que vous cliquez « Enregistrer », puis ne s'affichent plus jamais : vous verrez seulement « clé enregistrée ✓ ». Vous pouvez les remplacer, pas les relire. Ne les envoyez jamais par WhatsApp ou par email.</div>
+        <div id="payProviders"></div>
+      </div>
+    </section>
+
     <section id="tab-settings" class="hidden">
       <h1>Réglages</h1>
       <div class="box switch">
@@ -674,8 +710,13 @@ const ST = {
 const TYPES = { key: "Clé", key_file: "Clé + logiciel", file: "Logiciel", stock: "Identifiants", manual: "Service manuel", physical: "Produit physique" };
 const STOCK_TYPES = ["key", "key_file", "stock"];
 let stock = []; // stock de clés par produit (rempli par le tableau de bord)
-const METHOD = { wave: "Wave", orange_money: "Orange Money", free_money: "Free Money", especes: "Espèces", paydunya: "PayDunya", manuel: "Transfert manuel", autre: "Autre" };
+const METHOD = { whatsapp: "💬 WhatsApp", wave: "Wave", orange_money: "Orange Money", free_money: "Free Money", especes: "Espèces", paydunya: "PayDunya", manuel: "Transfert manuel", autre: "Autre" };
 const ERR = {
+  pack_invalide: "Pack invalide : choisissez des produits livrés avec une clé ou des identifiants (pas un autre pack).", pack_sans_stock: "Un pack n'a pas de stock propre : ajoutez les clés dans le stock de chaque produit du pack.",
+  rien_a_noter: "Rien à noter : le client a déjà donné son avis sur tous ses produits, ou la commande n'a pas d'adresse email valide.",
+  integrateur_pas_branche: "Cet intégrateur n'est pas encore branché au site : demandez à Claude de le brancher quand votre compte est actif.",
+  cles_manquantes: "Enregistrez d'abord toutes les clés de cet intégrateur.", cle_invalide: "Clé invalide (pas d'espace, vérifiez le copier-coller).",
+  secret_serveur_absent: "Le chiffrement n'est pas disponible sur le serveur.",
   titre_obligatoire: "Le titre est obligatoire.",
   pixel_invalide: "L'ID du pixel Meta ne contient que des chiffres (Gestionnaire d'événements Meta).",
   devis_deja_converti: "Ce devis est déjà devenu une commande.", devis_introuvable: "Devis introuvable.",
@@ -719,7 +760,7 @@ function tag(status) { return el("span", ST[status] || status, "tag s-" + status
 function btn(label, cls, fn) { const b = el("button", label, cls); b.addEventListener("click", async () => { b.disabled = true; try { await fn(); } catch (e) { toast(errMsg(e)); } finally { b.disabled = false; } }); return b; }
 const fcfa = (n) => Number(n || 0).toLocaleString("fr-FR") + " F";
 const dt = (iso) => iso ? new Date(iso).toLocaleString("fr-FR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
-const mask = (k) => showKeys || !k || k.length < 12 ? k : k.slice(0, 5) + "•••••" + k.slice(-4);
+const mask = (k) => { if (showKeys || !k) return k; const a = String(k).match(/^(Identifiant : .+?) \| Mot de passe : /); return a ? a[1] + " | Mot de passe : ••••••" : k.length < 12 ? k : k.slice(0, 5) + "•••••" + k.slice(-4); };
 async function copy(text, okMsg) { try { await navigator.clipboard.writeText(text); toast(okMsg || "Copié ✔"); } catch (_) { prompt("Copiez :", text); } }
 function waNumber(p) { let d = String(p || "").replace(/\D/g, ""); if (d.length === 9 && d[0] === "7") d = "221" + d; return d; }
 function linkState(l) { if (l.status !== "active") return l.status; if (l.download_count >= l.max_downloads) return "used"; if (new Date(l.expires_at) < new Date()) return "expired"; return "active"; }
@@ -743,22 +784,60 @@ function putFile(url, file, onProgress) {
     x.send(file);
   });
 }
-async function uploadImage(input, hidden, preview, msg) {
+// Prépare la photo avant l'envoi : JPG (accepté par Google et par le catalogue Facebook, qui refuse le WebP),
+// réduite à `max` pixels de côté au plus, fond blanc sous les zones transparentes, qualité 82 %.
+async function toJpeg(file, max) {
+  let bmp;
+  try { bmp = await createImageBitmap(file); }
+  catch { throw new Error("Format d'image non lu par le navigateur : enregistrez-la en JPG ou PNG puis réessayez."); }
+  const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+  const w = Math.round(bmp.width * k), h = Math.round(bmp.height * k);
+  const c = Object.assign(document.createElement("canvas"), { width: w, height: h });
+  const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, w, h);
+  g.imageSmoothingQuality = "high"; g.drawImage(bmp, 0, 0, w, h);
+  const ow = bmp.width, oh = bmp.height; bmp.close?.();
+  const blob = await new Promise((ok) => c.toBlob(ok, "image/jpeg", 0.82));
+  if (!blob) throw new Error("Conversion de l'image impossible.");
+  const base = (file.name || "image").replace(/\.[^.]+$/, "") || "image";
+  return { file: new File([blob], base + ".jpg", { type: "image/jpeg" }), ow, oh, w, h };
+}
+async function uploadImage(input, hidden, preview, msg, opt = {}) {
   const f = input.files[0]; if (!f) return;
-  if (f.size > 5 * 1048576) { msg.textContent = "Image trop lourde (max 5 Mo)."; return; }
+  if (f.size > 25 * 1048576) { msg.textContent = "Image trop lourde (max 25 Mo)."; input.value = ""; return; }
+  // aperçu immédiat de la photo choisie, avant même l'envoi
+  const before = hidden.value, show = (src) => { preview.src = src; preview.classList.remove("hidden"); };
+  const local = URL.createObjectURL(f); show(local);
   try {
-    const { url, public_url } = await api({ action: "image_upload_url", filename: f.name });
-    await putFile(url, f, (p) => (msg.textContent = "Envoi… " + p + " %"));
-    hidden.value = public_url; preview.src = public_url; preview.classList.remove("hidden");
-    msg.textContent = "Image envoyée ✔ (pensez à enregistrer)";
-  } catch (e) { msg.textContent = errMsg(e); }
+    msg.textContent = "Préparation de l'image…";
+    const j = await toJpeg(f, opt.max || 1600);
+    show(URL.createObjectURL(j.file)); URL.revokeObjectURL(local); // aperçu de la version qui sera publiée
+    const { url, public_url } = await api({ action: "image_upload_url", filename: j.file.name });
+    await putFile(url, j.file, (p) => (msg.textContent = "Envoi… " + p + " %"));
+    hidden.value = public_url;
+    const notes = [];
+    if (opt.product) {
+      if (Math.min(j.ow, j.oh) < 1200) notes.push("⚠️ image petite (" + j.ow + " × " + j.oh + ") : 1500 × 1500 conseillé");
+      if (Math.abs(j.ow - j.oh) > Math.max(j.ow, j.oh) * 0.03) notes.push("⚠️ image pas carrée (" + j.ow + " × " + j.oh + ") : format carré conseillé");
+    }
+    msg.textContent = "Image envoyée ✔ JPG " + j.w + " × " + j.h + ", " + Math.round(j.file.size / 1024) + " Ko (pensez à enregistrer)" + (notes.length ? " — " + notes.join(" ; ") : "");
+  } catch (e) {
+    msg.textContent = errMsg(e);
+    if (before) show(before); else preview.classList.add("hidden");
+  }
   input.value = "";
 }
 
 // ---------- navigation ----------
-const loaders = { dash: loadDash, orders: loadOrders, products: loadProducts, keys: loadKeys, blog: loadBlog, pages: loadPages, emails: loadTemplates, send: loadSend, quotes: loadQuotes, parrains: loadParrains, clients: loadClients, messages: loadMessages, reviews: loadReviews, faq: loadFaq, links: loadLinks, logs: loadLogs, settings: loadSettings };
+const loaders = { dash: loadDash, orders: loadOrders, products: loadProducts, keys: loadKeys, blog: loadBlog, pages: loadPages, emails: loadTemplates, send: loadSend, quotes: loadQuotes, parrains: loadParrains, clients: loadClients, messages: loadMessages, reviews: loadReviews, faq: loadFaq, links: loadLinks, logs: loadLogs, payments: loadPayments, settings: loadSettings };
 document.querySelectorAll("nav [data-tab]").forEach((b) => b.addEventListener("click", () => openTab(b.dataset.tab)));
-function openTab(t) {
+// Se souvenir de l'endroit où l'on est (onglet dans l'adresse #onglet, fiche ouverte et défilement dans l'onglet du navigateur),
+// pour revenir au même endroit après une actualisation.
+const ss = { get: (k) => { try { return sessionStorage.getItem(k) || ""; } catch (_) { return ""; } }, set: (k, v) => { try { v ? sessionStorage.setItem(k, v) : sessionStorage.removeItem(k); } catch (_) {} } };
+const remember = (kind, id) => ss.set("lo_detail", kind + ":" + id);
+addEventListener("pagehide", () => ss.set("lo_scroll", String(Math.round(scrollY))));
+function openTab(t, keepDetail) {
+  if (!keepDetail) { ss.set("lo_detail", ""); ss.set("lo_scroll", ""); }
+  ss.set("lo_tab", t); try { history.replaceState(null, "", "#" + t); } catch (_) {}
   document.querySelectorAll("nav [data-tab]").forEach((b) => b.classList.toggle("on", b.dataset.tab === t));
   document.querySelectorAll("main > section").forEach((s) => s.classList.toggle("hidden", s.id !== "tab-" + t));
   return loaders[t]().catch((e) => toast(errMsg(e)));
@@ -767,9 +846,9 @@ function openTab(t) {
 async function loadRefs() {
   const [p, c, t] = await Promise.all([api({ action: "products_list" }), api({ action: "categories_list" }), api({ action: "templates_list" }).catch(() => ({ rows: [] }))]);
   products = p.rows; categories = c.rows; templates = t.rows || [];
-  const stockProds = products.filter((x) => STOCK_TYPES.includes(x.delivery_type));
+  const stockProds = products.filter((x) => STOCK_TYPES.includes(x.delivery_type) && !isPack(x)); // un pack n'a pas de stock propre
   const fill = (id, list, first) => { const s = $(id), keep = s.value; s.replaceChildren(); if (first) s.append(new Option(first, "")); for (const x of list) s.append(new Option(x.name, x.id)); if (keep) s.value = keep; };
-  fill("kProd", stockProds); fill("kFilterProd", stockProds, "Tous les produits"); fill("pCat", catTree().map((c) => ({ id: c.id, name: (c.parent_id ? "↳ " : "") + c.name })), "— Sans catégorie —");
+  fill("kProd", stockProds); fill("kFilterProd", stockProds, "Tous les produits"); kAcctUi(); fill("pCat", catTree().map((c) => ({ id: c.id, name: (c.parent_id ? "↳ " : "") + c.name })), "— Sans catégorie —");
   fill("cParent", categories.filter((c) => !c.parent_id), "— Catégorie principale —");
   fill("pTpl", templates.filter((x) => !x.is_default && x.kind !== "install"), "Modèle par défaut");
   fill("pInstTpl", templates.filter((x) => !x.is_default && x.kind === "install"), "Modèle d'installation par défaut");
@@ -812,7 +891,7 @@ async function loadDash() {
   $("dashTop").replaceChildren(...(top.length ? top.map(([n, v]) => tr(td(n), td(v.q + " vendu(s)"), td(fcfa(v.ca)))) : [tr(td("Pas encore de ventes"))]));
   loadOrigin().catch(() => {});
   $("dashStock").replaceChildren(...(low.length ? low.map((x) => tr(td(x.name), td(el("span", x.available === 0 ? "Rupture" : x.available + " restant(s)", "low")),
-    td(btn("Ajouter", "grey", async () => { await openTab("keys"); $("kProd").value = x.id; $("kText").focus(); })))) : [tr(td("Tout va bien ✔"))]));
+    td(btn("Ajouter", "grey", async () => { await openTab("keys"); $("kProd").value = x.id; kAcctUi(); $("kText").focus(); })))) : [tr(td("Tout va bien ✔"))]));
   $("dashOrders").replaceChildren(...d.orders.slice(0, 8).map((o) => tr(td(dt(o.created_at)), td(o.ref), td(o.customer_name), td(tag(o.status)), td(fcfa(o.amount_fcfa)))));
 }
 // ---------- origine des ventes : camembert + tableau ----------
@@ -911,7 +990,7 @@ function splitQuote(t) {
   return i > 20 ? [t.slice(0, i).trim(), t.slice(i).trim()] : [t, ""];
 }
 async function openThread(email, opts = {}) {
-  curThread = email;
+  curThread = email; remember("thread", email);
   const d = await api({ action: "inbox_thread", email });
   const msgs = d.messages || [];
   const box = $("mThread"); box.classList.remove("hidden");
@@ -1022,7 +1101,7 @@ function clientMessage(o) {
   const lines = ["Bonjour " + o.customer_name + ",", "Merci pour votre commande " + o.ref + " sur licenceoff.", ""];
   for (const i of o.order_items || []) {
     lines.push("• " + (i.quantity > 1 ? i.quantity + " x " : "") + i.product_name);
-    for (const k of i.license_keys || []) lines.push("   " + k.key_value);
+    for (const k of i.license_keys || []) lines.push("   " + String(k.key_value).replace(" | Mot de passe : ", "\n   Mot de passe : "));
   }
   lines.push("", "Votre page de commande (clés + téléchargements) :", ORDER_PAGE + "?o=" + o.public_token,
     "", "Le lien de téléchargement ne fonctionne qu'une seule fois.", "", "licenceoff.com — merci de votre confiance");
@@ -1059,6 +1138,112 @@ async function renewLink(o, i, reload) {
   reload();
 }
 
+// ---------- PDF d'instructions « neutre » pour un revendeur ----------
+// interrupteur « logo cliquable » : désactivé par défaut, mémorisé dans ce navigateur
+$("oReviewAll").addEventListener("click", async () => {
+  try {
+    const p = await api({ action: "review_request_bulk", dry: true });
+    if (!p.count) { toast("Aucun client à relancer : tous ont déjà donné leur avis ou reçu la demande."); return; }
+    if (!confirm(p.count + " client(s) livré(s) n'ont pas encore donné d'avis.\nEnvoyer la demande d'avis à " + p.batch + " d'entre eux maintenant ?" + (p.count > p.batch ? "\n(Recliquez ensuite pour les suivants.)" : "") + "\n\nChaque client ne reçoit cette demande groupée qu'une seule fois.")) return;
+    $("oReviewAll").disabled = true; toast("Envoi en cours…");
+    const r = await api({ action: "review_request_bulk" });
+    toast("⭐ " + r.sent + " demande(s) envoyée(s)" + (r.failed ? ", " + r.failed + " échec(s) (voir Journal)" : "") + (r.remaining ? ", " + r.remaining + " restante(s)" : ""));
+    loadOrders();
+  } catch (e) { toast(errMsg(e)); } finally { $("oReviewAll").disabled = false; }
+});
+try { $("pdfLogoLink").checked = localStorage.getItem("lo_pdf_logo_link") === "1"; } catch (_) {}
+$("pdfLogoLink").addEventListener("change", (e) => { try { localStorage.setItem("lo_pdf_logo_link", e.target.checked ? "1" : "0"); } catch (_) {} toast(e.target.checked ? "Logo du PDF cliquable" : "Logo du PDF sans lien"); });
+// Identifiants / clés + procédure du modèle d'email du produit, SANS prix, n° de commande, adresse du site ni assistance licenceoff.
+// Logo « licenceoff » sans « .com ». Tous les liens sont cliquables.
+let jsPdfLoading;
+function loadJsPdf() {
+  if (window.jspdf) return Promise.resolve(window.jspdf);
+  return jsPdfLoading ??= new Promise((ok, ko) => {
+    const sc = document.createElement("script"); sc.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+    sc.onload = () => ok(window.jspdf); sc.onerror = () => { jsPdfLoading = null; ko(new Error("Impossible de charger le module PDF (connexion ?)")); };
+    document.head.append(sc);
+  });
+}
+// texte compatible avec les polices PDF de base (pas d'émojis)
+const pdfTxt = (t) => String(t ?? "").replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/…/g, "...").replace(/[–—]/g, "-")
+  .replace(/[^\x20-\x7E\xA0-\xFF\n]/g, "").replace(/ {2,}/g, " ");
+function buildInstructionsPdf(J, item) {
+  const doc = new J.jsPDF({ unit: "mm", format: "a4" });
+  const W = 210, M = 18, R = W - M, BOT = 280, B = [30, 79, 184], O = [245, 162, 27], N = [15, 42, 107];
+  let y = 20;
+  const need = (h) => { if (y + h > BOT) { doc.addPage(); y = 20; } };
+  // logo texte « licenceoff » (sans .com, sans lien)
+  doc.setFont("helvetica", "bold"); doc.setFontSize(20); doc.setTextColor(...B); doc.text("licence", M, y);
+  doc.setTextColor(...O); doc.text("off", M + doc.getTextWidth("licence"), y);
+  if (item.url && $("pdfLogoLink")?.checked) doc.link(M, y - 7, doc.getTextWidth("licenceoff") + 1, 9, { url: item.url }); // logo cliquable → page du produit
+  y += 4; doc.setDrawColor(...O); doc.setLineWidth(0.6); doc.line(M, y, R, y); y += 10;
+  doc.setTextColor(...N); doc.setFontSize(15); const tl = doc.splitTextToSize(pdfTxt("Instructions - " + item.product_name), R - M); doc.text(tl, M, y); y += tl.length * 6.5 + 3;
+  // identifiants / clés dans des cadres
+  const box = (label, val) => {
+    need(20); doc.setFont("helvetica", "normal"); doc.setFontSize(9.5); doc.setTextColor(91, 107, 134); doc.text(pdfTxt(label), M, y); y += 2;
+    doc.setFont("courier", "bold"); doc.setFontSize(12.5); const lines = doc.splitTextToSize(pdfTxt(val), R - M - 8); const h = 6 + lines.length * 5.5;
+    doc.setFillColor(239, 245, 255); doc.setDrawColor(...B); doc.setLineWidth(0.4); doc.setLineDashPattern([1.5, 1.2], 0); doc.roundedRect(M, y, R - M, h, 2, 2, "FD"); doc.setLineDashPattern([], 0);
+    doc.setTextColor(...N); doc.text(lines, M + 4, y + 6.5); y += h + 5;
+  };
+  doc.setFont("helvetica", "normal"); doc.setFontSize(10.5); doc.setTextColor(...N);
+  doc.text(item.keys.some((k) => k.login) ? "Voici vos identifiants et la marche à suivre." : "Voici votre clé et la marche à suivre.", M, y); y += 8;
+  for (const k of item.keys) { if (k.login) { box((k.label ? k.label + " : i" : "I") + "dentifiant (adresse de connexion)", k.login); box("Mot de passe", k.password); } else box(k.label ? "Clé d'activation " + k.label : "Clé d'activation", k.key); }
+  y += 2;
+  // texte : paragraphes, titres **...**, listes « - », liens [texte](url) et boutons [[texte]](url) cliquables
+  const LH = 5.6, FS = 10.5;
+  const flow = (line, x0, maxX) => {
+    const segs = []; const re = /\*\*(.+?)\*\*|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g; let last = 0, m;
+    while ((m = re.exec(line))) { if (m.index > last) segs.push({ t: line.slice(last, m.index) }); segs.push(m[1] != null ? { t: m[1], b: true } : { t: m[2], u: m[3] }); last = re.lastIndex; }
+    if (last < line.length) segs.push({ t: line.slice(last) });
+    let x = x0; need(LH);
+    for (const sg of segs) {
+      doc.setFont("helvetica", sg.b ? "bold" : "normal"); doc.setFontSize(FS); doc.setTextColor(...(sg.u ? B : N));
+      for (const w of pdfTxt(sg.t).split(/(\s+)/)) {
+        if (!w) continue; const ww = doc.getTextWidth(w);
+        if (/^\s+$/.test(w)) { x += ww; continue; }
+        if (x + ww > maxX && x > x0) { y += LH; need(LH); x = x0; }
+        if (sg.u) { doc.textWithLink(w, x, y, { url: sg.u }); doc.setDrawColor(...B); doc.setLineWidth(0.2); doc.line(x, y + 0.8, x + ww, y + 0.8); }
+        else doc.text(w, x, y);
+        x += ww;
+      }
+    }
+    y += LH;
+  };
+  for (const para of String(item.text || "").split(/\n{2,}/)) {
+    const lines = para.split("\n").map((l) => l.trim()).filter(Boolean); if (!lines.length) continue;
+    const btnM = lines.length === 1 && lines[0].match(/^\[\[(.+?)\]\]\((https?:\/\/\S+)\)$/);
+    if (btnM) { // bouton cliquable
+      need(14); doc.setFont("helvetica", "bold"); doc.setFontSize(11); const t = pdfTxt(btnM[1]).trim(); const bw = doc.getTextWidth(t) + 14, bx = (W - bw) / 2;
+      doc.setFillColor(...B); doc.roundedRect(bx, y - 1, bw, 10, 2, 2, "F"); doc.setTextColor(255, 255, 255); doc.text(t, bx + 7, y + 5.6);
+      doc.link(bx, y - 1, bw, 10, { url: btnM[2] }); y += 14; continue;
+    }
+    const head = lines.length === 1 && /^\*\*[^*]+\*\*$/.test(lines[0]);
+    if (head) { y += 2; need(12); }
+    for (const l of lines) {
+      if (/^-\s+/.test(l)) { need(LH); doc.setFont("helvetica", "normal"); doc.setFontSize(FS); doc.setTextColor(...N); doc.text("•", M + 2, y); flow(l.replace(/^-\s+/, ""), M + 7, R); }
+      else flow(l, M, R);
+    }
+    y += head ? 0.5 : 2.5;
+  }
+  return doc;
+}
+async function resellerPdf(o) {
+  try {
+    toast("Préparation du PDF…");
+    const [J, d] = await Promise.all([loadJsPdf(), api({ action: "order_instructions", id: o.id })]);
+    for (const item of d.items) {
+      const doc = buildInstructionsPdf(J, item);
+      const fname = "instructions-" + item.product_name.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 50) + ".pdf";
+      doc.save(fname);
+      if (confirm("PDF « " + fname + " » téléchargé ✔ (sans prix ni n° de commande).\n\nL'envoyer aussi en pièce jointe au revendeur (" + d.email + ") ?")) {
+        const pdf = doc.output("datauristring").split(",")[1];
+        await api({ action: "order_instructions_send", id: o.id, pdf, filename: fname, product: item.product_name });
+        toast("PDF envoyé à " + d.email + " ✔");
+      }
+    }
+  } catch (e) { toast(e.message === "rien_a_livrer" ? "Aucune clé ni identifiant livré dans cette commande." : errMsg(e)); }
+}
+
 async function cancelOrder(o, items, reload) {
   const paid = o.status !== "pending";
   const nKeys = items.reduce((n, i) => n + (i.license_keys || []).length, 0);
@@ -1091,7 +1276,8 @@ async function loadOrders() {
     for (const i of items) {
       const box = el("div", null, "item");
       box.append(el("strong", (i.quantity > 1 ? i.quantity + " × " : "") + i.product_name), " ", tag(i.status), el("br"), el("span", TYPES[i.delivery_type] + " · " + fcfa(i.unit_price * i.quantity), "small"));
-      for (const k of i.license_keys || []) box.append(el("br"), el("span", mask(k.key_value), "mono small"));
+      for (const k of i.license_keys || []) box.append(el("br"), k.products?.name && k.products.name !== i.product_name ? el("span", k.products.name + " : ", "small") : "", el("span", mask(k.key_value), "mono small"),
+        k.note || k.added_at ? el("span", " · saisie " + dt(k.added_at) + (k.note ? " · 📝 " + k.note : ""), "small") : "");
       const ls = (i.downloads || []).sort((a, b) => b.created_at.localeCompare(a.created_at));
       if (ls[0]) box.append(el("br"), el("span", "Lien : ", "small"), tag(linkState(ls[0])));
       const acts = el("div", null, "acts"); acts.style.marginTop = "4px";
@@ -1105,7 +1291,7 @@ async function loadOrders() {
     }
     const acts = el("div", null, "acts");
     if (o.status === "pending") {
-      acts.append(btn(o.key_locked ? "🔓 Débloquer la clé (paiement reçu)" : "✔ Valider le paiement", "green", async () => {
+      acts.append(btn(o.key_locked ? "🔓 Débloquer la clé (paiement reçu)" : "✔ Payé : livrer la commande", "green", async () => {
         if (!confirm("Avez-vous bien reçu " + fcfa(o.amount_fcfa) + " de " + o.customer_name + " ?" + (o.key_locked ? "\nLa clé sera envoyée par email au client et affichée sur sa page." : ""))) return;
         await run({ action: "order_validate", id: o.id }, "Paiement validé, commande livrée ✔", reload)();
       }));
@@ -1118,6 +1304,19 @@ async function loadOrders() {
     }
     if (["delivered", "processing", "paid", "installing"].includes(o.status)) acts.append(btn(o.status === "installing" ? "✉ Renvoyer l'email d'installation" : o.emailed_at ? "✉ Renvoyer l'email" : "✉ Envoyer l'email", "grey", async () => {
       if (confirm((o.status === "installing" ? "Renvoyer l'email d'installation à " : "Envoyer l'email de livraison à ") + o.email + " ?")) await run({ action: "order_email", id: o.id }, "Email envoyé ✔", reload)();
+    }));
+    if (o.status === "delivered" && o.email) acts.append(btn(o.review_asked_at ? "⭐ Redemander un avis" : "⭐ Demander un avis", "grey", async () => {
+      if (confirm("Envoyer à " + o.email + " un email lui demandant son avis (bouton vers sa page de commande) ?" + (o.review_asked_at ? "\nDéjà demandé le " + dt(o.review_asked_at) + "." : ""))) await run({ action: "review_request", id: o.id }, "Demande d'avis envoyée ✔", reload)();
+    }));
+    if (items.some((i) => (i.license_keys || []).length)) acts.append(btn("📄 PDF revendeur", "grey", () => resellerPdf(o)));
+    else if (o.status === "pending" && items.some((i) => STOCK_TYPES.includes(i.delivery_type))) acts.append(btn("📄 PDF revendeur", "grey", async () => {
+      if (!confirm("Avez-vous bien reçu " + fcfa(o.amount_fcfa) + " de " + (o.customer_name || o.email) + " ?\n\nLe compte (ou la clé) sera pris dans le stock et la commande passera « livrée », SANS email au client.\nEnsuite le PDF d'instructions se télécharge.")) return;
+      try {
+        const r = await api({ action: "order_validate", id: o.id, silent: true });
+        if (r.result && r.result.ok === false && r.result.reason) toast("Livraison : " + r.result.reason);
+        await resellerPdf(o);
+      } catch (e) { toast(errMsg(e)); }
+      reload();
     }));
     acts.append(btn("Page client", "grey", () => copy(ORDER_PAGE + "?o=" + o.public_token, "Lien de la page client copié ✔")));
     if (o.invoice_no) acts.append(btn("🧾 Facture", "grey", () => window.open(SITE + "/facture?o=" + encodeURIComponent(o.public_token), "_blank", "noopener")));
@@ -1139,7 +1338,7 @@ async function loadOrders() {
         o.shipping_method ? shipInfo(o) : null),
       cItems,
       td(el("strong", fcfa(o.amount_fcfa)), el("br"), el("span", METHOD[o.payment_method] || o.payment_method || "—", "small"), el("br"), el("span", o.payment_ref || "", "small mono")),
-      td(tag(o.status), o.key_locked && o.status === "pending" ? el("div", "🔒 Clé verrouillée", "small") : null, o.emailed_at ? el("div", "✉ email envoyé " + dt(o.emailed_at), "small") : null, o.note ? el("div", o.note, "small") : null),
+      td(tag(o.status), o.key_locked && o.status === "pending" ? el("div", "🔒 Clé verrouillée", "small") : null, o.emailed_at ? el("div", "✉ email envoyé " + dt(o.emailed_at), "small") : null, o.review_asked_at ? el("div", "⭐ avis demandé " + dt(o.review_asked_at), "small") : null, o.note ? el("div", o.note, "small") : null),
       td(acts)));
   }
 }
@@ -1180,12 +1379,30 @@ async function loadFiles(selectName) {
   s.value = keep || "";
 }
 // produit physique : quantité à la place du type de livraison, des fichiers et des clés
+// ---------- packs ----------
+const isPack = (p) => !!(p && p.bundle && p.bundle.length);
+function packRow(r = {}) {
+  const row = el("div", null, "bar"); row.style.margin = "4px 0";
+  const sel = document.createElement("select"); sel.className = "grow";
+  sel.append(new Option("— Choisir un produit —", ""));
+  for (const p of products) if (STOCK_TYPES.includes(p.delivery_type) && !isPack(p) && p.id !== $("pId").value) sel.append(new Option(p.name + (p.active ? "" : " (brouillon)"), p.id));
+  if (r.component_id) sel.value = r.component_id;
+  const q = Object.assign(document.createElement("input"), { type: "number", min: 1, max: 10, value: r.qty || 1, title: "Nombre de clés de ce produit par pack" }); q.style.width = "70px";
+  row.append(sel, el("span", "clé(s) ×", "small"), q, btn("✖", "grey", () => row.remove()));
+  $("pPackRows").append(row);
+}
+$("pPackAdd").addEventListener("click", () => packRow());
+function packPayload() {
+  return [...$("pPackRows").children].map((r) => ({ component_id: r.querySelector("select").value, qty: Number(r.querySelector("input").value) || 1 })).filter((x) => x.component_id);
+}
 function syncType() {
   const phys = $("pPhysical").checked, t = $("pType").value;
   $("pQtyBox").classList.toggle("hidden", !phys); $("pTypeBox").classList.toggle("hidden", phys);
   $("pFileBox").classList.toggle("hidden", phys || !["key_file", "file"].includes(t));
   $("pKeysBox").classList.toggle("hidden", phys || !STOCK_TYPES.includes(t));
-  $("pTwoWrap").classList.toggle("hidden", phys || !["key", "key_file"].includes(t));
+  $("pPackBox").classList.toggle("hidden", phys || t !== "pack");
+  if (!phys && t === "pack" && !$("pPackRows").children.length) { packRow(); packRow(); }
+  $("pTwoWrap").classList.toggle("hidden", phys || !["key", "key_file", "pack"].includes(t));
   $("pAutoLbl").classList.toggle("hidden", phys);
 }
 $("pPhysical").addEventListener("change", syncType);
@@ -1204,7 +1421,7 @@ function keysInfo(p) {
   $("pKeysInfo").textContent = s ? (s.available ?? 0) + " envoi(s) possible(s) en stock" + (s.reusable ? " + un sérialiseur réutilisable sans limite" : "") : "";
 }
 $("pType").addEventListener("change", syncType);
-$("pImgFile").addEventListener("change", () => uploadImage($("pImgFile"), $("pImg"), $("pImgPrev"), $("pImgMsg")));
+$("pImgFile").addEventListener("change", () => uploadImage($("pImgFile"), $("pImg"), $("pImgPrev"), $("pImgMsg"), { product: true, max: 1500 }));
 $("pUploadBtn").addEventListener("click", async () => {
   const f = $("pUpload").files[0], msg = $("pUpMsg"), b = $("pUploadBtn");
   if (!f) { msg.textContent = "Choisissez d'abord un fichier sur votre ordinateur."; return; }
@@ -1227,7 +1444,7 @@ async function loadProducts() {
     td(el("strong", p.name), p.featured ? el("span", " ★", "small") : null, p.image_url ? null : el("div", "⚠️ sans photo : invisible dans les résultats enrichis Google", "small")),
     td(catName[p.category_id] || "—"),
     td(fcfa(p.price_fcfa)),
-    td(TYPES[p.delivery_type] || p.delivery_type, el("br"), el("span", p.delivery_type === "physical" ? (p.stock_qty == null ? "quantité illimitée" : p.stock_qty + " en stock") : p.auto_deliver ? "automatique" : "manuelle", "small")),
+    td(isPack(p) ? "📦 Pack (" + p.bundle.length + " produits)" : TYPES[p.delivery_type] || p.delivery_type, el("br"), el("span", p.delivery_type === "physical" ? (p.stock_qty == null ? "quantité illimitée" : p.stock_qty + " en stock") : p.auto_deliver ? "automatique" : "manuelle", "small")),
     td(tag(p.active ? "pub" : "draft"), p.sku ? el("div", p.sku, "small mono") : null),
     td(btn("Modifier", "grey", () => editProduct(p)), " ",
       p.active ? btn("Repasser en brouillon", "grey", async () => { await api({ action: "product_status", id: p.id, active: false }); toast("Produit caché (brouillon) ✔"); await loadProducts(); })
@@ -1235,6 +1452,7 @@ async function loadProducts() {
   renderCategories();
 }
 function editProduct(p) {
+  remember("product", p.id);
   $("pFormTitle").textContent = "Modifier : " + p.name + (p.active ? "" : " (📝 brouillon, caché du site)");
   $("pId").value = p.id; $("pName").value = p.name; $("pCat").value = p.category_id || ""; $("pPrice").value = p.price_fcfa;
   $("pCompare").value = p.compare_price_fcfa || ""; $("pWholesale").value = p.wholesale_price_fcfa ?? ""; $("pDesc").value = p.description || ""; $("pImg").value = p.image_url || "";
@@ -1242,7 +1460,8 @@ function editProduct(p) {
   const ext = /^https:\/\//i.test(p.installer_path || "");
   $("pPhysical").checked = p.delivery_type === "physical"; $("pQty").value = p.stock_qty ?? ""; $("pWeight").value = p.weight_g ?? ""; $("pSku").value = p.sku || "";
   $("pSeoT").value = p.seo_title || ""; $("pSeoD").value = p.seo_description || ""; seoPrev();
-  $("pType").value = p.delivery_type === "physical" ? "key" : p.delivery_type; $("pLink").value = ext ? p.installer_path : ""; $("pKeys").value = ""; resetKind("pKeys"); keysInfo(p);
+  $("pPackRows").replaceChildren(); for (const r of p.bundle || []) packRow(r);
+  $("pType").value = p.delivery_type === "physical" ? "key" : isPack(p) ? "pack" : p.delivery_type; $("pLink").value = ext ? p.installer_path : ""; $("pKeys").value = ""; resetKind("pKeys"); keysInfo(p);
   syncType(); loadFiles(ext ? "" : p.installer_path || "").catch(() => {});
   $("pAuto").checked = p.auto_deliver !== false; $("pActive").value = p.active ? "1" : "0"; $("pFeatured").checked = p.featured;
   $("pLow").value = p.low_stock_threshold; $("pSort").value = p.sort || 0; $("pTpl").value = p.email_template_id || ""; $("pTwo").checked = !!p.two_step; $("pInstTpl").value = p.install_template_id || ""; twoVis();
@@ -1251,7 +1470,7 @@ function editProduct(p) {
 function resetProduct() {
   $("pFormTitle").textContent = "Nouveau produit";
   for (const id of ["pId", "pName", "pPrice", "pCompare", "pWholesale", "pDesc", "pImg", "pFile"]) $(id).value = "";
-  $("pCat").value = ""; $("pType").value = "key"; $("pPhysical").checked = false; $("pQty").value = ""; $("pWeight").value = ""; $("pSku").value = ""; $("pSeoT").value = ""; $("pSeoD").value = ""; seoPrev(); $("pLink").value = ""; $("pKeys").value = ""; resetKind("pKeys"); keysInfo(null); syncType(); $("pImgPrev").classList.add("hidden"); $("pImgMsg").textContent = "";
+  $("pCat").value = ""; $("pType").value = "key"; $("pPackRows").replaceChildren(); $("pKeysNote").value = ""; $("pPhysical").checked = false; $("pQty").value = ""; $("pWeight").value = ""; $("pSku").value = ""; $("pSeoT").value = ""; $("pSeoD").value = ""; seoPrev(); $("pLink").value = ""; $("pKeys").value = ""; resetKind("pKeys"); keysInfo(null); syncType(); $("pImgPrev").classList.add("hidden"); $("pImgMsg").textContent = "";
   $("pAuto").checked = true; $("pActive").value = "1"; $("pFeatured").checked = false; $("pLow").value = 5; $("pSort").value = 0; $("pTpl").value = ""; $("pTwo").checked = false; $("pInstTpl").value = ""; twoVis();
 }
 $("pReset").addEventListener("click", resetProduct);
@@ -1261,18 +1480,20 @@ async function saveProduct(publish) {
       if (!(Number($("pPrice").value) > 0)) return toast("Mettez d'abord un prix (plus de 0 F) avant de publier ce produit.");
       $("pActive").value = "1";
     }
-    const phys = $("pPhysical").checked, link = $("pLink").value.trim();
+    const phys = $("pPhysical").checked, link = $("pLink").value.trim(), pack = !phys && $("pType").value === "pack";
     if (link && !/^https:\/\/\S+$/i.test(link)) return toast("Le lien doit commencer par https://");
+    const bundle = pack ? packPayload() : [];
+    if (pack && bundle.length < 2) return toast("Un pack doit contenir au moins 2 produits.");
     const saved = await api({ action: "product_save", id: $("pId").value || undefined, name: $("pName").value, category_id: $("pCat").value, stock_qty: $("pQty").value,
       price_fcfa: $("pPrice").value, compare_price_fcfa: $("pCompare").value, wholesale_price_fcfa: $("pWholesale").value, description: $("pDesc").value, image_url: $("pImg").value,
-      delivery_type: phys ? "physical" : $("pType").value, installer_path: link || $("pFile").value, auto_deliver: $("pAuto").checked, active: $("pActive").value === "1", sku: $("pSku").value, weight_g: $("pWeight").value, seo_title: $("pSeoT").value, seo_description: $("pSeoD").value,
+      delivery_type: phys ? "physical" : pack ? "key" : $("pType").value, installer_path: pack ? "" : link || $("pFile").value, bundle, auto_deliver: $("pAuto").checked, active: $("pActive").value === "1", sku: $("pSku").value, weight_g: $("pWeight").value, seo_title: $("pSeoT").value, seo_description: $("pSeoD").value,
       featured: $("pFeatured").checked, low_stock_threshold: $("pLow").value, sort: $("pSort").value, email_template_id: $("pTpl").value, two_step: $("pTwo").checked, install_template_id: $("pInstTpl").value });
     let msg = "Produit enregistré ✔";
-    if (!phys && STOCK_TYPES.includes($("pType").value) && $("pKeys").value.trim()) {
+    if (!phys && !pack && STOCK_TYPES.includes($("pType").value) && $("pKeys").value.trim()) {
       const kp = kindPayload("pKeys");
       if (kp.error) msg += " · licences NON ajoutées : " + kp.error;
       else {
-        const k = await api({ action: "keys_import", product_id: saved.row.id, text: $("pKeys").value, ...kp });
+        const k = await api({ action: "keys_import", product_id: saved.row.id, text: $("pKeys").value, note: $("pKeysNote").value, ...kp });
         msg += " · " + (k.added ?? 0) + " licence(s) ajoutée(s)" + (k.duplicates ? ", " + k.duplicates + " déjà en stock" : "");
       }
     }
@@ -1335,7 +1556,7 @@ async function loadKeys() {
     return tr(td(el("span", mask(k.key_value), "mono")), td(names[k.product_id] || ""), td(k.reusable && k.max_uses && k.status === "sent" && !k.source_key_id ? el("span", "épuisée", "tag") : tag(k.status),
       k.source_key_id ? el("span", " copie d'une clé multi-postes / réutilisable", "small")
       : k.reusable && k.max_uses ? el("span", " 🖥 multi-postes : " + (k.uses ?? 0) + " / " + k.max_uses + " utilisé(s)", "small")
-      : k.reusable ? el("span", " ♻ réutilisable" + (k.uses ? " (" + k.uses + " envoi(s))" : ""), "small") : null), td(dt(k.added_at)), td(who), td(acts));
+      : k.reusable ? el("span", " ♻ réutilisable" + (k.uses ? " (" + k.uses + " envoi(s))" : ""), "small") : null), td(dt(k.added_at), k.note ? el("div", "📝 " + k.note, "small") : null), td(who), td(acts));
   }));
   if (!rows.length) $("kRows").append(tr(td("Aucun élément.")));
 }
@@ -1343,12 +1564,32 @@ $("kRefresh").addEventListener("click", () => loadKeys().catch((e) => toast(errM
 $("kFilterProd").addEventListener("change", () => loadKeys().catch((e) => toast(errMsg(e))));
 $("kFilterStatus").addEventListener("change", () => loadKeys().catch((e) => toast(errMsg(e))));
 $("kShow").addEventListener("click", () => { showKeys = !showKeys; $("kShow").textContent = showKeys ? "Masquer les clés" : "Afficher les clés"; loadKeys().catch((e) => toast(errMsg(e))); });
+// produit livré avec un compte (type « Identifiants ») : champs adresse + mot de passe, toujours 1 compte = 1 client
+const isAcctProd = () => (products.find((p) => p.id === $("kProd").value) || {}).delivery_type === "stock";
+function kAcctUi() {
+  const on = isAcctProd();
+  $("kAcct").classList.toggle("hidden", !on); $("kKindBox").classList.toggle("hidden", on);
+  if (on) resetKind("k");
+  $("kTextLabel").textContent = on ? "Ou plusieurs comptes, un par ligne (adresse ; mot de passe)" : "Collez une clé (ou un identifiant) par ligne";
+  $("kText").placeholder = on ? "compte1@domaine.com ; motdepasse1\ncompte2@domaine.com ; motdepasse2" : "XXXXX-XXXXX-XXXXX-XXXXX-XXXXX\nYYYYY-YYYYY-YYYYY-YYYYY-YYYYY";
+}
+$("kProd").addEventListener("change", kAcctUi);
 $("kImport").addEventListener("click", async () => {
   if (!$("kProd").value) { $("kMsg").textContent = "Créez d'abord un produit de type clé ou identifiants."; return; }
   try {
     const kp = kindPayload("k"); if (kp.error) { $("kMsg").textContent = kp.error; return; }
-    const d = await api({ action: "keys_import", product_id: $("kProd").value, text: $("kText").value, ...kp });
-    $("kText").value = ""; resetKind("k");
+    let text = $("kText").value;
+    if (isAcctProd()) {
+      const lg = $("kLogin").value.trim(), pw = $("kPass").value.trim();
+      if (lg || pw) {
+        if (!/^[^\s;|]+@[^\s;|]+$/.test(lg)) { $("kMsg").textContent = "Indiquez l'adresse de connexion du compte (ex. nom@domaine.com)."; return; }
+        if (!pw) { $("kMsg").textContent = "Indiquez le mot de passe du compte."; return; }
+        text = lg + " ; " + pw + "\n" + text;
+      }
+      kp.reusable = false; delete kp.max_uses;
+    }
+    const d = await api({ action: "keys_import", product_id: $("kProd").value, text, note: $("kNote").value, ...kp });
+    $("kText").value = ""; $("kNote").value = ""; $("kLogin").value = ""; $("kPass").value = ""; resetKind("k");
     $("kMsg").textContent = d.added + " ajouté(s), " + d.duplicates + " doublon(s) ignoré(s)" + (d.delivered ? ", " + d.delivered + " commande(s) en attente livrée(s)" : "") + ".";
     await loadKeys();
   } catch (e) { $("kMsg").textContent = e.message === "aucune_cle" ? "Aucune clé trouvée dans le texte." : errMsg(e); }
@@ -1440,6 +1681,7 @@ async function loadBlog() {
   if (!rows.length) $("bRows").append(tr(td("Aucun article pour le moment.")));
 }
 function editPost(p) {
+  remember("post", p.id);
   $("bTitleH").textContent = "Modifier : " + p.title; $("bId").value = p.id; $("bTitle").value = p.title; $("bExcerpt").value = p.excerpt || ""; exCount();
   $("bContent").value = p.content || ""; $("bImg").value = p.cover_url || ""; $("bVid").value = p.cover_video || ""; $("bImgPrev").src = p.cover_url || ""; $("bImgPrev").classList.toggle("hidden", !p.cover_url);
   $("bPub").checked = p.published; window.scrollTo(0, 0);
@@ -1561,6 +1803,7 @@ async function loadPages() {
   if (!rows.length) $("gRows").append(tr(td("Aucune page pour le moment.")));
 }
 function editPage(p) {
+  remember("page", p.id);
   $("gTitleH").textContent = "Modifier : " + p.title; $("gId").value = p.id; $("gTitle").value = p.title; $("gSlug").value = p.slug; $("gSort").value = p.sort || 0;
   $("gContent").value = p.content || ""; $("gImg").value = p.image_url || ""; $("gImgPrev").src = p.image_url || ""; $("gImgPrev").classList.toggle("hidden", !p.image_url);
   $("gPub").value = p.published ? "1" : "0"; $("gMenu").checked = p.in_menu; $("gFoot").checked = p.in_footer; $("gSeoT").value = p.seo_title || ""; $("gSeoD").value = p.seo_description || "";
@@ -1597,6 +1840,7 @@ async function loadTemplates() {
   }));
 }
 function editTemplate(t) {
+  remember("tpl", t.id);
   $("tFormTitle").textContent = "Modifier : " + t.name; $("tId").value = t.id; $("tName").value = t.name; $("tSubject").value = t.subject; $("tBody").value = t.body; $("tDefault").checked = t.is_default; $("tKind").value = t.kind || "key";
   $("tPrevBox").classList.add("hidden"); window.scrollTo(0, 0);
 }
@@ -1870,16 +2114,75 @@ async function login() {
     await loadRefs();
     try { sessionStorage.setItem("lo_pw", pw); } catch (_) {}
     $("login").classList.add("hidden"); $("app").classList.remove("hidden");
-    openTab("dash");
+    restorePlace();
   } catch (e) {
     $("loginMsg").textContent = e.message === "unauthorized" ? "Mot de passe incorrect." : e.message === "bloque" ? "Trop d'essais ratés : connexion bloquée pour l'instant (15 min à 1 h). Réessayez plus tard." : "Erreur : " + e.message;
     pw = "";
   }
 }
+// après une actualisation : même onglet, même fiche ouverte, même position dans la page
+async function restorePlace() {
+  const want = location.hash.slice(1) || ss.get("lo_tab");
+  const t = loaders[want] ? want : "dash";
+  const [kind, ...rest] = ss.get("lo_detail").split(":"); const id = rest.join(":"); const y = Number(ss.get("lo_scroll")) || 0;
+  await openTab(t, true);
+  try {
+    if (kind === "product" && t === "products") { const p = products.find((x) => x.id === id); if (p) editProduct(p); }
+    else if (kind === "post" && t === "blog") { const p = ((await api({ action: "posts_list" })).rows || []).find((x) => x.id === id); if (p) editPost(p); }
+    else if (kind === "page" && t === "pages") { const p = ((await api({ action: "pages_list" })).rows || []).find((x) => x.id === id); if (p) editPage(p); }
+    else if (kind === "tpl" && t === "emails") { const x = templates.find((r) => r.id === id); if (x) editTemplate(x); }
+    else if (kind === "thread" && t === "messages" && id) await openThread(id);
+  } catch (_) {}
+  if (y) setTimeout(() => scrollTo(0, y), 300);
+}
 $("btnLogin").addEventListener("click", login);
 $("pw").addEventListener("keydown", (e) => { if (e.key === "Enter") login(); });
 $("btnLogout").addEventListener("click", () => { try { sessionStorage.removeItem("lo_pw"); } catch (_) {} location.reload(); });
 if (pw) login();
+
+// ---------- Paiements ----------
+async function loadPayments() { renderPayments(await api({ action: "pay_get" })); }
+function renderPayments(st) {
+  const modes = $("payModes"); modes.replaceChildren();
+  const opts = [{ id: "whatsapp", name: "💬 WhatsApp", desc: "La commande est enregistrée, le client arrive sur votre WhatsApp avec un message prêt. Vous lui envoyez votre lien Wave ou votre numéro, puis vous cliquez « ✔ Payé » sur la commande : la livraison part.", ok: true }]
+    .concat(st.providers.map((p) => ({ id: p.id, name: p.name, desc: !p.ready ? "Pas encore branché au site (on le branchera quand votre compte " + p.name + " sera actif)." : !p.complete ? "Branché, mais il manque des clés." : "Paiement automatique : la commande est livrée dès que " + p.name + " confirme.", ok: p.ready && p.complete })));
+  for (const o of opts) {
+    const on = st.mode === o.id;
+    const row = el("label", null, "check"); row.style.cssText = "display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid #eef1f6;" + (o.ok || on ? "" : "opacity:.55");
+    const r = el("input"); r.type = "radio"; r.name = "payMode"; r.checked = on; r.disabled = !o.ok && !on;
+    r.addEventListener("change", async () => { if (!confirm("Passer le site en mode « " + o.name + " » ?")) { r.checked = false; loadPayments(); return; }
+      try { renderPayments(await api({ action: "pay_mode", mode: o.id })); toast("Mode de paiement : " + o.name + " ✔"); } catch (e) { toast(errMsg(e)); loadPayments(); } });
+    const t = el("div"); t.append(el("b", o.name + (on ? "  · actif" : "")), el("div", o.desc, "small"));
+    row.append(r, t); modes.append(row);
+  }
+  const box = $("payProviders"); box.replaceChildren();
+  for (const p of st.providers) {
+    const card = el("details"); card.style.cssText = "border:1px solid #e3e8f0;border-radius:10px;padding:10px 12px;margin:10px 0";
+    const nSet = p.fields.filter((f) => f.set && f.readable).length;
+    card.append(el("summary", p.name + " — " + (nSet === p.fields.length ? "clés enregistrées ✓" : nSet ? nSet + "/" + p.fields.length + " clés" : "aucune clé") + (p.ready ? "" : " · pas encore branché")));
+    const inputs = {};
+    for (const f of p.fields) {
+      const lab = el("label", f.label); const line = el("div"); line.style.cssText = "display:flex;gap:8px;align-items:center;flex-wrap:wrap";
+      const i = el("input"); i.type = "password"; i.autocomplete = "new-password"; i.spellcheck = false; i.style.flex = "1"; i.style.minWidth = "220px";
+      i.placeholder = f.set ? (f.readable ? "clé enregistrée ✓ (laisser vide pour la garder)" : "⚠️ à ressaisir") : "coller la clé ici";
+      inputs[f.key] = i; line.append(i);
+      if (f.set) line.append(btn("Effacer", "grey", async () => { if (!confirm("Effacer cette clé ?")) return; renderPayments(await api({ action: "pay_clear", provider: p.id, field: f.key })); toast("Clé effacée"); }));
+      card.append(lab, line);
+    }
+    const live = el("input"); live.type = "checkbox"; live.checked = p.live;
+    const lv = el("label", null, "check"); lv.append(live, document.createTextNode(" Mode réel (décoché = mode test / sandbox)"));
+    const save = btn("🔒 Enregistrer (chiffré)", "green", async () => {
+      const values = {}; for (const [k, i] of Object.entries(inputs)) if (i.value.trim()) values[k] = i.value.trim();
+      const st2 = await api({ action: "pay_save", provider: p.id, live: live.checked, values });
+      for (const i of Object.values(inputs)) i.value = "";
+      renderPayments(st2); toast(p.name + " : enregistré ✔");
+    });
+    const doc = el("a", "Documentation " + p.name); doc.href = p.doc; doc.target = "_blank"; doc.rel = "noopener"; doc.className = "small";
+    const bar = el("div", null, "bar"); bar.append(save);
+    card.append(lv, bar, doc, el("div", p.updated_at ? "Dernière modification : " + new Date(p.updated_at).toLocaleString("fr-FR") : "", "small"));
+    box.append(card);
+  }
+}
 </script>
 </body>
 </html>

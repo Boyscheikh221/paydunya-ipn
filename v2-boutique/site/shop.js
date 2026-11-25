@@ -1,7 +1,8 @@
 // licenceoff — fonctions communes du site client
 // ====== À MODIFIER ======
 const SUPABASE = "https://vnzpxfoeiixiqxkhdnik.supabase.co/functions/v1";
-const WHATSAPP_NUMBER = "221777860777";   // sans le +
+const WHATSAPP_NUMBER = "221777860777";
+const FACEBOOK_PAGE = "https://www.facebook.com/1367697816423693";   // Page Facebook Licenceoff   // sans le +
 const MANUAL_PAY = {                      // paiement manuel de secours (si PayDunya indisponible)
   "Wave": "77 786 07 77",
   "Orange Money": "77 786 07 77",
@@ -105,6 +106,16 @@ const LO = (() => {
 
   // ---------- en-tête et pied de page ----------
   const icon = (d, size = 18) => { const s = document.createElementNS("http://www.w3.org/2000/svg", "svg"); s.setAttribute("width", size); s.setAttribute("height", size); s.setAttribute("viewBox", "0 0 24 24"); s.setAttribute("fill", "none"); s.setAttribute("stroke", "currentColor"); s.setAttribute("stroke-width", "2"); s.setAttribute("stroke-linecap", "round"); s.setAttribute("stroke-linejoin", "round"); s.innerHTML = d; return s; };
+  // logos pleins (Facebook, WhatsApp)
+  const brand = (d, size = 18, color = "currentColor") => { const s = document.createElementNS("http://www.w3.org/2000/svg", "svg"); s.setAttribute("width", size); s.setAttribute("height", size); s.setAttribute("viewBox", "0 0 24 24"); s.setAttribute("fill", color); s.setAttribute("aria-hidden", "true"); const p = document.createElementNS("http://www.w3.org/2000/svg", "path"); p.setAttribute("d", d); s.append(p); return s; };
+  const BRANDS = { fb: "M14 8.5V6.8c0-.8.2-1.3 1.4-1.3H17V2.6c-.3 0-1.3-.1-2.5-.1-2.5 0-4.2 1.5-4.2 4.3v1.7H7.6v3.2h2.7V22h3.3v-10.3h2.7l.4-3.2H14z", wa: "M17.5 14.4c-.3-.1-1.8-.9-2-1-.3-.1-.5-.1-.7.1-.2.3-.8 1-.9 1.2-.2.2-.3.2-.6.1-.3-.1-1.3-.5-2.4-1.5-.9-.8-1.5-1.8-1.7-2.1-.2-.3 0-.5.1-.6l.4-.5c.2-.2.2-.3.3-.5.1-.2 0-.4 0-.5l-.9-2.2c-.2-.6-.5-.5-.7-.5h-.6c-.2 0-.5.1-.8.4-.3.3-1 1-1 2.5s1.1 2.9 1.2 3.1c.1.2 2.1 3.2 5.1 4.5.7.3 1.3.5 1.7.6.7.2 1.4.2 1.9.1.6-.1 1.8-.7 2-1.4.2-.7.2-1.3.2-1.4-.1-.1-.3-.2-.6-.3zM12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2z" };
+  // boutons « Partager » (articles, produits)
+  function shareBar(link, title) {
+    const u = encodeURIComponent(link), t = encodeURIComponent((title ? title + " : " : "") + link);
+    return el("div", { class: "share" }, el("span", { text: "Partager :" }),
+      el("a", { class: "sh fb", href: "https://www.facebook.com/sharer/sharer.php?u=" + u, target: "_blank", rel: "noopener", title: "Partager sur Facebook" }, brand(BRANDS.fb, 18, "#fff"), el("span", { text: "Facebook" })),
+      el("a", { class: "sh wa", href: "https://wa.me/?text=" + t, target: "_blank", rel: "noopener", title: "Partager sur WhatsApp" }, brand(BRANDS.wa, 18, "#fff"), el("span", { text: "WhatsApp" })));
+  }
   const ICONS = {
     cart: '<circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/>',
     search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
@@ -114,7 +125,7 @@ const LO = (() => {
     wa: '<path d="M21 11.5a8.4 8.4 0 0 1-12.6 7.3L3 20l1.3-5A8.4 8.4 0 1 1 21 11.5z"/>',
   };
   function header(active) {
-    const top = el("div", { class: "top", text: "Licences & solutions numériques • Livraison immédiate • Wave, Orange Money, carte" });
+    const top = el("div", { class: "top", text: "Licences & solutions numériques • Livraison rapide • Wave, Orange Money" });
     const nav = el("nav", { class: "main" },
       el("a", { href: url.home, class: active === "home" ? "on" : null, text: "Accueil" }),
       el("a", { href: url.shop, class: active === "shop" ? "on" : null, text: "Boutique" }),
@@ -141,17 +152,21 @@ const LO = (() => {
     const year = new Date().getFullYear();
     document.body.append(
       el("div", { class: "strip" }, el("div", { class: "wrap" },
-        el("span", { text: "Au Sénégal 🇸🇳" }), el("span", { text: "Des licences authentiques" }), el("span", { text: "Votre satisfaction, notre priorité" }))),
+        el("span", { text: "Au Sénégal 🇸🇳" }), el("span", { text: "Des licences authentiques" }), el("span", { text: "Rapide et fiable" }))),
       el("footer", { class: "site" }, el("div", { class: "wrap" },
         el("div", { class: "cols" },
           el("div", {}, el("div", { class: "logo" }, el("span", { class: "a", text: "licence" }), el("span", { class: "b", text: "off" }), el("span", { class: "c", text: ".com" })),
             el("p", { text: "Licences & solutions numériques. Licences et logiciels authentiques, livrés en quelques minutes. Basé à Dakar." }),
-            el("p", { class: "tag-line", text: "Vos logiciels, notre engagement !" })),
+            el("p", { class: "tag-line", text: "Vos logiciels, notre engagement !" }),
+            el("div", { class: "socials" },
+              el("a", { class: "so fb", href: FACEBOOK_PAGE, target: "_blank", rel: "noopener", "aria-label": "Notre page Facebook", title: "Suivez-nous sur Facebook" }, brand(BRANDS.fb, 20, "#fff")),
+              el("a", { class: "so wa", href: "https://wa.me/" + WHATSAPP_NUMBER, target: "_blank", rel: "noopener", "aria-label": "WhatsApp", title: "Écrivez-nous sur WhatsApp" }, brand(BRANDS.wa, 20, "#fff")))),
           el("div", {}, el("b", { text: "Boutique" }), el("a", { href: url.shop, text: "Tous les produits" }), el("a", { href: url.cart, text: "Mon panier" }), el("a", { href: url.blog, text: "Blog" }), el("a", { href: url.faq, text: "Questions fréquentes" }), el("a", { href: url.privacy, text: "Confidentialité et cookies" }),
             el("a", { href: "#", text: "Gérer les cookies", onclick: (e) => { e.preventDefault(); cookieBar(true); } })),
           el("div", { id: "footPages", class: "hidden" }, el("b", { text: "Infos" })),
           el("div", {}, el("b", { text: "Aide" }), el("a", { href: "https://wa.me/" + WHATSAPP_NUMBER, target: "_blank", rel: "noopener", text: "WhatsApp : +" + WHATSAPP_NUMBER }),
-            el("span", { text: "Paiement sécurisé via PayDunya" }), el("a", { href: "/compte", text: "Mon compte" }), el("a", { href: "/parrain", text: "Espace parrain" })),
+            el("a", { href: FACEBOOK_PAGE, target: "_blank", rel: "noopener", text: "Facebook : Licenceoff" }),
+            el("span", { text: "Paiement Wave ou Orange Money" }), el("a", { href: "/compte", text: "Mon compte" }), el("a", { href: "/parrain", text: "Espace parrain" })),
         ),
         el("div", { class: "copy", text: "© " + year + " licenceoff.com — Tous droits réservés" }),
       )),
@@ -360,5 +375,5 @@ const LO = (() => {
     physical: "Produit physique : nous vous contactons sur WhatsApp pour la livraison",
   };
 
-  return { source, classifySource, px, acct, setAcct, visitorId, track, icon, ICONS, refCode, setRef, cookieBar, url, slugFromPath, seo, jsonLd, crumbs, mainCats, SITE, $, el, fcfa, api, boutique, cart, saveCart, addToCart, cartCount, page, toast, productCard, initials, richText, ytId, ytThumb, ytEmbed, DELIVERY_TEXT };
+  return { source, classifySource, px, acct, setAcct, visitorId, track, icon, ICONS, refCode, setRef, cookieBar, url, slugFromPath, seo, jsonLd, crumbs, mainCats, SITE, $, el, fcfa, api, boutique, cart, saveCart, addToCart, cartCount, page, toast, productCard, initials, shareBar, FACEBOOK_PAGE, richText, ytId, ytThumb, ytEmbed, DELIVERY_TEXT };
 })();

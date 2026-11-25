@@ -32,6 +32,66 @@ function cleanDetail(v: unknown, depth = 0): unknown {
   for (const [k, x] of Object.entries(v as Record<string, unknown>).slice(0, 30)) out[k] = SECRET_RE.test(k) ? "***" : cleanDetail(x, depth + 1);
   return out;
 }
+// ---------- Paiements : intégrateurs et clés API chiffrées ----------
+// Les clés saisies dans la page « Paiements » sont chiffrées ici (AES-GCM 256) avant d'aller en base, et ne repartent
+// jamais vers le navigateur. La clé de chiffrement est dérivée d'un secret du serveur (PAYMENT_KEYS_SECRET s'il existe,
+// sinon la clé de service Supabase). Si ce secret change, il suffit de ressaisir les clés des intégrateurs.
+const PAY_PROVIDERS: Record<string, { name: string; ready: boolean; doc: string; fields: [string, string][] }> = {
+  wave: { name: "Wave", ready: false, doc: "https://docs.wave.com/checkout",
+    fields: [["api_key", "Clé API Wave Checkout (commence par wave_sn_)"], ["webhook_secret", "Secret du webhook Wave"]] },
+  paytech: { name: "PayTech", ready: false, doc: "https://docs.intech.sn/doc_paytech.php",
+    fields: [["api_key", "API_KEY PayTech"], ["api_secret", "API_SECRET PayTech"]] },
+  orange_money: { name: "Orange Money", ready: false, doc: "https://developer.orange-sonatel.com",
+    fields: [["client_id", "Client ID"], ["client_secret", "Client secret"], ["merchant_code", "Code marchand"]] },
+  paydunya: { name: "PayDunya", ready: false, doc: "https://developers.paydunya.com",
+    fields: [["master_key", "Master key"], ["private_key", "Private key"], ["token", "Token"]] },
+};
+let _payKey: CryptoKey | null = null;
+async function payCryptoKey() {
+  if (_payKey) return _payKey;
+  const base = (Deno.env.get("PAYMENT_KEYS_SECRET") || Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "").trim();
+  if (base.length < 20) throw new Error("secret_serveur_absent");
+  const raw = await crypto.subtle.importKey("raw", new TextEncoder().encode(base), "HKDF", false, ["deriveKey"]);
+  _payKey = await crypto.subtle.deriveKey({ name: "HKDF", hash: "SHA-256", salt: new TextEncoder().encode("licenceoff-paiements-v1"), info: new TextEncoder().encode("cles-integrateurs") },
+    raw, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+  return _payKey;
+}
+const b64e = (u: Uint8Array) => btoa(String.fromCharCode(...u));
+const b64d = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+async function sealSecret(plain: string) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await payCryptoKey(), new TextEncoder().encode(plain)));
+  return "v1:" + b64e(iv) + ":" + b64e(ct);
+}
+// pour les futurs branchements (Wave, PayTech…) : relit une clé en clair, côté serveur uniquement
+async function openSecret(sealed: string): Promise<string | null> {
+  try {
+    const [v, iv, ct] = String(sealed).split(":");
+    if (v !== "v1") return null;
+    return new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64d(iv) }, await payCryptoKey(), b64d(ct)));
+  } catch { return null; }
+}
+async function payPublicState() {
+  const [{ data: rows }, { data: m }] = await Promise.all([
+    db.from("payment_providers").select("provider, live, secrets, updated_at"),
+    db.from("settings").select("value").eq("key", "payment_mode").maybeSingle(),
+  ]);
+  const by = Object.fromEntries((rows ?? []).map((r) => [r.provider, r]));
+  const providers = [];
+  for (const [id, p] of Object.entries(PAY_PROVIDERS)) {
+    const r = by[id] ?? { live: false, secrets: {}, updated_at: null };
+    const fields = [];
+    // une clé « enregistrée » doit aussi pouvoir être déchiffrée (sinon : à ressaisir)
+    for (const [key, label] of p.fields) {
+      const sealed = (r.secrets ?? {})[key];
+      fields.push({ key, label, set: !!sealed, readable: sealed ? (await openSecret(sealed)) !== null : false });
+    }
+    providers.push({ id, name: p.name, ready: p.ready, doc: p.doc, live: !!r.live, updated_at: r.updated_at, fields,
+      complete: fields.every((f) => f.set && f.readable) });
+  }
+  return { mode: typeof m?.value === "string" ? m.value : "whatsapp", providers };
+}
+
 async function logEvent(level: "info" | "warn" | "error", source: string, message: string, detail?: unknown, orderRef?: string | null) {
   if (level === "error") console.error(source, message);
   try {
@@ -102,24 +162,37 @@ type Item = any;
 // deno-lint-ignore no-explicit-any
 type Ctx = { o: any; items: Item[]; link: string; wa: string; install?: string };
 
+// Compte (Office 365…) rangé dans le stock sous la forme « Identifiant : x | Mot de passe : y »
+const acctParts = (v: string) => { const m = String(v ?? "").match(/^Identifiant : (.+?) \| Mot de passe : (.+)$/); return m ? [m[1], m[2]] : null; };
+const keyBox = (v: string) => `<div style="font-family:Consolas,Menlo,monospace;font-weight:700;font-size:15px;background:#eff5ff;border:2px dashed ${EM.B};border-radius:8px;padding:10px 12px;margin:6px 0;word-break:break-all;color:${EM.N};-webkit-user-select:all;user-select:all">${esc(v)}</div>`;
+// pack : chaque clé porte le nom du produit dont elle vient (ex. « Windows 11 Professionnel »)
+// deno-lint-ignore no-explicit-any
+const keyLabel = (i: Item, k: any) => k?.products?.name && k.products.name !== i.product_name ? String(k.products.name) : "";
 function keysHtml(items: Item[]) {
   return items.map((i) => {
     const ks = (i.license_keys ?? []) as { key_value: string }[];
     if (!ks.length) return "";
     const label = i.delivery_type === "stock" ? "Vos identifiants" : ks.length > 1 ? "Vos clés d'activation" : "Votre clé d'activation";
     return `<div style="margin:10px 0"><div style="font-size:13px;color:#5b6b86">${label} — ${esc(i.product_name)} :</div>` +
-      ks.map((k) => `<div style="font-family:Consolas,Menlo,monospace;font-weight:700;font-size:15px;background:#eff5ff;border:2px dashed ${EM.B};border-radius:8px;padding:10px 12px;margin:6px 0;word-break:break-all;color:${EM.N}">${esc(k.key_value)}</div>`).join("") + "</div>";
+      ks.map((k) => {
+        const a = acctParts(k.key_value);
+        const lbl = keyLabel(i, k);
+        return (lbl ? `<div style="font-size:13px;color:#5b6b86;margin-top:8px;font-weight:700">${esc(lbl)}</div>` : "") +
+          (a ? `<div style="font-size:13px;color:#5b6b86;margin-top:6px">Identifiant (adresse de connexion)</div>${keyBox(a[0])}<div style="font-size:13px;color:#5b6b86">Mot de passe</div>${keyBox(a[1])}` : keyBox(k.key_value));
+      }).join("") + "</div>";
   }).join("");
 }
 function keysText(items: Item[]) {
-  return items.filter((i) => (i.license_keys ?? []).length).map((i) => i.product_name + " :\n" + i.license_keys.map((k: { key_value: string }) => "  " + k.key_value).join("\n")).join("\n");
+  return items.filter((i) => (i.license_keys ?? []).length).map((i) => i.product_name + " :\n" + i.license_keys.map((k: { key_value: string }) => { const a = acctParts(k.key_value), lbl = keyLabel(i, k); return (lbl ? "  " + lbl + " :\n" : "") + (a ? "  Identifiant : " + a[0] + "\n  Mot de passe : " + a[1] : "  " + k.key_value); }).join("\n")).join("\n");
 }
 const productsHtml = (items: Item[]) => "<ul style=\"margin:6px 0;padding-left:20px\">" + items.map((i) => `<li><b>${i.quantity > 1 ? i.quantity + " × " : ""}${esc(i.product_name)}</b>${["key_file", "file"].includes(i.delivery_type) ? " — logiciel à télécharger depuis votre page de commande (lien à usage unique)" : ""}${i.status === "to_process" ? " — notre équipe vous contacte sur WhatsApp" : ""}</li>`).join("") + "</ul>";
 const productsText = (items: Item[]) => items.map((i) => "- " + (i.quantity > 1 ? i.quantity + " x " : "") + i.product_name).join("\n");
 const installButtonHtml = (link: string) => `<p style="text-align:center;margin:22px 0 6px"><a href="${esc(link)}" style="display:inline-block;background:#15803d;color:#fff;font-weight:800;text-decoration:none;padding:14px 22px;border-radius:10px">✅ J'ai fini l'installation : recevoir ma clé</a></p><p style="text-align:center;margin:0 0 14px;font-size:12px;color:#5b6b86">Bouton à usage unique</p>`;
 // bouton « Assistance WhatsApp » (remplace le numéro de téléphone dans les signatures)
 const waButtonHtml = (wa: string) => `<p style="margin:18px 0 12px"><a href="https://wa.me/${esc(wa)}" style="display:inline-block;background:#25D366;color:#fff;font-weight:800;text-decoration:none;padding:11px 18px;border-radius:10px">💬 Assistance WhatsApp</a></p>`;
-const buttonHtml = (link: string) => `<p style="text-align:center;margin:22px 0"><a href="${esc(link)}" style="display:inline-block;background:${EM.O};color:#fff;font-weight:800;text-decoration:none;padding:14px 22px;border-radius:10px">Voir ma commande et télécharger</a></p>`;
+// produits livrés par compte : le bouton mène à la page de commande où chaque identifiant a son bouton « Copier »
+const buttonLabel = (items: Item[]) => items.length && items.every((i) => i.delivery_type === "stock") ? "Ouvrir ma commande" : "Voir ma commande et télécharger";
+const buttonHtml = (link: string, label = "Voir ma commande et télécharger") => `<p style="text-align:center;margin:22px 0"><a href="${esc(link)}" style="display:inline-block;background:${EM.O};color:#fff;font-weight:800;text-decoration:none;padding:14px 22px;border-radius:10px">${esc(label)}</a></p>`;
 
 function vars(c: Ctx) {
   const parts = String(c.o.customer_name ?? "").trim().split(/\s+/);
@@ -144,9 +217,12 @@ function renderBody(body: string, c: Ctx) {
     const t = para.trim();
     if (t === "{produits}") return productsHtml(c.items);
     if (t === "{cles}") return keysHtml(c.items);
-    if (t === "{bouton}") return buttonHtml(c.link);
+    if (t === "{bouton}") return buttonHtml(c.link, buttonLabel(c.items));
     if (t === "{bouton_installation}") return installButtonHtml(c.install ?? c.link);
     if (t === "{bouton_whatsapp}") return waButtonHtml(c.wa);
+    // bouton lien libre dans un modèle : {bouton_lien:Texte du bouton|https://…} (seul sur sa ligne)
+    const bl = t.match(/^\{bouton_lien:([^|}]{1,80})\|(https:\/\/[^\s}]+)\}$/);
+    if (bl) return `<p style="text-align:center;margin:14px 0"><a href="${esc(bl[2])}" style="display:inline-block;background:${EM.B};color:#fff;font-weight:800;text-decoration:none;padding:12px 20px;border-radius:10px">${esc(bl[1])}</a></p>`;
     const inline = (s: string) => esc(sub(s))
       .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
       .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, `<a href="$2" style="color:${EM.B};font-weight:700">$1</a>`);
@@ -154,12 +230,13 @@ function renderBody(body: string, c: Ctx) {
     if (lines.every((l) => /^\s*-\s+/.test(l))) return "<ul style=\"margin:6px 0;padding-left:20px\">" + lines.map((l) => "<li>" + inline(l.replace(/^\s*-\s+/, "")) + "</li>").join("") + "</ul>";
     return `<p style="margin:0 0 12px;line-height:1.6">${lines.map(inline).join("<br>")}</p>`;
   }).join("");
-  const html = blocks.replace(/\{produits\}/g, productsHtml(c.items)).replace(/\{cles\}/g, keysHtml(c.items)).replace(/\{bouton\}/g, buttonHtml(c.link)).replace(/\{bouton_installation\}/g, installButtonHtml(c.install ?? c.link)).replace(/\{bouton_whatsapp\}/g, waButtonHtml(c.wa));
+  const html = blocks.replace(/\{produits\}/g, productsHtml(c.items)).replace(/\{cles\}/g, keysHtml(c.items)).replace(/\{bouton\}/g, buttonHtml(c.link, buttonLabel(c.items))).replace(/\{bouton_installation\}/g, installButtonHtml(c.install ?? c.link)).replace(/\{bouton_whatsapp\}/g, waButtonHtml(c.wa));
   // Texte
   const text = sub(b).replace(/\*\*(.+?)\*\*/g, "$1").replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, "$1 : $2")
     .replace(/\{produits\}/g, productsText(c.items)).replace(/\{cles\}/g, keysText(c.items)).replace(/\{bouton\}/g, "Votre commande : " + c.link)
     .replace(/\{bouton_installation\}/g, "Installation terminée ? Recevez votre clé (lien à usage unique) : " + (c.install ?? c.link))
-    .replace(/\{bouton_whatsapp\}/g, "Assistance WhatsApp : https://wa.me/" + c.wa);
+    .replace(/\{bouton_whatsapp\}/g, "Assistance WhatsApp : https://wa.me/" + c.wa)
+    .replace(/\{bouton_lien:([^|}]{1,80})\|(https:\/\/[^\s}]+)\}/g, "$1 : $2");
   return { html, text };
 }
 // Email « transactionnel » sobre (fond blanc, peu d'images, pas de slogan) : Gmail le classe
@@ -194,13 +271,26 @@ function renderEmail(tpl: Tpl, c: Ctx) {
     headers: ref && ref !== "—" ? { "X-Entity-Ref-ID": ref } : undefined,
   };
 }
+// Modèle d'email → instructions « neutres » pour un client final de revendeur :
+// on retire tout ce qui parle de la commande, du prix, de la page de commande, du site ou de l'assistance licenceoff.
+function neutralInstructions(body: string, product: string) {
+  const version = (product.match(/\b(20(?:07|10|13|16|19|21|24|25|26)|365)\b/) ?? [""])[0];
+  const drop = /\{(commande|total|bouton|lien_commande|whatsapp|bouton_whatsapp|bouton_installation|lien_installation|produits)\}|licenceoff|commande|wa\.me|whatsapp/i;
+  return body.replace(/\r/g, "").split(/\n{2,}/)
+    .filter((p) => p.trim() && !drop.test(p) && !/^\s*(\{cles\}|Bonjour\b[^\n]*)\s*$/i.test(p))
+    .map((p) => p.trim()
+      .replace(/\{prenom\}|\{nom\}/g, "").replace(/Bonjour\s*,/, "Bonjour,")
+      .replace(/\{version\}/g, version).replace(/\{produit\}/g, product)
+      .replace(/^\{bouton_lien:([^|}]+)\|(https:\/\/[^\s}]+)\}$/, "[[$1]]($2)"))
+    .join("\n\n");
+}
 function siteCtx() {
   return {
     site: (Deno.env.get("SITE_URL") ?? "https://www.licenceoff.com").trim().replace(/\/$/, ""),
     wa: (Deno.env.get("WHATSAPP_NUMBER") ?? "221777860777").replace(/\D/g, ""),
   };
 }
-async function resendSend(to: string, mail: { subject: string; html: string; text: string; headers?: Record<string, string> }, replyTo?: string, from?: string) {
+async function resendSend(to: string, mail: { subject: string; html: string; text: string; headers?: Record<string, string>; attachments?: { filename: string; content: string }[] }, replyTo?: string, from?: string) {
   const key = (Deno.env.get("RESEND_API_KEY") ?? "").trim();
   if (!key) { await logEvent("warn", "email", "Email non envoyé : clé Resend absente dans Supabase (secret RESEND_API_KEY)", { destinataire: to }); return { ok: false, reason: "resend_non_configure" }; }
   const r = await fetch("https://api.resend.com/emails", {
@@ -210,7 +300,7 @@ async function resendSend(to: string, mail: { subject: string; html: string; tex
       from: (from ?? (Deno.env.get("RESEND_FROM") ?? "licenceoff.com <commandes@licenceoff.com>")).trim().replace(/^"?licenceoff"?\s*</i, "licenceoff.com <"),
       // les réponses des clients arrivent dans l'admin (onglet Messages) via contact@licenceoff.com
       to: [to], reply_to: replyTo ?? ((Deno.env.get("RESEND_REPLY_TO") ?? "").trim() || "contact@licenceoff.com"),
-      subject: mail.subject, html: mail.html, text: mail.text, headers: mail.headers,
+      subject: mail.subject, html: mail.html, text: mail.text, headers: mail.headers, attachments: mail.attachments,
     }),
   }).catch(() => null);
   if (!r || !r.ok) {
@@ -229,7 +319,7 @@ async function resendSend(to: string, mail: { subject: string; html: string; tex
 async function sendDeliveryEmail(orderId: string, force = false, templateId?: string): Promise<{ sent: boolean; count?: number; reason?: string }> {
   if (!(Deno.env.get("RESEND_API_KEY") ?? "").trim()) return { sent: false, reason: "resend_non_configure" };
   const { data: o } = await db.from("orders")
-    .select("id, ref, public_token, invoice_no, customer_name, email, amount_fcfa, status, emailed_at, order_items(id, product_name, delivery_type, quantity, status, created_at, license_keys(key_value), products(email_template_id))")
+    .select("id, ref, public_token, invoice_no, customer_name, email, amount_fcfa, status, emailed_at, order_items(id, product_name, delivery_type, quantity, status, created_at, license_keys(key_value, products(name)), products(email_template_id))")
     .eq("id", orderId).maybeSingle();
   if (!o || !o.email) return { sent: false, reason: "commande_introuvable" };
   if (!force && o.status !== "delivered") return { sent: false, reason: "pas_encore_livree" };
@@ -453,6 +543,44 @@ ${waButtonHtml(wa)}`;
   return r.ok ? { sent: true, kind: "locked" } : { sent: false, kind: "locked", reason: r.reason };
 }
 
+// ================= Demande d'avis (commandes livrées) =================
+// Un email par commande : bouton vers la page de commande où le formulaire d'avis s'ouvre (?avis=1).
+// orders.review_asked_at retient la date d'envoi (l'envoi groupé ne relance jamais deux fois).
+const REVIEW_BATCH = 40;
+// deno-lint-ignore no-explicit-any
+async function reviewables(orders: any[]) {
+  const items = orders.flatMap((o) => (o.order_items ?? []).filter((i: Item) => i.status === "delivered" && i.product_id));
+  const ids = items.map((i: Item) => i.id);
+  const done = new Set<string>();
+  for (let k = 0; k < ids.length; k += 200) {
+    const { data } = await db.from("product_reviews").select("order_item_id").in("order_item_id", ids.slice(k, k + 200));
+    for (const r of data ?? []) done.add(r.order_item_id);
+  }
+  return orders.map((o) => ({ o, items: (o.order_items ?? []).filter((i: Item) => i.status === "delivered" && i.product_id && !done.has(i.id)) }))
+    .filter((x) => x.items.length && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(x.o.email ?? "")) && !/@licenceoff\.com$/i.test(String(x.o.email)));
+}
+// deno-lint-ignore no-explicit-any
+async function sendReviewRequest(o: any, items: Item[]) {
+  const { site, wa } = siteCtx();
+  const link = site + "/commande.html?o=" + encodeURIComponent(o.public_token) + "&avis=1";
+  const nm = String(o.customer_name || "").trim();
+  const first = /^client (whatsapp|facebook)$/i.test(nm) ? "" : nm.split(/\s+/)[0] || "";
+  const names = [...new Set(items.map((i) => String(i.product_name)))];
+  const html = `<p style="margin:0 0 12px">Bonjour${first ? " " + esc(first) : ""},</p>
+<p style="margin:0 0 12px;line-height:1.6">Merci encore pour votre achat : <b>${names.map(esc).join(", ")}</b>. Nous espérons que tout fonctionne bien.</p>
+<p style="margin:0 0 12px;line-height:1.6">Votre avis aide d'autres clients à acheter en confiance. Cela prend 30 secondes : une note de 1 à 5 étoiles et, si vous le souhaitez, quelques mots.</p>
+<p style="text-align:center;margin:22px 0"><a href="${esc(link)}" style="display:inline-block;background:${EM.O};color:#fff;font-weight:800;text-decoration:none;padding:14px 22px;border-radius:10px">⭐ Donner mon avis</a></p>
+<p style="margin:0 0 12px;line-height:1.6">Un souci avec votre clé ou votre installation ? Répondez à cet email ou écrivez-nous sur WhatsApp, on s'en occupe.</p>
+${waButtonHtml(wa)}`;
+  const text = "Bonjour" + (first ? " " + first : "") + ",\n\nMerci encore pour votre achat : " + names.join(", ") + ". Nous espérons que tout fonctionne bien.\n\n" +
+    "Votre avis aide d'autres clients à acheter en confiance. Cela prend 30 secondes : une note de 1 à 5 étoiles et, si vous le souhaitez, quelques mots.\n\nDonner mon avis : " + link +
+    "\n\nUn souci avec votre clé ou votre installation ? Répondez à cet email ou écrivez-nous sur WhatsApp : https://wa.me/" + wa +
+    "\n\nCet email concerne votre commande " + o.ref + " sur licenceoff.com.\nlicenceoff.com — Dakar, Sénégal";
+  const r = await resendSend(o.email, { subject: "Votre avis sur " + (names.length === 1 ? names[0] : "votre commande") + " ? — licenceoff.com", html: wrapHtml(html, o.ref), text, headers: { "X-Entity-Ref-ID": o.ref + "-avis" } });
+  if (r.ok) await db.from("orders").update({ review_asked_at: new Date().toISOString() }).eq("id", o.id);
+  return r;
+}
+
 // Livre une commande : clés / identifiants du stock + liens à usage unique + services à traiter
 async function deliver(orderId: string, force = false, emails = true) {
   const tokens = Array.from({ length: 30 }, () => newToken());
@@ -466,7 +594,7 @@ async function deliver(orderId: string, force = false, emails = true) {
 // Livre les commandes payées qui attendaient du stock pour ce produit (les plus anciennes d'abord)
 // Unités de stock par produit : clés à usage unique + activations restantes des clés multi-postes.
 // Une clé réutilisable sans limite rend le produit « illimité » (unlimited).
-async function keyUnits(ids: string[]) {
+async function keyUnitsRaw(ids: string[]) {
   const out: Record<string, { units: number; unlimited: boolean }> = {};
   if (!ids.length) return out;
   const { data } = await db.from("license_keys").select("id, product_id, reusable, max_uses")
@@ -485,9 +613,33 @@ async function keyUnits(ids: string[]) {
   }
   return out;
 }
+
+// Packs : un produit « pack » regroupe plusieurs produits (table product_bundle_items).
+// Unités d'un pack = le plus petit stock de ses produits (divisé par la quantité de chacun).
+async function keyUnits(ids: string[]) {
+  const out: Record<string, { units: number; unlimited: boolean; pack?: boolean }> = {};
+  if (!ids.length) return out;
+  const { data: b } = await db.from("product_bundle_items").select("bundle_id, component_id, qty").in("bundle_id", ids);
+  const packs: Record<string, { component_id: string; qty: number }[]> = {};
+  for (const r of b ?? []) (packs[r.bundle_id] ??= []).push(r);
+  const raw = await keyUnitsRaw([...new Set([...ids.filter((id) => !packs[id]), ...(b ?? []).map((r) => r.component_id)])]);
+  for (const id of ids) {
+    if (packs[id]) {
+      let units = Infinity, unlimited = true;
+      for (const r of packs[id]) {
+        const u = raw[r.component_id] ?? { units: 0, unlimited: false };
+        if (!u.unlimited) { unlimited = false; units = Math.min(units, Math.floor(u.units / Math.max(1, r.qty))); }
+      }
+      out[id] = { units: unlimited ? 0 : units, unlimited, pack: true };
+    } else if (raw[id]) out[id] = raw[id];
+  }
+  return out;
+}
 async function deliverWaiting(productId: string) {
+  // les packs qui contiennent ce produit attendent peut-être aussi ces clés
+  const { data: pk } = await db.from("product_bundle_items").select("bundle_id").eq("component_id", productId);
   const { data } = await db.from("order_items").select("order_id, orders!inner(paid_at, status)")
-    .eq("product_id", productId).eq("status", "waiting_stock").limit(200);
+    .in("product_id", [productId, ...(pk ?? []).map((r) => r.bundle_id)]).eq("status", "waiting_stock").limit(200);
   // deno-lint-ignore no-explicit-any
   const ids = [...new Set((data ?? []).sort((a: any, b: any) => String(a.orders.paid_at).localeCompare(String(b.orders.paid_at))).map((r) => r.order_id))];
   let n = 0;
@@ -533,7 +685,7 @@ async function buildNotifications(): Promise<Notif[]> {
   const low: string[] = [];
   for (const p of stockProds) {
     const u = units[p.id] ?? { units: 0, unlimited: false };
-    if (u.unlimited) continue;
+    if (u.unlimited || u.pack) continue; // pack : l'alerte vient de ses produits
     if (u.units <= (p.low_stock_threshold ?? 0)) low.push(p.name + " (" + u.units + ")");
   }
   for (const p of (prods ?? []).filter((p) => p.active && p.delivery_type === "physical" && p.stock_qty != null)) {
@@ -782,7 +934,7 @@ Deno.serve(async (req) => {
       // ================= Commandes =================
       case "orders_list": {
         let q = db.from("orders")
-          .select("*, order_items(id, product_id, product_name, delivery_type, unit_price, quantity, status, created_at, claim_requested_at, license_keys(key_value), downloads(token, status, download_count, max_downloads, expires_at, created_at))")
+          .select("*, order_items(id, product_id, product_name, delivery_type, unit_price, quantity, status, created_at, claim_requested_at, license_keys(key_value, note, added_at, products(name)), downloads(token, status, download_count, max_downloads, expires_at, created_at))")
           .order("created_at", { ascending: false }).limit(300);
         if (body.status) q = q.eq("status", str(body.status, 20));
         const s = str(body.q, 80).replace(/[,()*]/g, " ").trim();
@@ -816,7 +968,7 @@ Deno.serve(async (req) => {
         // « clé directement » : on saute l'étape du lien de téléchargement (produit en 2 temps)
         if (body.mode === "key") await db.from("order_items").update({ claim_requested_at: new Date().toISOString() }).eq("order_id", c.o.id);
         const result = await deliver(c.o.id, true, body.send_email !== false); // emails automatiques (installation ou clé)
-        const { data: o2 } = await db.from("orders").select("emailed_at, order_items(id, status, install_emailed_at, license_keys(key_value))").eq("id", c.o.id).maybeSingle();
+        const { data: o2 } = await db.from("orders").select("emailed_at, order_items(id, status, install_emailed_at, license_keys(key_value, products(name)))").eq("id", c.o.id).maybeSingle();
         // deno-lint-ignore no-explicit-any
         const its = (o2?.order_items ?? []) as any[];
         // deno-lint-ignore no-explicit-any
@@ -851,7 +1003,8 @@ Deno.serve(async (req) => {
         if (body.payment_ref) {
           await db.from("orders").update({ payment_ref: str(body.payment_ref, 100) }).eq("id", body.id).eq("status", "pending");
         }
-        return json({ result: await deliver(body.id) });
+        // silent : livraison sans email au client (ex. vente à un revendeur, PDF d'instructions envoyé à la main)
+        return json({ result: body.silent === true ? await deliver(body.id, true, false) : await deliver(body.id) });
       }
 
       case "order_deliver_now": { // livraison automatique désactivée : l'admin livre lui-même (clés du stock + liens)
@@ -936,6 +1089,70 @@ Deno.serve(async (req) => {
         return json({ ok: true });
       }
 
+      // ===== PDF d'instructions « neutre » pour un revendeur (sans prix, sans n° de commande, sans adresse du site) =====
+      case "order_instructions": {
+        const { data: o } = await db.from("orders")
+          .select("id, email, customer_name, order_items(id, product_name, delivery_type, status, created_at, license_keys(key_value, products(name)), products(email_template_id, slug))")
+          .eq("id", body.id).maybeSingle();
+        if (!o) return json({ error: "commande_introuvable" }, 404);
+        const { data: tpls } = await db.from("email_templates").select("id, body, is_default, kind");
+        const byId = Object.fromEntries((tpls ?? []).map((t) => [t.id, t]));
+        const def = (tpls ?? []).find((t) => t.is_default && t.kind !== "install");
+        const items = ((o.order_items ?? []) as Item[]).filter((i) => i.status !== "cancelled" && (i.license_keys ?? []).length)
+          .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))
+          .map((i) => ({
+            product_name: i.product_name,
+            url: i.products?.slug ? siteCtx().site + "/produit/" + encodeURIComponent(i.products.slug) : siteCtx().site,
+            keys: (i.license_keys ?? []).map((k: { key_value: string }) => { const a = acctParts(k.key_value), label = keyLabel(i, k) || undefined; return a ? { login: a[0], password: a[1], label } : { key: k.key_value, label }; }),
+            text: neutralInstructions(String((byId[i.products?.email_template_id] ?? def)?.body ?? ""), i.product_name),
+          }));
+        if (!items.length) return json({ error: "rien_a_livrer" }, 400);
+        return json({ email: o.email, items });
+      }
+
+      case "order_instructions_send": { // envoie le PDF au revendeur (email de la commande) en pièce jointe
+        const { data: o } = await db.from("orders").select("email").eq("id", body.id).maybeSingle();
+        if (!o?.email) return json({ error: "commande_introuvable" }, 404);
+        const pdf = String(body.pdf ?? "");
+        if (!/^[A-Za-z0-9+/=]+$/.test(pdf) || pdf.length > 4_000_000) return json({ error: "pdf_invalide" }, 400);
+        const fname = (str(body.filename, 80) || "instructions.pdf").replace(/[^\w.\- ]+/g, "").replace(/\s+/g, "-") || "instructions.pdf";
+        const prod = str(body.product, 120);
+        const text = "Bonjour,\n\nVoici en pièce jointe le document d'instructions" + (prod ? " pour " + prod : "") + ", à transmettre tel quel à votre client.\nIl contient les identifiants et la procédure d'installation, sans prix ni numéro de commande.\n\nBonne vente !";
+        const r = await resendSend(o.email, {
+          subject: "Instructions à transmettre à votre client" + (prod ? " — " + prod : ""),
+          html: wrapHtml(text.split("\n\n").map((p) => `<p style="margin:0 0 12px;line-height:1.6">${esc(p).replace(/\n/g, "<br>")}</p>`).join("")),
+          text, attachments: [{ filename: fname.endsWith(".pdf") ? fname : fname + ".pdf", content: pdf }],
+        });
+        if (!r.ok) return json({ error: r.reason }, 400);
+        return json({ ok: true, to: o.email });
+      }
+
+      case "review_request": { // ⭐ demande d'avis pour une commande livrée (manuel, renvoi possible)
+        const { data: o } = await db.from("orders").select("id, ref, email, customer_name, public_token, status, order_items(id, product_id, product_name, status)").eq("id", body.id).maybeSingle();
+        if (!o) return json({ error: "commande_introuvable" }, 404);
+        const [x] = await reviewables([o]);
+        if (!x) return json({ error: "rien_a_noter" }, 400);
+        const r = await sendReviewRequest(x.o, x.items);
+        if (!r.ok) return json({ error: r.reason }, 400);
+        return json({ ok: true, to: o.email });
+      }
+
+      case "review_request_bulk": { // ⭐ envoi groupé : commandes livrées depuis 24 h, jamais relancées, sans avis
+        const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+        const { data, error } = await db.from("orders").select("id, ref, email, customer_name, public_token, status, order_items(id, product_id, product_name, status)")
+          .eq("status", "delivered").is("review_asked_at", null).lte("delivered_at", since).order("delivered_at", { ascending: true }).limit(1000);
+        if (error) return json({ error: error.message }, 500);
+        const list = await reviewables(data ?? []);
+        if (body.dry === true) return json({ count: list.length, batch: Math.min(list.length, REVIEW_BATCH) });
+        let sent = 0, failed = 0;
+        for (const x of list.slice(0, REVIEW_BATCH)) {
+          const r = await sendReviewRequest(x.o, x.items);
+          if (r.ok) sent++; else { failed++; if (r.reason === "resend_non_configure") break; }
+          await new Promise((res) => setTimeout(res, 600)); // limite Resend : 2 emails / seconde
+        }
+        return json({ ok: true, sent, failed, remaining: Math.max(0, list.length - sent - failed) });
+      }
+
       case "order_note": {
         const { error } = await db.from("orders").update({ note: str(body.note, 300) || null }).eq("id", body.id);
         if (error) return json({ error: error.message }, 500);
@@ -964,9 +1181,14 @@ Deno.serve(async (req) => {
         const { data: p } = await db.from("products").select("id, delivery_type").eq("id", body.product_id).maybeSingle();
         if (!p) return json({ error: "produit_introuvable" }, 400);
         if (!STOCK_TYPES.includes(p.delivery_type)) return json({ error: "produit_sans_stock" }, 400);
+        const { count: isPack } = await db.from("product_bundle_items").select("bundle_id", { count: "exact", head: true }).eq("bundle_id", p.id);
+        if (isPack) return json({ error: "pack_sans_stock" }, 400); // un pack prend les clés de ses produits
+        const note = str(body.note, 200) || null; // origine de la clé (fournisseur, lot…) ; la date et l'heure de saisie sont automatiques
         // clé multi-postes : nombre d'activations (ex. 5 ou 10 appareils) ; vide = usage unique ou illimitée
         const maxUses = Number(body.max_uses) >= 1 ? clamp(Math.floor(Number(body.max_uses)), 1, 100000) : null;
-        const lines = String(body.text ?? "").split(/[\r\n]+/).map((l) => l.trim()).filter((l) => l.length >= 3 && l.length <= 500);
+        // produit « Identifiants » : « adresse ; mot de passe » (ou séparés par une tabulation) devient « Identifiant : … | Mot de passe : … »
+        const acct = (l: string) => { const m = l.match(/^([^\s;|]+@[^\s;|]+)\s*[;\t]\s*(.+)$/); return m ? "Identifiant : " + m[1] + " | Mot de passe : " + m[2] : l; };
+        const lines = String(body.text ?? "").split(/[\r\n]+/).map((l) => l.trim()).map((l) => p.delivery_type === "stock" ? acct(l) : l).filter((l) => l.length >= 3 && l.length <= 500);
         const unique = [...new Set(lines)];
         if (!unique.length) return json({ error: "aucune_cle" }, 400);
         if (unique.length > 2000) return json({ error: "max_2000_par_import" }, 400);
@@ -975,7 +1197,7 @@ Deno.serve(async (req) => {
         const known = new Set((have ?? []).map((k) => k.key_value));
         const fresh = unique.filter((k) => !known.has(k));
         const { data, error } = fresh.length
-          ? await db.from("license_keys").insert(fresh.map((k) => ({ product_id: p.id, key_value: k, reusable: body.reusable === true || maxUses != null, max_uses: maxUses }))).select("id")
+          ? await db.from("license_keys").insert(fresh.map((k) => ({ product_id: p.id, key_value: k, reusable: body.reusable === true || maxUses != null, max_uses: maxUses, note }))).select("id")
           : { data: [], error: null };
         if (error) return json({ error: error.message }, 500);
         const added = data?.length ?? 0;
@@ -1042,9 +1264,14 @@ Deno.serve(async (req) => {
 
       // ================= Produits =================
       case "products_list": {
-        const { data, error } = await db.from("products").select("*").order("sort").order("name");
+        const [{ data, error }, { data: b }] = await Promise.all([
+          db.from("products").select("*").order("sort").order("name"),
+          db.from("product_bundle_items").select("bundle_id, component_id, qty"),
+        ]);
         if (error) return json({ error: error.message }, 500);
-        return json({ rows: data });
+        const bundles: Record<string, { component_id: string; qty: number }[]> = {};
+        for (const r of b ?? []) (bundles[r.bundle_id] ??= []).push({ component_id: r.component_id, qty: r.qty });
+        return json({ rows: (data ?? []).map((p) => ({ ...p, bundle: bundles[p.id] ?? [] })) });
       }
       case "product_status": { // publier / remettre en brouillon depuis la liste
         const id = str(body.id, 40);
@@ -1058,6 +1285,16 @@ Deno.serve(async (req) => {
         return json({ ok: true, active });
       }
       case "product_save": {
+        // pack : liste des produits inclus (chacun avec sa quantité) ; le pack se livre en clés prises dans leurs stocks
+        const bundle = Array.isArray(body.bundle) ? (body.bundle as { component_id?: string; qty?: number }[]).slice(0, 10)
+          .map((r) => ({ component_id: str(r?.component_id, 40), qty: clamp(Math.floor(Number(r?.qty) || 1), 1, 10) }))
+          .filter((r, k, a) => r.component_id && r.component_id !== body.id && a.findIndex((x) => x.component_id === r.component_id) === k) : null;
+        if (bundle?.length) {
+          const { data: comps } = await db.from("products").select("id, delivery_type").in("id", bundle.map((r) => r.component_id));
+          const { data: nested } = await db.from("product_bundle_items").select("bundle_id").in("bundle_id", bundle.map((r) => r.component_id));
+          if ((comps ?? []).length !== bundle.length || (comps ?? []).some((c) => !STOCK_TYPES.includes(c.delivery_type)) || (nested ?? []).length) return json({ error: "pack_invalide" }, 400);
+          body.delivery_type = "key"; body.installer_path = null;
+        }
         const dtype = DELIVERY_TYPES.includes(body.delivery_type) ? body.delivery_type : "key";
         const row = {
           slug: slugify(str(body.slug, 80) || str(body.name, 120)),
@@ -1091,7 +1328,14 @@ Deno.serve(async (req) => {
         const r = body.id ? await db.from("products").update(row).eq("id", body.id).select().single()
           : await db.from("products").insert(row).select().single();
         if (r.error) return json({ error: r.error.message.includes("sku") ? "sku_deja_utilise" : r.error.message.includes("duplicate") ? "code_deja_utilise" : r.error.message }, 400);
-        return json({ row: r.data });
+        if (bundle) {
+          await db.from("product_bundle_items").delete().eq("bundle_id", r.data.id);
+          if (bundle.length) {
+            const { error: eb } = await db.from("product_bundle_items").insert(bundle.map((x) => ({ bundle_id: r.data.id, ...x })));
+            if (eb) return json({ error: eb.message }, 500);
+          }
+        }
+        return json({ row: { ...r.data, bundle: bundle ?? [] } });
       }
 
       // ================= Avis clients =================
@@ -1114,6 +1358,50 @@ Deno.serve(async (req) => {
         const { error } = await db.from("product_reviews").delete().eq("id", body.id);
         if (error) return json({ error: error.message }, 500);
         return json({ ok: true });
+      }
+
+      // ================= Paiements =================
+      case "pay_get": return json(await payPublicState());
+      case "pay_save": { // enregistre (chiffrées) les clés saisies ; un champ laissé vide garde l'ancienne valeur
+        const id = str(body.provider, 20), def = PAY_PROVIDERS[id];
+        if (!def) return json({ error: "integrateur_inconnu" }, 400);
+        const { data: cur } = await db.from("payment_providers").select("secrets").eq("provider", id).maybeSingle();
+        const secrets: Record<string, string> = { ...(cur?.secrets ?? {}) };
+        const vals = (body.values && typeof body.values === "object") ? body.values : {};
+        const changed: string[] = [];
+        for (const [key] of def.fields) {
+          const v = typeof vals[key] === "string" ? vals[key].trim() : "";
+          if (!v) continue;
+          if (v.length > 2000 || /\s/.test(v)) return json({ error: "cle_invalide", field: key }, 400);
+          secrets[key] = await sealSecret(v); changed.push(key);
+        }
+        const { error } = await db.from("payment_providers").upsert({ provider: id, live: body.live === true, secrets, updated_at: new Date().toISOString() });
+        if (error) return json({ error: error.message }, 500);
+        await logEvent("info", "paiements", "Réglages " + def.name + " enregistrés" + (changed.length ? " (clés remplacées : " + changed.join(", ") + ")" : ""), { mode: body.live === true ? "réel" : "test" });
+        return json(await payPublicState());
+      }
+      case "pay_clear": { // efface une clé (pour la ressaisir ou désactiver l'intégrateur)
+        const id = str(body.provider, 20), def = PAY_PROVIDERS[id], key = str(body.field, 40);
+        if (!def || !def.fields.some(([k]) => k === key)) return json({ error: "champ_inconnu" }, 400);
+        const { data: cur } = await db.from("payment_providers").select("secrets").eq("provider", id).maybeSingle();
+        const secrets = { ...(cur?.secrets ?? {}) }; delete secrets[key];
+        await db.from("payment_providers").upsert({ provider: id, secrets, updated_at: new Date().toISOString() });
+        const { data: m } = await db.from("settings").select("value").eq("key", "payment_mode").maybeSingle();
+        if (m?.value === id) await db.from("settings").upsert({ key: "payment_mode", value: "whatsapp", updated_at: new Date().toISOString() });
+        await logEvent("warn", "paiements", "Clé " + key + " de " + def.name + " effacée");
+        return json(await payPublicState());
+      }
+      case "pay_mode": { // choisit le mode de paiement actif du site
+        const mode = str(body.mode, 20);
+        if (mode !== "whatsapp") {
+          const st = await payPublicState(); const p = st.providers.find((x) => x.id === mode);
+          if (!p) return json({ error: "integrateur_inconnu" }, 400);
+          if (!p.ready) return json({ error: "integrateur_pas_branche" }, 400);
+          if (!p.complete) return json({ error: "cles_manquantes" }, 400);
+        }
+        await db.from("settings").upsert({ key: "payment_mode", value: mode, updated_at: new Date().toISOString() });
+        await logEvent("info", "paiements", "Mode de paiement du site : " + (mode === "whatsapp" ? "WhatsApp (paiement finalisé avec vous)" : PAY_PROVIDERS[mode].name));
+        return json(await payPublicState());
       }
 
       // ================= Réglages =================

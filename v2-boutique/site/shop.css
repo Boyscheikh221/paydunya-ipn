@@ -91,8 +91,10 @@ section.block { padding: 32px 0; }
 @media (max-width: 520px) { .grid { grid-template-columns: repeat(2, 1fr); gap: 10px; } }
 .card { background: #fff; border: 1px solid var(--ligne); border-radius: var(--r); overflow: hidden; display: flex; flex-direction: column; transition: box-shadow .15s, transform .15s; }
 .card:hover { box-shadow: var(--ombre); transform: translateY(-2px); }
-.card .img { aspect-ratio: 4 / 3; background: linear-gradient(135deg, var(--ciel), #fdf0d8); display: flex; align-items: center; justify-content: center; position: relative; }
-.card .img img { width: 100%; height: 100%; object-fit: cover; }
+.card .img { aspect-ratio: 1; background: linear-gradient(135deg, var(--ciel), #fdf0d8); display: flex; align-items: center; justify-content: center; position: relative; }
+/* photos produits carrées (1500 × 1500) : affichées entières, sans rien couper */
+.card .img:has(img) { background: #fff; }
+.card .img img { width: 100%; height: 100%; object-fit: contain; }
 .card .img .ph { font-size: 34px; font-weight: 900; color: var(--bleu); opacity: .55; }
 .badge { position: absolute; top: 10px; left: 10px; background: var(--orange); color: #fff; font-size: 12px; font-weight: 800; padding: 3px 8px; border-radius: 6px; }
 .badge.out { background: var(--gris); }
@@ -216,3 +218,11 @@ footer.site .copy { border-top: 1px solid rgba(255,255,255,.12); margin-top: 22p
 .ship-opt input { margin-top: 4px; }
 .ship-opt span { display: flex; flex-direction: column; }
 .hidden { display: none !important; }
+
+/* réseaux sociaux + partage */
+footer.site .socials { display: flex; gap: 10px; margin-top: 12px; }
+footer.site .socials a.so { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; padding: 0; }
+.so.fb, .sh.fb { background: #1877f2; } .so.wa, .sh.wa { background: #25d366; }
+.share { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 18px 0; font-weight: 700; color: var(--gris, #475569); }
+.share .sh { display: inline-flex; align-items: center; gap: 6px; color: #fff; padding: 7px 12px; border-radius: 999px; font-size: 14px; text-decoration: none; }
+.share .sh:hover { filter: brightness(.92); }
