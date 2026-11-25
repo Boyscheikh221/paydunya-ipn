@@ -238,3 +238,11 @@ footer.site .socials a.so { display: grid; place-items: center; width: 38px; hei
 .related .post-card h3 { font-size: 16px; }
 @media (max-width: 520px) { .blog-sort { justify-content: flex-start; } }
 .related .post-card .cv { margin: 0; border-radius: 0; }
+
+/* bouton « remonter en haut » (au-dessus du bouton WhatsApp) */
+.to-top { position: fixed; right: 20px; bottom: 82px; width: 46px; height: 46px; border-radius: 50%; border: 0; background: var(--bleu); color: #fff; font-size: 22px; font-weight: 800; line-height: 1; cursor: pointer;
+  box-shadow: 0 6px 18px rgba(0,0,0,.2); z-index: 30; opacity: 0; visibility: hidden; transform: translateY(10px); transition: opacity .2s, transform .2s, visibility .2s; }
+.to-top.show { opacity: 1; visibility: visible; transform: none; }
+.to-top:hover { background: var(--nuit); }
+.to-top:focus-visible { outline: 3px solid var(--orange); outline-offset: 2px; }
+@media print { .to-top { display: none; } }

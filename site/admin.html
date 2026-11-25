@@ -119,6 +119,8 @@
   .chart .b { flex:1; background:var(--bleu); border-radius:3px 3px 0 0; min-height:2px; position:relative; }
   .chart .b:hover::after { content:attr(data-t); position:absolute; bottom:100%; left:50%; transform:translateX(-50%); background:var(--nuit); color:#fff; font-size:11px; padding:3px 6px; border-radius:6px; white-space:nowrap; }
   .switch { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+  .to-top { position:fixed; right:20px; bottom:20px; width:46px; height:46px; border-radius:50%; background:var(--bleu); color:#fff; font-size:22px; padding:0; box-shadow:0 6px 18px rgba(0,0,0,.2); z-index:8; opacity:0; visibility:hidden; transition:opacity .2s, visibility .2s; }
+  .to-top.show { opacity:1; visibility:visible; } .to-top:hover { background:var(--nuit); }
   #toast { position:fixed; bottom:18px; left:50%; transform:translateX(-50%); background:var(--nuit); color:#fff; padding:10px 16px; border-radius:10px; font-weight:600; max-width:90vw; z-index:9; }
   @media (max-width:820px) {
     .layout { flex-direction:column; }
@@ -2463,6 +2465,10 @@ async function restorePlace() {
   } catch (_) {}
   if (y) setTimeout(() => scrollTo(0, y), 300);
 }
+// bouton « remonter en haut » (pages longues de l'admin)
+(() => { const b = el("button", "↑", "to-top"); b.title = "Remonter en haut"; b.setAttribute("aria-label", "Remonter en haut de la page");
+  b.addEventListener("click", () => scrollTo({ top: 0, behavior: "smooth" })); document.body.append(b);
+  const upd = () => b.classList.toggle("show", scrollY > innerHeight * 1.5); addEventListener("scroll", upd, { passive: true }); upd(); })();
 $("btnLogin").addEventListener("click", login);
 $("pw").addEventListener("keydown", (e) => { if (e.key === "Enter") login(); });
 $("btnLogout").addEventListener("click", () => { try { sessionStorage.removeItem("lo_pw"); } catch (_) {} location.reload(); });

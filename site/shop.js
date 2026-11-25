@@ -406,7 +406,20 @@ const LO = (() => {
     return { ch: "direct" };
   }
 
-  function page(active) { captureSource(); header(active); footer(); navPages(active); hit(); cookieBar(); captureRef(); }
+  // fil d'Ariane écrit directement dans la page : <div data-crumbs='[["Accueil","/"],["Mon panier"]]'></div>
+  function autoCrumbs() {
+    document.querySelectorAll("[data-crumbs]").forEach((d) => { try { d.replaceChildren(crumbs(JSON.parse(d.dataset.crumbs))); } catch (_) {} });
+  }
+  // bouton « remonter en haut » : apparaît quand on est descendu d'un écran et demi
+  function toTop() {
+    const b = el("button", { class: "to-top", type: "button", "aria-label": "Remonter en haut de la page", title: "Remonter en haut", text: "↑",
+      onclick: () => window.scrollTo({ top: 0, behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }) });
+    document.body.append(b);
+    let on = false;
+    const upd = () => { const v = scrollY > innerHeight * 1.5; if (v !== on) { on = v; b.classList.toggle("show", v); } };
+    addEventListener("scroll", upd, { passive: true }); upd();
+  }
+  function page(active) { captureSource(); header(active); footer(); navPages(active); autoCrumbs(); toTop(); hit(); cookieBar(); captureRef(); }
   const DELIVERY_TEXT = {
     key: "Clé de licence livrée immédiatement après paiement",
     key_file: "Clé de licence + lien de téléchargement livrés immédiatement",
