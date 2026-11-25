@@ -142,7 +142,7 @@ function itemBlock(i) {
   } else if (i.claimed && i.status !== "delivered") {
     body.append(el("p", { class: "note", text: i.status === "awaiting_install" || i.status === "to_process" || i.status === "waiting_stock"
       ? "Demande de clé reçue ✔ Elle arrive très vite par email et sur cette page." : "" }));
-  } else if (i.status === "to_process") body.append(el("p", { class: "note", text: "Notre équipe traite cet article et vous contacte rapidement sur WhatsApp." }));
+  } else if (i.status === "to_process" && i.delivery_type !== "physical") body.append(el("p", { class: "note", text: "Notre équipe traite cet article et vous contacte rapidement sur WhatsApp." }));
   if (i.reviewed) body.append(el("p", { class: "note", text: "⭐ Merci pour votre avis !" }));
   else if (i.can_review) body.append(reviewForm(i));
   return box;
@@ -196,6 +196,28 @@ function reviewForm(i) {
   return det;
 }
 
+function shipTracker(o) {
+  const sh = o.ship, steps = [["ordered", "Commandée"], ["paid", "Payée"], ["shipping", "En route"], ["done", "Livrée"]];
+  const cur = steps.findIndex((x) => x[0] === sh.stage);
+  const bar = el("ol", { style: "list-style:none;display:grid;grid-template-columns:repeat(4,1fr);gap:4px;padding:0;margin:10px 0 0" },
+    ...steps.map(([, lab], k) => el("li", { style: "text-align:center;font-size:13px;font-weight:" + (k === cur ? "800" : "600") + ";color:" + (k <= cur ? "var(--navy,#0F2A6B)" : "#94a3b8") },
+      el("div", { style: "height:6px;border-radius:3px;margin-bottom:6px;background:" + (k <= cur ? (k === cur && sh.stage !== "done" ? "#F5A21B" : "#16a34a") : "#e2e8f0") }),
+      (k < cur || sh.stage === "done" ? "✔ " : "") + lab)));
+  const d = (x) => x ? new Date(x).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }) : "";
+  const txt = {
+    ordered: "Votre commande est enregistrée. Elle sera préparée dès que votre paiement est confirmé.",
+    paid: "Paiement reçu ✔ Votre colis est en préparation : livraison sous 48 h (jours ouvrés). Nous vous appelons avant de passer.",
+    shipping: "Votre colis est en route 🚚" + (sh.started_at ? " depuis le " + d(sh.started_at) : "") + ". Gardez votre téléphone à portée de main : le livreur vous appelle avant de passer.",
+    done: "Colis livré" + (sh.done_at ? " le " + d(sh.done_at) : "") + ". Merci pour votre confiance ! Donnez votre avis plus bas, cela aide les autres clients.",
+  }[sh.stage];
+  const addr = o.shipping && o.shipping.address ? (o.shipping.method === "bus" ? "🚌 Envoi par bus · " : "🏠 Livraison à domicile · ") + o.shipping.address + (o.shipping.zone ? ", " + o.shipping.zone : "") : "";
+  return el("div", { class: "panel", style: "margin-bottom:14px" },
+    el("h2", { style: "margin:0;font-size:18px", text: "📦 Suivi de livraison" }), bar,
+    el("p", { style: "margin:12px 0 0", text: txt }),
+    sh.note ? el("p", { class: "note", style: "margin:6px 0 0", text: "ℹ️ " + sh.note }) : null,
+    addr ? el("p", { class: "note", style: "margin:6px 0 0", text: addr }) : null);
+}
+
 let reviewShown = false;
 async function load() {
   clearTimeout(timer);
@@ -236,6 +258,8 @@ async function load() {
   // nom demandé une seule fois, au moment où la clé est prête (pas avant le paiement, pas pendant l'attente du stock)
   const paidNow = ["paid", "processing", "installing", "delivered"].includes(o.status);
   if (o.need_name && paidNow && !o.items.some((i) => i.status === "waiting_stock" || (i.claimed && i.status !== "delivered"))) parts.push(nameForm());
+  // suivi de livraison des produits physiques (comme Jumia / Amazon)
+  if (o.ship && o.ship.stage !== "cancelled") parts.push(shipTracker(o));
   // petit mot d'accueil quand le nom est connu
   if (o.hello && o.hello.first) {
     const ready = o.items.some((i) => (i.keys || []).length);

@@ -284,6 +284,7 @@
             <div id="pGal" class="gal-slots"></div>
           </div>
           <div>
+            <div id="pPhysInfo" class="hidden small" style="margin-bottom:8px;padding:8px 10px;background:#f0fdf4;border-radius:8px">📦 Suivi de livraison : après le paiement, le client reçoit « Commande payée, livraison sous 48 h ouvrées ». Dans Commandes, vous cliquez ensuite « 🚚 Expédition en cours » puis « ✅ Livrée » : un email part à chaque étape (le dernier demande un avis).</div>
             <div id="pQtyBox" class="hidden grid"><div><label>Quantité disponible (vide = illimitée)</label><input id="pQty" type="number" min="0" placeholder="ex : 10"></div><div><label>Poids (grammes)</label><input id="pWeight" type="number" min="0" placeholder="ex : 250"></div></div>
             <div id="pTypeBox">
             <label>Ce que reçoit le client</label>
@@ -331,7 +332,7 @@
           <div><label>Alerte stock bas sous</label><input id="pLow" type="number" min="0" value="5"></div>
           <div id="pSrcBox"><label>🔁 Clés prises dans le stock de</label><select id="pSrc"></select><div class="small">Stock commun : ce produit utilise les clés d'un autre produit (ex. Windows 10 Pro ← Windows 11 Pro). Son lien, son prix et ses emails ne changent pas.</div></div>
           <div><label>Ordre d'affichage</label><input id="pSort" type="number" min="0" value="0"></div>
-          <div><label>Email de la clé (ou de livraison)</label><select id="pTpl"></select></div>
+          <div id="pTplBox"><label>Email de la clé (ou de livraison)</label><select id="pTpl"></select></div>
         </div>
         <div id="pTwoWrap" class="box" style="background:#f4f8ff;margin:10px 0 0;padding:12px">
           <label class="check" style="margin:0"><input type="checkbox" id="pTwo"> Livraison en 2 temps : le client reçoit d'abord le logiciel, puis clique « J'ai fini l'installation » pour recevoir sa clé</label>
@@ -825,7 +826,7 @@ const STOCK_TYPES = ["key", "key_file", "stock"];
 let stock = []; // stock de clés par produit (rempli par le tableau de bord)
 const METHOD = { whatsapp: "💬 WhatsApp", wave: "Wave", orange_money: "Orange Money", free_money: "Free Money", especes: "Espèces", paydunya: "PayDunya", manuel: "Transfert manuel", autre: "Autre" };
 const ERR = {
-  pack_invalide: "Pack invalide : choisissez des produits livrés avec une clé ou des identifiants (pas un autre pack).", paiement_non_valide: "Validez d'abord le paiement de la commande avant de libérer une clé.", pas_dans_le_pack: "Ce produit ne fait pas partie du pack.", deja_livre: "Cet article est déjà livré.", stock_source_invalide: "Stock commun impossible : choisissez un produit avec son propre stock de clés (pas un pack, ni un produit qui prend déjà ses clés ailleurs).", pack_sans_stock: "Un pack n'a pas de stock propre : ajoutez les clés dans le stock de chaque produit du pack.",
+  pack_invalide: "Pack invalide : choisissez des produits livrés avec une clé ou des identifiants (pas un autre pack).", paiement_non_valide: "Validez d'abord le paiement de la commande avant de libérer une clé.", rien_a_expedier: "Aucun produit physique à expédier dans cette commande.", commande_annulee: "Cette commande est annulée.", pas_de_produit_physique: "Cette commande n'a pas de produit physique.", pas_dans_le_pack: "Ce produit ne fait pas partie du pack.", deja_livre: "Cet article est déjà livré.", stock_source_invalide: "Stock commun impossible : choisissez un produit avec son propre stock de clés (pas un pack, ni un produit qui prend déjà ses clés ailleurs).", pack_sans_stock: "Un pack n'a pas de stock propre : ajoutez les clés dans le stock de chaque produit du pack.",
   rien_a_noter: "Rien à noter : le client a déjà donné son avis sur tous ses produits, ou la commande n'a pas d'adresse email valide.",
   integrateur_pas_branche: "Cet intégrateur n'est pas encore branché au site : demandez à Claude de le brancher quand votre compte est actif.",
   cles_manquantes: "Enregistrez d'abord toutes les clés de cet intégrateur.", cle_invalide: "Clé invalide (pas d'espace, vérifiez le copier-coller).",
@@ -1420,7 +1421,7 @@ async function loadOrders() {
         }));
       }
       if (i.status === "awaiting_install") acts.append(btn(packOpen ? "🔑 Libérer toutes les clés du pack" : "🔑 Envoyer la clé maintenant", packOpen ? "grey" : "green", async () => { if (confirm(packOpen ? "Libérer TOUTES les clés du pack maintenant ?" : "Envoyer la clé sans attendre que le client confirme l'installation ?")) await run({ action: "item_send_key_now", id: i.id }, "Clé envoyée ✔", reload)(); }));
-      if (i.status === "to_process" && ["manual", "physical"].includes(i.delivery_type)) acts.append(btn(i.delivery_type === "physical" ? "📦 Marquer livré" : "✔ Marquer fait", "green", run({ action: "item_complete", id: i.id }, "Article marqué livré ✔", reload)));
+      if (i.status === "to_process" && i.delivery_type === "manual") acts.append(btn("✔ Marquer fait", "green", run({ action: "item_complete", id: i.id }, "Article marqué livré ✔", reload)));
       if (o.status !== "cancelled" && ["delivered", "awaiting_install"].includes(i.status) && ["key_file", "file"].includes(i.delivery_type) && (i.downloads || []).length)
         acts.append(btn("🔄 Renouveler le lien", "org", () => renewLink(o, i, reload)));
       if (acts.childNodes.length) box.append(acts);
@@ -1433,13 +1434,31 @@ async function loadOrders() {
         await run({ action: "order_validate", id: o.id }, "Paiement validé, commande livrée ✔", reload)();
       }));
     }
-    if (items.some((i) => i.status === "to_process" && i.delivery_type !== "manual")) acts.append(btn("🚚 Livrer maintenant", "green", run({ action: "order_deliver_now", id: o.id }, "Commande livrée ✔", reload)));
+    // produit physique : suivi de livraison (un email au client à chaque étape)
+    const physItems = items.filter((i) => i.delivery_type === "physical" && i.status !== "cancelled");
+    if (physItems.length && !["pending", "cancelled"].includes(o.status)) {
+      const toShip = physItems.some((i) => i.status === "to_process");
+      const stage = !toShip ? "done" : o.ship_started_at ? "shipping" : "paid";
+      const lab = { paid: "📦 Payée · à expédier sous 48 h ouvrées", shipping: "🚚 Expédition en cours" + (o.ship_started_at ? " depuis le " + dt(o.ship_started_at) : ""), done: "✅ Livrée" + (o.ship_done_at ? " le " + dt(o.ship_done_at) : "") }[stage];
+      cItems.append(el("div", lab + (o.ship_note && stage === "shipping" ? " · ℹ️ " + o.ship_note : ""), "small"));
+      if (stage === "paid") acts.append(btn("🚚 Expédition en cours", "green", async () => {
+        const note = prompt("Expédition en cours : le client reçoit un email.\n\nInformation à lui donner (facultatif) : nom et numéro du livreur, compagnie de bus, heure prévue…", "");
+        if (note === null) return;
+        await run({ action: "ship_start", id: o.id, note }, "Expédition en cours ✔ Email envoyé au client", reload)();
+      }));
+      if (stage === "shipping") acts.append(btn("✅ Livrée", "green", async () => {
+        if (!confirm("Confirmer que " + (o.customer_name || o.email) + " a bien reçu sa commande ?\nLe client reçoit un email de confirmation avec une demande d'avis.")) return;
+        await run({ action: "ship_done", id: o.id }, "Commande livrée ✔ Email + demande d'avis envoyés", reload)();
+      }));
+      if (stage === "paid" && !o.ship_paid_mail_at) acts.append(btn("✉ Envoyer « commande payée »", "grey", run({ action: "ship_email", id: o.id, stage: "paid" }, "Email envoyé ✔", reload)));
+    }
+    if (items.some((i) => i.status === "to_process" && !["manual", "physical"].includes(i.delivery_type))) acts.append(btn("🚚 Livrer maintenant", "green", run({ action: "order_deliver_now", id: o.id }, "Commande livrée ✔", reload)));
     if (o.status === "paid") acts.append(btn("Réessayer la livraison", "grey", run({ action: "order_validate", id: o.id }, "Commande livrée ✔", reload)));
     if (["delivered", "processing", "paid"].includes(o.status)) {
       acts.append(btn("Copier le message client", "org", () => copy(clientMessage(o), "Message copié ✔")));
       if (o.phone) acts.append(btn("WhatsApp", "grey", () => window.open("https://wa.me/" + waNumber(o.phone) + "?text=" + encodeURIComponent(clientMessage(o)), "_blank", "noopener")));
     }
-    if (["delivered", "processing", "paid", "installing"].includes(o.status)) acts.append(btn(o.status === "installing" ? "✉ Renvoyer l'email d'installation" : o.emailed_at ? "✉ Renvoyer l'email" : "✉ Envoyer l'email", "grey", async () => {
+    if (["delivered", "processing", "paid", "installing"].includes(o.status) && !items.every((i) => i.delivery_type === "physical")) acts.append(btn(o.status === "installing" ? "✉ Renvoyer l'email d'installation" : o.emailed_at ? "✉ Renvoyer l'email" : "✉ Envoyer l'email", "grey", async () => {
       if (confirm((o.status === "installing" ? "Renvoyer l'email d'installation à " : "Envoyer l'email de livraison à ") + o.email + " ?")) await run({ action: "order_email", id: o.id }, "Email envoyé ✔", reload)();
     }));
     if (o.status === "delivered" && o.email) acts.append(btn(o.review_asked_at ? "⭐ Redemander un avis" : "⭐ Demander un avis", "grey", async () => {
@@ -1555,6 +1574,10 @@ function syncType() {
   if (!phys && t === "pack" && !$("pPackRows").children.length) { packRow(); packRow(); }
   $("pTwoWrap").classList.toggle("hidden", phys || !["key", "key_file", "pack"].includes(t));
   $("pAutoLbl").classList.toggle("hidden", phys);
+  // produit physique : rien de ce qui concerne les licences (stock de clés, email de clé, stock commun)
+  $("pTplBox").classList.toggle("hidden", phys);
+  if (phys) $("pSrcBox").classList.add("hidden"); else fillSrcVis();
+  $("pPhysInfo").classList.toggle("hidden", !phys);
 }
 $("pPhysical").addEventListener("change", syncType);
 // aperçu Google : titre ~60 caractères, description ~155
@@ -1573,8 +1596,10 @@ function fillSrc(p) {
   $("pSrc").replaceChildren(new Option("Son propre stock", ""), ...opts.map((x) => new Option(x.name, x.id)));
   $("pSrc").value = p && p.key_source_id ? p.key_source_id : "";
   const users = p ? products.filter((x) => x.key_source_id === p.id) : [];
-  $("pSrcBox").classList.toggle("hidden", users.length > 0); // ce produit sert déjà de stock à d'autres
+  $("pSrcBox").dataset.users = users.length;
+  fillSrcVis();
 }
+function fillSrcVis() { $("pSrcBox").classList.toggle("hidden", $("pPhysical").checked || Number($("pSrcBox").dataset.users || 0) > 0); } // ce produit sert déjà de stock à d'autres
 function keysInfo(p) {
   const s = p ? stock.find((x) => x.id === p.id) : null;
   const src = p && p.key_source_id ? products.find((x) => x.id === p.key_source_id) : null;

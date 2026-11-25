@@ -378,6 +378,13 @@ function waOrderLink(ref: string, items: any[], total: number) {
   return "https://wa.me/" + siteCtx().wa + "?text=" + encodeURIComponent(msg);
 }
 
+// numéro sénégalais : 77 123 45 67, +221 77…, 00221 77… → +22177…, sinon null (mobiles 70/75/76/77/78, fixes 33)
+function snPhone(raw: string) {
+  let d = String(raw ?? "").replace(/\D/g, "");
+  if (d.startsWith("00")) d = d.slice(2);
+  if (d.length === 9) d = "221" + d;
+  return /^221(7[05678]|3[03])\d{7}$/.test(d) ? "+" + d : null;
+}
 // nom déjà connu pour cet email (fiche client, sinon dernière commande avec un vrai nom)
 async function knownName(email: string) {
   const e = String(email ?? "").toLowerCase();
@@ -1255,6 +1262,13 @@ async function handle(req: Request): Promise<Response> {
       // livraison des produits physiques (Dakar seulement ; hors Dakar, le client passe par WhatsApp)
       const hasPhysical = prods.some((p) => p.delivery_type === "physical");
       if (hasPhysical && isPlaceholderName(name)) return json({ error: "nom_invalide" }, 400); // nom utile pour la livraison
+      // livraison : numéro sénégalais (+221) obligatoire, enregistré au format +221XXXXXXXXX
+      let phoneOut = phone;
+      if (hasPhysical) {
+        const sn = snPhone(phone);
+        if (!sn) return json({ error: "telephone_senegal" }, 400);
+        phoneOut = sn;
+      }
       let ship: Record<string, unknown> = { shipping_fee_fcfa: 0 };
       if (hasPhysical) {
         const sh = body.shipping ?? {};
@@ -1271,7 +1285,7 @@ async function handle(req: Request): Promise<Response> {
 
       for (let i = 0; i < 4; i++) {
         const row = {
-          ref: newRef(), public_token: newToken(), customer_name: name, email, phone,
+          ref: newRef(), public_token: newToken(), customer_name: name, email, phone: phoneOut,
           amount_fcfa: total + Number(ship.shipping_fee_fcfa), payment_method: mode === "whatsapp" ? "whatsapp" : mode, source: "site", ...ship,
           // CRM / anti-fraude (voir la page Confidentialité)
           ip: (req.headers.get("cf-connecting-ip") ?? req.headers.get("x-forwarded-for")?.split(",")[0] ?? "").trim().slice(0, 64) || null,
@@ -1427,7 +1441,7 @@ async function handle(req: Request): Promise<Response> {
       const token = str(body.o, 64);
       if (!token) return json({ error: "not_found" }, 404);
       const { data: o } = await db.from("orders")
-        .select("id, ref, invoice_no, status, amount_fcfa, payment_method, payment_ref, paydunya_token, key_locked, customer_name, email, phone, created_at, delivered_at, shipping_method, shipping_fee_fcfa, shipping_address, shipping_zone, order_items(id, product_id, product_name, delivery_type, unit_price, quantity, status, created_at, claim_requested_at, products(slug, image_url, installer_path))")
+        .select("id, ref, invoice_no, status, amount_fcfa, payment_method, payment_ref, paydunya_token, key_locked, customer_name, email, phone, created_at, delivered_at, shipping_method, shipping_fee_fcfa, shipping_address, shipping_zone, ship_started_at, ship_note, ship_done_at, order_items(id, product_id, product_name, delivery_type, unit_price, quantity, status, created_at, claim_requested_at, products(slug, image_url, installer_path))")
         .eq("public_token", token).maybeSingle();
       if (!o) return json({ error: "not_found" }, 404);
       const paid = ["paid", "processing", "installing", "delivered"].includes(o.status);
@@ -1498,6 +1512,12 @@ async function handle(req: Request): Promise<Response> {
         // commande à finaliser sur WhatsApp (mode « WhatsApp » de la page Paiements)
         wa_finalize: o.status === "pending" && !o.key_locked && o.payment_method === "whatsapp" ? waOrderLink(o.ref, items, o.amount_fcfa) : null,
         shipping: o.shipping_method ? { method: o.shipping_method, fee: o.shipping_fee_fcfa, address: o.shipping_address, zone: o.shipping_zone } : null,
+        // suivi de livraison (produits physiques) : ordered → paid → shipping → done
+        ship: items.some((i) => i.delivery_type === "physical" && i.status !== "cancelled") ? {
+          stage: o.status === "cancelled" ? "cancelled" : !paid ? "ordered"
+            : items.some((i) => i.delivery_type === "physical" && i.status === "to_process") ? (o.ship_started_at ? "shipping" : "paid") : "done",
+          started_at: o.ship_started_at, done_at: o.ship_done_at ?? o.delivered_at, note: o.ship_started_at ? o.ship_note : null,
+        } : null,
         items: items.map((i) => {
           const link = linkByItem[i.id];
           let download = null;

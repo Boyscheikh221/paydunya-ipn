@@ -438,6 +438,8 @@ async function sendOrderEmails(orderId: string, reason?: string) {
   if (lg) await logEvent(lg[0], "livraison", lg[1], { etape: reason }, await orderRefOf(orderId));
   await sendInstallEmail(orderId).catch((e) => logEvent("error", "email", "Erreur pendant l'email d'installation", e));
   if (reason === "delivered") await sendDeliveryEmail(orderId).catch((e) => logEvent("error", "email", "Erreur pendant l'email de livraison", e));
+  // produits physiques : « commande payée, livraison sous 48 h ouvrées » (une seule fois)
+  await sendShipEmail(orderId, "paid").catch((e) => logEvent("error", "email", "Erreur pendant l'email « commande payée »", e));
   await notifyPayouts().catch((e) => logEvent("error", "parrainage", "Erreur pendant l'alerte de versement parrain", e));
 }
 
@@ -582,6 +584,66 @@ ${waButtonHtml(wa)}`;
   const r = await resendSend(o.email, { subject: "Votre avis sur " + (names.length === 1 ? names[0] : "votre commande") + " ? — licenceoff.com", html: wrapHtml(html, o.ref), text, headers: { "X-Entity-Ref-ID": o.ref + "-avis" } });
   if (r.ok) await db.from("orders").update({ review_asked_at: new Date().toISOString() }).eq("id", o.id);
   return r;
+}
+
+// Produits physiques : un email au client à chaque étape (payée → expédition en cours → livrée + avis)
+const SHIP_DAYS_TXT = "48 h (jours ouvrés)";
+async function sendShipEmail(orderId: string, stage: "paid" | "shipping" | "done"): Promise<{ sent: boolean; reason?: string }> {
+  const { data: o } = await db.from("orders")
+    .select("id, ref, public_token, customer_name, email, amount_fcfa, status, shipping_method, shipping_address, shipping_zone, ship_paid_mail_at, ship_note, order_items(id, product_id, product_name, delivery_type, quantity, status)")
+    .eq("id", orderId).maybeSingle();
+  if (!o || !o.email) return { sent: false, reason: "commande_introuvable" };
+  // deno-lint-ignore no-explicit-any
+  const phys = ((o.order_items ?? []) as any[]).filter((i) => i.delivery_type === "physical" && i.status !== "cancelled");
+  if (!phys.length) return { sent: false, reason: "pas_de_produit_physique" };
+  if (["pending", "cancelled"].includes(o.status)) return { sent: false, reason: "paiement_non_valide" };
+  if (!(Deno.env.get("RESEND_API_KEY") ?? "").trim()) return { sent: false, reason: "resend_non_configure" };
+  if (stage === "paid") { // réserve l'envoi (pas de doublon)
+    const { data: claim } = await db.from("orders").update({ ship_paid_mail_at: new Date().toISOString() }).eq("id", o.id).is("ship_paid_mail_at", null).select("id");
+    if (!claim?.length) return { sent: false, reason: "deja_envoye" };
+  }
+  const { site, wa } = siteCtx();
+  const link = site + "/commande.html?o=" + encodeURIComponent(o.public_token);
+  const nm = String(o.customer_name || "").trim();
+  const first = /^(client( (whatsapp|facebook|wa|fb))?|inconnu|n\/a)?$/i.test(nm) ? "" : nm.split(/\s+/)[0];
+  const list = phys.map((i) => (i.quantity > 1 ? i.quantity + " × " : "") + i.product_name);
+  const where = [o.shipping_address, o.shipping_zone].filter(Boolean).join(", ");
+  const how = o.shipping_method === "bus" ? "par bus (vous récupérez le colis à la gare routière)" : o.shipping_method === "home" ? "à domicile" : "";
+  const btn = (href: string, label: string) => `<p style="text-align:center;margin:22px 0"><a href="${esc(href)}" style="display:inline-block;background:${EM.O};color:#fff;font-weight:800;text-decoration:none;padding:14px 22px;border-radius:10px">${esc(label)}</a></p>`;
+  const P = (t: string) => `<p style="margin:0 0 12px;line-height:1.6">${t}</p>`;
+  const items = `<ul style="margin:0 0 12px;padding-left:20px;line-height:1.6">${list.map((x) => "<li>" + esc(x) + "</li>").join("")}</ul>`;
+  const hello = P("Bonjour" + (first ? " " + esc(first) : "") + ",");
+  let subject = "", html = "", text = "";
+  if (stage === "paid") {
+    subject = "Commande " + o.ref + " payée : livraison sous " + SHIP_DAYS_TXT;
+    html = hello + P(`Votre paiement de <b>${esc(fcfaTxt(o.amount_fcfa))}</b> est bien reçu : votre commande <b>${esc(o.ref)}</b> est confirmée.`) + items +
+      P(`📦 <b>Livraison sous ${SHIP_DAYS_TXT}</b>${how ? " " + esc(how) : ""}${where ? ", à : <b>" + esc(where) + "</b>" : ""}. Nous vous appelons sur WhatsApp avant de passer.`) +
+      btn(link, "Suivre ma commande") + P("Une erreur dans l'adresse ? Répondez à cet email ou écrivez-nous sur WhatsApp.") + waButtonHtml(wa);
+    text = "Bonjour" + (first ? " " + first : "") + ",\n\nVotre paiement de " + fcfaTxt(o.amount_fcfa) + " est bien reçu : votre commande " + o.ref + " est confirmée.\n\n" + list.join("\n") +
+      "\n\nLivraison sous " + SHIP_DAYS_TXT + (how ? " " + how : "") + (where ? ", à : " + where : "") + ".\n\nSuivre ma commande : " + link + "\n\nWhatsApp : https://wa.me/" + wa;
+  } else if (stage === "shipping") {
+    subject = "Votre commande " + o.ref + " est en route 🚚";
+    html = hello + P(`Bonne nouvelle : votre commande <b>${esc(o.ref)}</b> est en cours d'expédition.`) + items +
+      (o.ship_note ? P("ℹ️ " + esc(o.ship_note)) : "") +
+      P(`${where ? "Adresse de livraison : <b>" + esc(where) + "</b>. " : ""}Gardez votre téléphone à portée de main : le livreur vous appelle avant de passer.`) +
+      btn(link, "Suivre ma commande") + waButtonHtml(wa);
+    text = "Bonjour" + (first ? " " + first : "") + ",\n\nVotre commande " + o.ref + " est en cours d'expédition.\n\n" + list.join("\n") + (o.ship_note ? "\n\n" + o.ship_note : "") +
+      (where ? "\n\nAdresse de livraison : " + where : "") + "\n\nSuivre ma commande : " + link;
+  } else {
+    const avis = link + "&avis=1";
+    subject = "Commande " + o.ref + " livrée ✔ Votre avis compte";
+    html = hello + P(`Votre commande <b>${esc(o.ref)}</b> a bien été livrée. Merci pour votre confiance !`) + items +
+      P("Votre avis aide d'autres clients à acheter en confiance. Cela prend 30 secondes : une note de 1 à 5 étoiles et, si vous le souhaitez, quelques mots.") +
+      btn(avis, "⭐ Donner mon avis") + P("Un souci avec votre produit ? Répondez à cet email ou écrivez-nous sur WhatsApp, on s'en occupe.") + waButtonHtml(wa);
+    text = "Bonjour" + (first ? " " + first : "") + ",\n\nVotre commande " + o.ref + " a bien été livrée. Merci pour votre confiance !\n\n" + list.join("\n") +
+      "\n\nDonner mon avis (30 secondes) : " + avis + "\n\nUn souci ? WhatsApp : https://wa.me/" + wa;
+  }
+  text += "\n\nlicenceoff.com — Dakar, Sénégal";
+  const r = await resendSend(o.email, { subject, html: wrapHtml(html, o.ref), text, headers: { "X-Entity-Ref-ID": o.ref + "-" + stage } });
+  if (!r.ok) { if (stage === "paid") await db.from("orders").update({ ship_paid_mail_at: null }).eq("id", o.id); return { sent: false, reason: "envoi_echoue" }; }
+  if (stage === "done") await db.from("orders").update({ review_asked_at: new Date().toISOString() }).eq("id", o.id);
+  await logEvent("info", "livraison", stage === "paid" ? "Email « commande payée » envoyé" : stage === "shipping" ? "Email « expédition en cours » envoyé" : "Email « livrée + avis » envoyé", {}, o.ref);
+  return { sent: true };
 }
 
 // Livre une commande : clés / identifiants du stock + liens à usage unique + services à traiter
@@ -1017,6 +1079,44 @@ Deno.serve(async (req) => {
         }
         // silent : livraison sans email au client (ex. vente à un revendeur, PDF d'instructions envoyé à la main)
         return json({ result: body.silent === true ? await deliver(body.id, true, false) : await deliver(body.id) });
+      }
+
+      case "ship_start": { // 🚚 produit physique : expédition en cours → email au client
+        const { data: o } = await db.from("orders").select("id, status, order_items(delivery_type, status)").eq("id", str(body.id, 40)).maybeSingle();
+        if (!o) return json({ error: "commande_introuvable" }, 404);
+        if (o.status === "pending") return json({ error: "paiement_non_valide" }, 400);
+        if (o.status === "cancelled") return json({ error: "commande_annulee" }, 400);
+        // deno-lint-ignore no-explicit-any
+        if (!((o.order_items ?? []) as any[]).some((i) => i.delivery_type === "physical" && i.status === "to_process")) return json({ error: "rien_a_expedier" }, 400);
+        await db.from("orders").update({ ship_started_at: new Date().toISOString(), ship_note: str(body.note, 300) || null }).eq("id", o.id);
+        const email = await sendShipEmail(o.id, "shipping");
+        return json({ ok: true, email });
+      }
+
+      case "ship_done": { // 📦 produit physique livré → email de confirmation avec demande d'avis
+        const { data: o } = await db.from("orders").select("id, status, order_items(id, delivery_type, status)").eq("id", str(body.id, 40)).maybeSingle();
+        if (!o) return json({ error: "commande_introuvable" }, 404);
+        if (o.status === "pending") return json({ error: "paiement_non_valide" }, 400);
+        if (o.status === "cancelled") return json({ error: "commande_annulee" }, 400);
+        // deno-lint-ignore no-explicit-any
+        const todo = ((o.order_items ?? []) as any[]).filter((i) => i.delivery_type === "physical" && i.status === "to_process");
+        if (!todo.length) return json({ error: "rien_a_expedier" }, 400);
+        for (const i of todo) {
+          const { data, error } = await db.rpc("complete_order_item", { p_item_id: i.id });
+          if (error) return json({ error: error.message }, 500);
+          if (!data.ok) return json({ error: data.reason }, 400);
+        }
+        await db.from("orders").update({ ship_done_at: new Date().toISOString() }).eq("id", o.id);
+        const email = await sendShipEmail(o.id, "done");
+        return json({ ok: true, email });
+      }
+
+      case "ship_email": { // renvoyer l'email de l'étape actuelle
+        const stage = ["paid", "shipping", "done"].includes(body.stage) ? body.stage : "paid";
+        if (stage === "paid") await db.from("orders").update({ ship_paid_mail_at: null }).eq("id", str(body.id, 40));
+        const r = await sendShipEmail(str(body.id, 40), stage);
+        if (!r.sent) return json({ error: r.reason }, 400);
+        return json({ ok: true });
       }
 
       case "order_deliver_now": { // livraison automatique désactivée : l'admin livre lui-même (clés du stock + liens)

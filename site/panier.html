@@ -27,6 +27,7 @@ const ERR = {
   produit_introuvable: "Un produit de votre panier n'est plus disponible. Retirez-le et réessayez.",
   livraison_manquante: "Choisissez un mode de livraison.",
   adresse_manquante: "Indiquez votre adresse de livraison.",
+  telephone_senegal: "Pour la livraison, indiquez un numéro sénégalais (+221), ex : +221 77 123 45 67.",
   trop_de_commandes: "Vous avez déjà plusieurs commandes en attente. Contactez-nous sur WhatsApp.",
 };
 // prix avec le code parrain (calculés par le serveur, recalculés à la commande)
@@ -132,6 +133,12 @@ function render() {
   };
   go.addEventListener("click", async () => {
     msg.textContent = "";
+    // livraison : nom, adresse et numéro sénégalais obligatoires
+    if (hasPhysical()) {
+      if (!$("#name") || $("#name").value.trim().length < 2) { msg.textContent = ERR.nom_invalide; return $("#name") && $("#name").focus(); }
+      let d = $("#phone").value.replace(/\D/g, ""); if (d.startsWith("00")) d = d.slice(2); if (d.length === 9) d = "221" + d;
+      if (!/^221(7[05678]|3[03])\d{7}$/.test(d)) { msg.textContent = ERR.telephone_senegal; return $("#phone").focus(); }
+    }
     go.disabled = true; go.textContent = "Création de la commande…";
     try {
       const d = await LO.boutique({
@@ -159,7 +166,7 @@ function render() {
       // nom demandé ici seulement pour une livraison ; sinon une seule fois, au moment de voir la clé
       ...(hasPhysical() ? f("name", "Nom complet (pour la livraison)", "text", "name", "ex : Moussa Diop") : []),
       ...f("email", "Email", "email", "email", "vous@exemple.com"),
-      ...f("phone", "Numéro WhatsApp", "tel", "tel", "ex : 77 123 45 67"),
+      ...(hasPhysical() ? f("phone", "Téléphone pour la livraison (Sénégal +221, obligatoire)", "tel", "tel", "+221 77 123 45 67") : f("phone", "Numéro WhatsApp", "tel", "tel", "ex : 77 123 45 67")),
       el("input", { id: "website", class: "hp", tabindex: "-1", autocomplete: "off", "aria-hidden": "true" }),
       el("label", { class: "note", style: "display:flex;gap:8px;align-items:flex-start;margin-top:10px;cursor:pointer" },
         el("input", { id: "mkt", type: "checkbox", style: "margin-top:3px" }), "Je souhaite recevoir les offres et nouveautés licenceoff.com par email (désinscription en un clic)."),
