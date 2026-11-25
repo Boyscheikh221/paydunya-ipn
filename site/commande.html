@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
 <title>Ma commande — licenceoff.com</title>
-<link rel="stylesheet" href="/shop.css?v=27">
+<link rel="stylesheet" href="/shop.css?v=28">
 <link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="64x64" href="/img/profil-64.png"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
 <meta property="og:image" content="https://www.licenceoff.com/img/partage.jpg">
 </head>
@@ -15,7 +15,7 @@
   <div data-crumbs='[["Accueil","/"],["Ma commande"]]' style="margin-top:14px"></div>
   <div id="view" style="padding:24px 0"><div class="skeleton"></div></div>
 </main>
-<script src="/shop.js?v=27"></script>
+<script src="/shop.js?v=28"></script>
 <script>
 LO.page("shop");
 const { el, $, fcfa } = LO;
@@ -197,7 +197,14 @@ function reviewForm(i) {
     if (d.ok || d.error === "deja_note") { det.replaceChildren(el("p", { class: "note", style: "margin:0", text: "⭐ Merci ! Votre avis sera visible après vérification." })); return; }
     send.disabled = false; msg.textContent = "Erreur, réessayez.";
   });
-  const det = el("details", { class: "review-box" }, el("summary", { text: "⭐ Donner mon avis sur ce produit" }), stars, txt, send, msg);
+  // encart visible (pas replié) : l'invitation remplace les emails de demande d'avis
+  const phys = i.delivery_type === "physical";
+  const det = el("div", { class: "review-box" },
+    el("p", { class: "rv-title", text: phys ? "⭐ Colis bien reçu ? Donnez votre avis" : "⭐ Votre clé est activée ? Donnez votre avis" }),
+    el("p", { class: "note", style: "margin:4px 0 0", text: phys
+      ? "Notez le produit de 1 à 5 étoiles et, si vous voulez, laissez un commentaire. 30 secondes, et cela aide les autres clients."
+      : "Une fois votre clé activée, revenez sur cette page pour noter le produit de 1 à 5 étoiles et, si vous voulez, laisser un commentaire. 30 secondes, et cela aide les autres clients." }),
+    stars, txt, send, msg);
   return det;
 }
 
@@ -320,7 +327,7 @@ async function load() {
 
   if ((o.status === "pending" && (o.has_paydunya || o.has_payment_ref || o.key_locked || o.wa_finalize)) || o.status === "paid" || o.status === "processing" || (o.status === "installing" && o.items.some((i) => i.claimed))) timer = setTimeout(load, 15000);
   if (fromInstallEmail) { const c = document.querySelector(".claim"); if (c) c.scrollIntoView({ behavior: "smooth", block: "center" }); }
-  if (fromReviewEmail && !reviewShown) { const r = [...document.querySelectorAll(".review-box")]; r.forEach((d) => { d.open = true; }); if (r[0]) { reviewShown = true; r[0].style.outline = "3px solid #F5A21B"; r[0].scrollIntoView({ behavior: "smooth", block: "center" }); } }
+  if (fromReviewEmail && !reviewShown) { const r = [...document.querySelectorAll(".review-box")]; if (r[0]) { reviewShown = true; r[0].style.outline = "3px solid #F5A21B"; r[0].scrollIntoView({ behavior: "smooth", block: "center" }); } }
 }
 load();
 </script>

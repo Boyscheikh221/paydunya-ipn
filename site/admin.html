@@ -245,7 +245,7 @@
         <input id="oSearch" class="grow" placeholder="Rechercher : réf, nom, email, téléphone">
         <button id="oRefresh" class="grey">Actualiser</button>
         <button id="oNewBtn" class="org">+ Vente manuelle</button>
-        <button id="oReviewAll" class="grey" title="Email à tous les clients livrés depuis plus de 24 h, qui n'ont pas encore donné d'avis et n'ont jamais été relancés">⭐ Demander un avis à tous</button>
+        <button id="oReviewAll" class="grey hidden" title="Email à tous les clients livrés depuis plus de 24 h, qui n'ont pas encore donné d'avis et n'ont jamais été relancés">⭐ Demander un avis à tous</button>
       </div>
       <label class="check small" style="margin:4px 0 10px" title="Désactivé : le logo du PDF revendeur n'a aucun lien (le client final ne peut pas trouver vos prix)."><input type="checkbox" id="pdfLogoLink"> 📄 PDF revendeur : logo cliquable vers la page du produit (affiche votre prix public)</label>
       <div id="oNew" class="box hidden">
@@ -1487,9 +1487,7 @@ async function loadOrders() {
     if (["delivered", "processing", "paid", "installing"].includes(o.status) && !items.every((i) => i.delivery_type === "physical")) acts.append(btn(o.status === "installing" ? "✉ Renvoyer l'email d'installation" : o.emailed_at ? "✉ Renvoyer l'email" : "✉ Envoyer l'email", "grey", async () => {
       if (confirm((o.status === "installing" ? "Renvoyer l'email d'installation à " : "Envoyer l'email de livraison à ") + o.email + " ?")) await run({ action: "order_email", id: o.id }, "Email envoyé ✔", reload)();
     }));
-    if (o.status === "delivered" && o.email) acts.append(btn(o.review_asked_at ? "⭐ Redemander un avis" : "⭐ Demander un avis", "grey", async () => {
-      if (confirm("Envoyer à " + o.email + " un email lui demandant son avis (bouton vers sa page de commande) ?" + (o.review_asked_at ? "\nDéjà demandé le " + dt(o.review_asked_at) + "." : ""))) await run({ action: "review_request", id: o.id }, "Demande d'avis envoyée ✔", reload)();
-    }));
+    // plus d'email séparé de demande d'avis : le client est invité sur sa page de commande (sous sa clé), et l'email « Livrée » des produits physiques le demande déjà
     if (items.some((i) => (i.license_keys || []).length)) acts.append(btn("📄 PDF revendeur", "grey", () => resellerPdf(o)));
     else if (o.status === "pending" && items.some((i) => STOCK_TYPES.includes(i.delivery_type))) acts.append(btn("📄 PDF revendeur", "grey", async () => {
       if (!confirm("Avez-vous bien reçu " + fcfa(o.amount_fcfa) + " de " + (o.customer_name || o.email) + " ?\n\nLe compte (ou la clé) sera pris dans le stock et la commande passera « livrée », SANS email au client.\nEnsuite le PDF d'instructions se télécharge.")) return;

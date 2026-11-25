@@ -210,7 +210,8 @@ footer.site .copy { border-top: 1px solid rgba(255,255,255,.12); margin-top: 22p
 @media (max-width:600px) { .cookie-bar { padding:20px; bottom:10px; left:10px; right:10px; min-height:25vh; } .cookie-bar p { font-size:16px; } .cookie-bar p b { font-size:19px; } .cookie-bar .cb-btns { width:100%; } .cookie-bar .btn { flex:1; } }
 
 /* ---------- avis clients ---------- */
-.review-box { margin-top: 12px; padding: 10px 12px; border-radius: 12px; background: #FFF8E8; }
+.review-box { margin-top: 12px; padding: 12px 14px; border-radius: 12px; background: #FFF8E8; border: 1px solid #F5D9A0; }
+.review-box .rv-title { margin: 0; font-weight: 800; }
 .review-box summary { cursor: pointer; font-weight: 700; }
 .stars-in { display: flex; gap: 4px; margin: 10px 0 6px; }
 .stars-in button { background: none; border: 0; font-size: 30px; line-height: 1; color: #CBD5E1; cursor: pointer; padding: 2px; }
