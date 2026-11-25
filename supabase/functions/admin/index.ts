@@ -1761,6 +1761,7 @@ ${q.valid_until ? `<p style="margin:0 0 12px">Ce devis est valable jusqu'au ${es
           title: str(body.title, 200), slug: slugify(str(body.slug, 120) || str(body.title, 120)),
           excerpt: str(body.excerpt, 400) || null, content: str(body.content, 50000),
           cover_url: str(body.cover_url, 500) || null, cover_video: ytId(str(body.cover_video, 300)) ? str(body.cover_video, 300) : null, published, updated_at: new Date().toISOString(),
+          rubrique_id: str(body.rubrique_id, 40) || null,
         };
         if (!row.title || !row.slug) return json({ error: "titre_obligatoire" }, 400);
         let firstPublish = false;
@@ -1789,6 +1790,7 @@ ${q.valid_until ? `<p style="margin:0 0 12px">Ce devis est valable jusqu'au ${es
           seo_title: str(body.seo_title, 120) || null, seo_description: str(body.seo_description, 320) || null,
           published: body.published === true, in_menu: body.in_menu === true, in_footer: body.in_footer === true,
           sort: clamp(Number(body.sort) || 0, 0, 10000), updated_at: new Date().toISOString(),
+          rubrique_id: str(body.rubrique_id, 40) || null,
         };
         if (!row.title || !row.slug) return json({ error: "titre_obligatoire" }, 400);
         const r = body.id ? await db.from("pages").update(row).eq("id", body.id).select().single()
@@ -1798,6 +1800,42 @@ ${q.valid_until ? `<p style="margin:0 0 12px">Ce devis est valable jusqu'au ${es
       }
       case "page_delete": {
         const { error } = await db.from("pages").delete().eq("id", body.id);
+        if (error) return json({ error: error.message }, 500);
+        return json({ ok: true });
+      }
+      // ================= Pages & blog : tableau de bord et rubriques =================
+      case "content_stats": {
+        const days = [7, 30, 90, 365, 3650].includes(Number(body.days)) ? Number(body.days) : 30;
+        const { data, error } = await db.rpc("content_stats", { p_days: days });
+        if (error) return json({ error: error.message }, 500);
+        return json(data);
+      }
+      case "rubriques_list": {
+        const { data, error } = await db.from("rubriques").select("*").order("sort").order("name");
+        if (error) return json({ error: error.message }, 500);
+        return json({ rows: data });
+      }
+      case "rubrique_save": {
+        const id = str(body.id, 40) || null;
+        const parent = str(body.parent_id, 40) || null;
+        if (parent && parent === id) return json({ error: "rubrique_parent_elle_meme" }, 400);
+        if (parent) { // 2 niveaux maximum : la rubrique parente doit être une rubrique principale
+          const { data: par } = await db.from("rubriques").select("parent_id").eq("id", parent).maybeSingle();
+          if (!par || par.parent_id) return json({ error: "rubrique_2_niveaux" }, 400);
+          if (id) { const { count } = await db.from("rubriques").select("id", { count: "exact", head: true }).eq("parent_id", id);
+            if (count) return json({ error: "rubrique_2_niveaux" }, 400); }
+        }
+        const row = {
+          name: str(body.name, 80), slug: slugify(str(body.slug, 80) || str(body.name, 80)), description: str(body.description, 300) || null,
+          parent_id: parent, category_slug: str(body.category_slug, 80) || null, sort: clamp(Number(body.sort) || 0, 0, 10000), active: body.active !== false,
+        };
+        if (!row.name || !row.slug) return json({ error: "titre_obligatoire" }, 400);
+        const r = id ? await db.from("rubriques").update(row).eq("id", id).select().single() : await db.from("rubriques").insert(row).select().single();
+        if (r.error) return json({ error: r.error.message.includes("duplicate") ? "adresse_deja_utilisee" : r.error.message }, 400);
+        return json({ row: r.data });
+      }
+      case "rubrique_delete": { // les articles et pages de la rubrique restent, simplement « sans rubrique »
+        const { error } = await db.from("rubriques").delete().eq("id", str(body.id, 40));
         if (error) return json({ error: error.message }, 500);
         return json({ ok: true });
       }

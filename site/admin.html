@@ -30,6 +30,15 @@
   .oripie path:hover { opacity:.85; }
   .oritab { flex:1; min-width:240px; }
   .oritab td:first-child { white-space:nowrap; }
+  /* Pages & blog : barres horizontales (articles les plus lus, rubriques) */
+  .hbars { display:grid; gap:8px; }
+  .hbar { display:grid; grid-template-columns:minmax(120px,38%) 1fr auto; gap:10px; align-items:center; font-size:13px; }
+  .hbar .n { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .hbar .t { background:#eef2f7; border-radius:6px; height:14px; overflow:hidden; }
+  .hbar .f { height:100%; border-radius:6px; background:var(--bleu); min-width:2px; }
+  .hbar .v { font-weight:800; min-width:44px; text-align:right; }
+  .tips li { margin:4px 0; }
+  @media (max-width:560px) { .hbar { grid-template-columns:1fr auto; } .hbar .t { grid-column:1 / -1; order:3; } }
   .sw { display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:6px; vertical-align:-1px; }
   nav #badgeMsg { background:#dc2626; font-weight:700; }
   nav button.has-msg { color:#dc2626; font-weight:700; }
@@ -149,7 +158,7 @@
     <button data-tab="products">📦 Produits</button>
     <button data-tab="keys">🔑 Stock</button>
     <button data-tab="blog">📝 Blog</button>
-    <button data-tab="pages">📄 Pages</button>
+    <button data-tab="pages">📄 Pages & blog</button>
     <button data-tab="emails">✉️ Emails</button>
     <button data-tab="send">📤 Envoi manuel</button>
     <button data-tab="quotes">📄 Devis</button>
@@ -376,7 +385,8 @@
       <div class="box">
         <h2 id="bTitleH">Nouvel article</h2>
         <input type="hidden" id="bId">
-        <label>Titre</label><input id="bTitle">
+        <div class="grid" style="grid-template-columns:2fr 1fr"><div><label>Titre</label><input id="bTitle"></div>
+          <div><label>Rubrique</label><select id="bRub"></select></div></div>
         <label>✍️ Extrait : 1 phrase qui donne envie de lire. Affiché sur Google, sur Facebook et dans la liste du blog</label>
         <input id="bExcerpt" maxlength="160" placeholder="Ex. : Activez Windows 11 Pro en 5 minutes avec une clé authentique, sans formatage."><div class="small" id="bExCount"></div>
         <label>🖼️ Image principale (à la une) : affichée en haut de l'article, dans la liste du blog et sur Facebook</label>
@@ -407,19 +417,60 @@
         <div class="bar"><button id="bPublish" class="green">🚀 Publier l'article</button><button id="bSave" class="grey">💾 Enregistrer sans publier</button><button id="bReset" class="grey">Nouvel article</button></div>
         <div class="small">« Publier » met l'article en ligne sur le site (et sur Facebook si la case est cochée). « Enregistrer sans publier » garde l'état choisi par la case « En ligne » (brouillon si décochée).</div>
       </div>
-      <div class="box"><table class="small"><thead><tr><th>Article</th><th>Statut</th><th>Date</th><th></th></tr></thead><tbody id="bRows"></tbody></table></div>
+      <div class="box">
+        <div class="bar"><label style="margin:0">Trier :</label><select id="bSort"><option value="vues">Les plus lus</option><option value="recent">Les plus récents</option><option value="titre">Titre (A → Z)</option></select>
+          <label style="margin:0">Rubrique :</label><select id="bFilter"></select></div>
+        <div class="tablewrap"><table class="small"><thead><tr><th>Article</th><th>Rubrique</th><th>Statut</th><th>Vues</th><th>Date</th><th></th></tr></thead><tbody id="bRows"></tbody></table></div></div>
     </section>
 
     <section id="tab-pages" class="hidden">
-      <h1>Pages</h1>
-      <p class="small">Créez vos propres pages : À propos, Conditions de vente, une promo, un service… Adresse : www.licenceoff.com/page/<i>adresse</i>.
-        Pour une nouvelle catégorie de produits, allez dans 📦 Produits › Catégories : sa page se crée toute seule. Pour un article, utilisez 📝 Blog.</p>
-      <div class="box">
+      <h1>Pages & blog</h1>
+      <div class="bar" style="justify-content:space-between">
+        <div class="seg" id="cPeriod"><button data-d="7">7 jours</button><button data-d="30" class="on">30 jours</button><button data-d="90">3 mois</button><button data-d="365">1 an</button></div>
+        <div class="bar" style="margin:0"><button id="cNewPage" class="green">➕ Nouvelle page</button><button id="cNewPost" class="org">✍️ Nouvel article</button><button id="cNewRub" class="grey">🗂️ Nouvelle rubrique</button></div>
+      </div>
+      <div id="cKpis" class="kpis"></div>
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px">
+        <div class="box"><h2>Vos pages, par type</h2>
+          <div class="ori"><div id="cPie" class="oripie"></div><table class="small oritab"><thead><tr><th>Type</th><th>Nombre</th><th>Part</th></tr></thead><tbody id="cPieRows"></tbody></table></div></div>
+        <div class="box"><h2>Les sujets qui intéressent le plus</h2><p class="small" style="margin:-6px 0 10px">Vues des articles par rubrique, sur la période choisie</p><div id="cRubBars" class="hbars"></div></div>
+      </div>
+      <div class="box"><h2>Articles les plus lus</h2><p class="small" style="margin:-6px 0 10px">Vues sur la période choisie (survolez une barre pour le détail)</p><div id="cTopBars" class="hbars"></div></div>
+      <div class="box"><h2>Vues du blog, jour par jour</h2><div id="cDay" class="chart"></div></div>
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px">
+        <div class="box"><h2>D'où viennent les lecteurs du blog</h2><table class="small"><tbody id="cSources"></tbody></table></div>
+        <div class="box"><h2>💡 À améliorer</h2><ul id="cTips" class="small tips" style="margin:0;padding-left:18px"></ul></div>
+      </div>
+      <div class="box"><h2>Détail par article</h2>
+        <div class="tablewrap"><table class="small"><thead><tr><th>Article</th><th>Rubrique</th><th title="Vues sur la période choisie">Vues</th><th title="Depuis la publication">Vues totales</th><th title="Visiteurs différents (ceux qui ont accepté les cookies)">Visiteurs</th><th title="Temps moyen passé sur l'article">Temps de lecture</th><th title="Part des lecteurs arrivés à la fin de l'article">Lu jusqu'au bout</th><th title="Lecteurs qui ont cliqué vers la boutique ou un produit">Clics boutique</th></tr></thead><tbody id="cPosts"></tbody></table></div>
+        <p class="small">Temps de lecture, « lu jusqu'au bout » et clics sont mesurés depuis la mise en place de ce tableau de bord (25/11/2026).</p></div>
+
+      <div class="box" id="rubBox">
+        <h2 id="rTitleH">🗂️ Rubriques</h2>
+        <p class="small" style="margin-top:-6px">Les rubriques rangent vos articles et vos pages par sujet (ex. Caméras de surveillance, Licences › Antivirus). Les rubriques « du bas » (sans sous-rubrique) deviennent les onglets du blog : www.licenceoff.com/blog/rubrique/<i>adresse</i>.</p>
+        <input type="hidden" id="rId">
+        <div class="grid">
+          <div><label>Nom</label><input id="rName" placeholder="ex : Antivirus"></div>
+          <div><label>Adresse (vide = d'après le nom)</label><input id="rSlug" placeholder="ex : antivirus"></div>
+          <div><label>Dans la rubrique</label><select id="rParent"></select></div>
+          <div><label>Catégorie de produits liée</label><select id="rCat"></select></div>
+          <div><label>Ordre</label><input id="rSort" type="number" min="0" value="0"></div>
+        </div>
+        <label>Description (affichée en haut de la rubrique sur le blog)</label><input id="rDesc" class="full" maxlength="300">
+        <label class="check"><input type="checkbox" id="rActive" checked> Active (visible sur le blog)</label>
+        <div class="bar"><button id="rSave" class="green">Enregistrer la rubrique</button><button id="rReset" class="grey">Nouvelle rubrique</button></div>
+        <table class="small"><thead><tr><th>Rubrique</th><th>Articles</th><th>Pages</th><th>Vues (période)</th><th></th></tr></thead><tbody id="rRows"></tbody></table>
+      </div>
+
+      <p class="small">Pages libres : À propos, Conditions de vente, une promo, un service… Adresse : www.licenceoff.com/page/<i>adresse</i>.
+        Pour une nouvelle catégorie de produits, allez dans 📦 Produits › Catégories : sa page se crée toute seule. Pour écrire un article, utilisez 📝 Blog.</p>
+      <div class="box" id="gBox">
         <h2 id="gTitleH">Nouvelle page</h2>
         <input type="hidden" id="gId">
         <div class="grid"><div><label>Titre</label><input id="gTitle" placeholder="ex : À propos de licenceoff.com"></div>
           <div><label>Adresse (vide = d'après le titre)</label><input id="gSlug" placeholder="ex : a-propos"></div>
-          <div><label>Ordre dans le menu</label><input id="gSort" type="number" min="0" value="0"></div></div>
+          <div><label>Ordre dans le menu</label><input id="gSort" type="number" min="0" value="0"></div>
+          <div><label>Rubrique</label><select id="gRub"></select></div></div>
         <label>Image (facultatif)</label>
         <div class="bar" style="margin:0"><img id="gImgPrev" class="preview hidden" alt=""><input id="gImgFile" type="file" accept="image/*"><input type="hidden" id="gImg"><span id="gImgMsg" class="small"></span></div>
         <label>Contenu</label>
@@ -434,7 +485,7 @@
           <label>Description pour Google</label><textarea id="gSeoD" rows="2" maxlength="320"></textarea></details>
         <div class="bar" style="margin-top:12px"><button id="gSave" class="green">Enregistrer</button><button id="gReset" class="grey">Nouvelle page</button></div>
       </div>
-      <div class="box"><table class="small"><thead><tr><th>Page</th><th>Statut</th><th>Où</th><th></th></tr></thead><tbody id="gRows"></tbody></table></div>
+      <div class="box"><table class="small"><thead><tr><th>Page</th><th>Rubrique</th><th>Statut</th><th>Où</th><th>Vues (période)</th><th></th></tr></thead><tbody id="gRows"></tbody></table></div>
     </section>
 
     <!-- ===== FAQ ===== -->
@@ -763,6 +814,8 @@ const ERR = {
   prix_manquant: "Mettez d'abord un prix (plus de 0 F) avant de publier ce produit.",
   message_vide: "Écrivez d'abord votre message.",
   pas_d_email: "Ajoutez d'abord votre email d'alerte (Réglages > Parrainage), puis enregistrez.",
+  rubrique_2_niveaux: "Une rubrique peut avoir des sous-rubriques, mais une sous-rubrique ne peut pas en avoir (2 niveaux maximum).",
+  rubrique_parent_elle_meme: "Une rubrique ne peut pas être rangée dans elle-même.",
   adresse_deja_utilisee: "Cette adresse de page est déjà utilisée. Choisissez-en une autre.",
   sku_deja_utilise: "Cette référence (SKU) est déjà utilisée par un autre produit.",
   lien_invalide: "Le lien de téléchargement doit commencer par https://",
@@ -1707,11 +1760,38 @@ $("qSave").addEventListener("click", async () => {
 });
 
 // ---------- blog ----------
+// ---------- rubriques (partagées par le blog et les pages) ----------
+let RUBS = [];
+async function loadRubs() { RUBS = (await api({ action: "rubriques_list" })).rows || []; return RUBS; }
+const rubName = (id) => { const r = RUBS.find((x) => x.id === id); if (!r) return ""; const p = RUBS.find((x) => x.id === r.parent_id); return (p ? p.name + " › " : "") + r.name; };
+// rubriques rangées : principale puis ses sous-rubriques
+function rubTree() { const out = []; for (const r of RUBS.filter((x) => !x.parent_id)) { out.push([r, 0]); for (const k of RUBS.filter((x) => x.parent_id === r.id)) out.push([k, 1]); }
+  for (const r of RUBS.filter((x) => x.parent_id && !RUBS.some((p) => p.id === x.parent_id))) out.push([r, 0]); return out; }
+function fillRubSelect(sel, first) {
+  const v = sel.value;
+  sel.replaceChildren(new Option(first, ""), ...rubTree().map(([r, d]) => new Option((d ? "   › " : "") + r.name + (r.active ? "" : " (cachée)"), r.id)));
+  sel.value = RUBS.some((r) => r.id === v) ? v : "";
+}
+let blogRows = [];
+function renderBlogRows(fb_ready) {
+  const f = $("bFilter").value, sort = $("bSort").value;
+  const kids = f ? new Set([f, ...RUBS.filter((r) => r.parent_id === f).map((r) => r.id)]) : null;
+  const rows = blogRows.filter((p) => !kids || (f === "none" ? !p.rubrique_id : kids.has(p.rubrique_id)))
+    .sort((a, b) => sort === "titre" ? a.title.localeCompare(b.title, "fr") : sort === "recent" ? new Date(b.published_at || b.created_at) - new Date(a.published_at || a.created_at) : (b.views || 0) - (a.views || 0));
+  renderBlogTable(rows, fb_ready);
+}
 async function loadBlog() {
-  const { rows, fb_ready } = await api({ action: "posts_list" });
+  const [{ rows, fb_ready }] = await Promise.all([api({ action: "posts_list" }), loadRubs()]);
+  fillRubSelect($("bRub"), "— Choisir une rubrique —");
+  const fv = $("bFilter").value; fillRubSelect($("bFilter"), "Toutes"); $("bFilter").append(new Option("Sans rubrique", "none")); $("bFilter").value = fv;
+  blogRows = rows; loadBlog.fb = fb_ready;
+  renderBlogRows(fb_ready);
+}
+function renderBlogTable(rows, fb_ready) {
   $("bFb").disabled = !fb_ready; $("bFb").checked = !!fb_ready;
   $("bFbInfo").textContent = fb_ready ? "Page Facebook connectée ✔ : l'article y sera publié avec son image et son lien." : "Page Facebook pas encore connectée (voir le guide envoyé par Claude). En attendant, utilisez le bouton « Partager » de chaque article.";
-  $("bRows").replaceChildren(...rows.map((p) => tr(td(el("strong", p.title), el("br"), el("span", p.slug, "small mono"), p.fb_post_id ? el("div", "📣 publié sur Facebook", "small") : null), td(tag(p.published ? "pub" : "draft")),
+  $("bRows").replaceChildren(...rows.map((p) => tr(td(el("strong", p.title), el("br"), el("span", p.slug, "small mono"), p.fb_post_id ? el("div", "📣 publié sur Facebook", "small") : null),
+    td(p.rubrique_id ? rubName(p.rubrique_id) : el("span", "⚠️ aucune", "low")), td(tag(p.published ? "pub" : "draft")), td(el("strong", String(p.views || 0))),
     td(dt(p.published_at || p.created_at)),
     td(btn("Modifier", "grey", () => editPost(p)), " ",
       p.published ? btn("Voir", "grey", () => window.open(SITE + "/blog/" + encodeURIComponent(p.slug), "_blank", "noopener")) : null, " ",
@@ -1720,13 +1800,15 @@ async function loadBlog() {
       btn("Supprimer", "red", async () => { if (confirm("Supprimer l'article « " + p.title + " » ?")) { await api({ action: "post_delete", id: p.id }); toast("Article supprimé"); await loadBlog(); } })))));
   if (!rows.length) $("bRows").append(tr(td("Aucun article pour le moment.")));
 }
+$("bSort").addEventListener("change", () => renderBlogRows(loadBlog.fb));
+$("bFilter").addEventListener("change", () => renderBlogRows(loadBlog.fb));
 function editPost(p) {
   remember("post", p.id);
   $("bTitleH").textContent = "Modifier : " + p.title; $("bId").value = p.id; $("bTitle").value = p.title; $("bExcerpt").value = p.excerpt || ""; exCount();
   $("bContent").value = p.content || ""; $("bImg").value = p.cover_url || ""; $("bVid").value = p.cover_video || ""; $("bImgPrev").src = p.cover_url || ""; $("bImgPrev").classList.toggle("hidden", !p.cover_url);
-  $("bPub").checked = p.published; window.scrollTo(0, 0);
+  $("bPub").checked = p.published; $("bRub").value = p.rubrique_id || ""; window.scrollTo(0, 0);
 }
-function resetPost() { $("bPreview").classList.add("hidden"); $("bContent").classList.remove("hidden"); $("bPrevBtn").textContent = "👁 Aperçu"; $("bEdMsg").textContent = ""; $("bTitleH").textContent = "Nouvel article"; for (const id of ["bId", "bTitle", "bExcerpt", "bContent", "bImg", "bVid"]) $(id).value = ""; $("bImgPrev").classList.add("hidden"); $("bPub").checked = false; $("bImgMsg").textContent = ""; exCount(); }
+function resetPost() { $("bPreview").classList.add("hidden"); $("bContent").classList.remove("hidden"); $("bPrevBtn").textContent = "👁 Aperçu"; $("bEdMsg").textContent = ""; $("bTitleH").textContent = "Nouvel article"; for (const id of ["bId", "bTitle", "bExcerpt", "bContent", "bImg", "bVid"]) $(id).value = ""; $("bImgPrev").classList.add("hidden"); $("bPub").checked = false; $("bRub").value = ""; $("bImgMsg").textContent = ""; exCount(); }
 function exCount() { const n = $("bExcerpt").value.trim().length;
   $("bExCount").textContent = n ? n + " / 160 caractères" + (n < 70 ? " · un peu court, visez 120 à 155" : n <= 155 ? " · ✔ bonne longueur" : " · Google coupera la fin") : "Vide : on prendra automatiquement le début de l'article (150 caractères). Idéal : 120 à 155 caractères.";
   $("bExCount").style.color = n && (n < 70 || n > 155) ? "#c2410c" : n ? "#15803d" : ""; }
@@ -1826,7 +1908,8 @@ $("bImgFile").addEventListener("change", () => uploadImage($("bImgFile"), $("bIm
 $("bExcerpt").addEventListener("input", exCount); exCount();
 $("bPublish").addEventListener("click", () => { $("bPub").checked = true; $("bSave").click(); });
 $("bSave").addEventListener("click", async () => {
-  try { const d = await api({ action: "post_save", id: $("bId").value || undefined, title: $("bTitle").value, excerpt: $("bExcerpt").value, content: $("bContent").value, cover_url: $("bImg").value, cover_video: $("bVid").value, published: $("bPub").checked, facebook: $("bFb").checked });
+  if (!$("bRub").value && !confirm("Cet article n'a pas de rubrique : il n'apparaîtra dans aucun onglet du blog (seulement dans « Tous »). Continuer quand même ?")) return;
+  try { const d = await api({ action: "post_save", id: $("bId").value || undefined, title: $("bTitle").value, excerpt: $("bExcerpt").value, content: $("bContent").value, cover_url: $("bImg").value, cover_video: $("bVid").value, rubrique_id: $("bRub").value, published: $("bPub").checked, facebook: $("bFb").checked });
     toast(($("bPub").checked ? "Article publié ✔" : "Brouillon enregistré ✔") + (d.facebook ? (d.facebook.ok ? " · publié sur Facebook ✔" : " · Facebook : " + (ERR[d.facebook.reason] || d.facebook.reason)) : ""));
     resetPost(); await loadBlog(); }
   catch (e) { toast(errMsg(e)); }
@@ -1834,9 +1917,12 @@ $("bSave").addEventListener("click", async () => {
 
 // ---------- pages libres ----------
 async function loadPages() {
-  const { rows } = await api({ action: "pages_list" });
-  $("gRows").replaceChildren(...rows.map((p) => tr(td(el("strong", p.title), el("br"), el("span", "/page/" + p.slug, "small mono")), td(tag(p.published ? "pub" : "draft")),
-    td([p.in_menu ? "menu" : "", p.in_footer ? "pied de page" : ""].filter(Boolean).join(" + ") || "lien seulement"),
+  const [{ rows }, st, cats] = await Promise.all([api({ action: "pages_list" }), api({ action: "content_stats", days: cDays }), api({ action: "categories_list" }).catch(() => ({ rows: [] })), loadRubs()]);
+  fillRubSelect($("gRub"), "— Aucune —");
+  renderContent(st, cats.rows || []);
+  const pv = Object.fromEntries((st.pages || []).map((g) => [g.id, g.views]));
+  $("gRows").replaceChildren(...rows.map((p) => tr(td(el("strong", p.title), el("br"), el("span", "/page/" + p.slug, "small mono")), td(rubName(p.rubrique_id) || "—"), td(tag(p.published ? "pub" : "draft")),
+    td([p.in_menu ? "menu" : "", p.in_footer ? "pied de page" : ""].filter(Boolean).join(" + ") || "lien seulement"), td(el("strong", String(pv[p.id] ?? 0))),
     td(btn("Modifier", "grey", () => editPage(p)), " ",
       p.published ? btn("Voir", "grey", () => window.open(SITE + "/page/" + encodeURIComponent(p.slug), "_blank", "noopener")) : null, " ",
       btn("Supprimer", "red", async () => { if (confirm("Supprimer la page « " + p.title + " » ?")) { await api({ action: "page_delete", id: p.id }); toast("Page supprimée"); await loadPages(); } })))));
@@ -1846,22 +1932,127 @@ function editPage(p) {
   remember("page", p.id);
   $("gTitleH").textContent = "Modifier : " + p.title; $("gId").value = p.id; $("gTitle").value = p.title; $("gSlug").value = p.slug; $("gSort").value = p.sort || 0;
   $("gContent").value = p.content || ""; $("gImg").value = p.image_url || ""; $("gImgPrev").src = p.image_url || ""; $("gImgPrev").classList.toggle("hidden", !p.image_url);
-  $("gPub").value = p.published ? "1" : "0"; $("gMenu").checked = p.in_menu; $("gFoot").checked = p.in_footer; $("gSeoT").value = p.seo_title || ""; $("gSeoD").value = p.seo_description || "";
-  window.scrollTo(0, 0);
+  $("gPub").value = p.published ? "1" : "0"; $("gMenu").checked = p.in_menu; $("gFoot").checked = p.in_footer; $("gSeoT").value = p.seo_title || ""; $("gSeoD").value = p.seo_description || ""; $("gRub").value = p.rubrique_id || "";
+  $("gBox").scrollIntoView({ behavior: "smooth" });
 }
 function resetPage() {
   $("gTitleH").textContent = "Nouvelle page"; for (const id of ["gId", "gTitle", "gSlug", "gContent", "gImg", "gSeoT", "gSeoD"]) $(id).value = "";
-  $("gSort").value = 0; $("gImgPrev").classList.add("hidden"); $("gImgMsg").textContent = ""; $("gPub").value = "1"; $("gMenu").checked = false; $("gFoot").checked = true;
+  $("gSort").value = 0; $("gImgPrev").classList.add("hidden"); $("gImgMsg").textContent = ""; $("gPub").value = "1"; $("gMenu").checked = false; $("gFoot").checked = true; $("gRub").value = "";
 }
 $("gReset").addEventListener("click", resetPage);
 $("gImgFile").addEventListener("change", () => uploadImage($("gImgFile"), $("gImg"), $("gImgPrev"), $("gImgMsg")));
 $("gSave").addEventListener("click", async () => {
   try {
     await api({ action: "page_save", id: $("gId").value || undefined, title: $("gTitle").value, slug: $("gSlug").value, sort: $("gSort").value, content: $("gContent").value,
-      image_url: $("gImg").value, published: $("gPub").value === "1", in_menu: $("gMenu").checked, in_footer: $("gFoot").checked, seo_title: $("gSeoT").value, seo_description: $("gSeoD").value });
+      image_url: $("gImg").value, rubrique_id: $("gRub").value, published: $("gPub").value === "1", in_menu: $("gMenu").checked, in_footer: $("gFoot").checked, seo_title: $("gSeoT").value, seo_description: $("gSeoD").value });
     toast($("gPub").value === "1" ? "Page publiée ✔ (visible dans le menu sous 5 minutes)" : "Brouillon enregistré ✔"); resetPage(); await loadPages();
   } catch (e) { toast(errMsg(e)); }
 });
+
+// ---------- Pages & blog : tableau de bord ----------
+let cDays = 30;
+const C_COLORS = ["#1E4FB8", "#F5A21B", "#15803d", "#8b5cf6", "#e34948", "#0ea5e9", "#a16207", "#64748b"];
+const secTxt = (s) => s == null ? "—" : s < 60 ? s + " s" : Math.floor(s / 60) + " min " + String(s % 60).padStart(2, "0");
+const pctTxt = (n) => n == null ? "—" : n + " %";
+function hbars(box, list, color) { // list: [label, value, title]
+  const max = Math.max(1, ...list.map((x) => x[1]));
+  box.replaceChildren(...(list.length ? list.map(([l, v, t], i) => { const row = el("div", null, "hbar"); row.title = t || l + " : " + v;
+    const tr_ = el("div", null, "t"), f = el("div", null, "f"); f.style.width = (100 * v / max) + "%"; f.style.background = typeof color === "function" ? color(i) : color || "var(--bleu)"; tr_.append(f);
+    row.append(el("div", l, "n"), tr_, el("div", String(v), "v")); return row; }) : [el("div", "Pas encore de données sur cette période.", "small")]));
+}
+function donut(box, parts, center) { // parts: [label, value, color]
+  const NS = "http://www.w3.org/2000/svg", svg = document.createElementNS(NS, "svg"); svg.setAttribute("viewBox", "0 0 200 200"); svg.setAttribute("role", "img");
+  const tot = parts.reduce((x, p) => x + p[1], 0), list = parts.filter((p) => p[1] > 0);
+  const ring = (stroke) => { const c = document.createElementNS(NS, "circle"); c.setAttribute("cx", 100); c.setAttribute("cy", 100); c.setAttribute("r", 70); c.setAttribute("fill", "none"); c.setAttribute("stroke", stroke); c.setAttribute("stroke-width", 36); return c; };
+  if (list.length <= 1) { const c = ring(list[0]?.[2] || "#e6e9f0"); if (list[0]) { const t = document.createElementNS(NS, "title"); t.textContent = list[0][0] + " : 100 %"; c.append(t); } svg.append(c); }
+  else { let a0 = -Math.PI / 2; const pt = (r, a) => (100 + r * Math.cos(a)).toFixed(2) + " " + (100 + r * Math.sin(a)).toFixed(2);
+    for (const [l, v, col] of list) { const a1 = a0 + v / tot * 2 * Math.PI, big = a1 - a0 > Math.PI ? 1 : 0, p = document.createElementNS(NS, "path");
+      p.setAttribute("d", "M " + pt(88, a0) + " A 88 88 0 " + big + " 1 " + pt(88, a1) + " L " + pt(52, a1) + " A 52 52 0 " + big + " 0 " + pt(52, a0) + " Z"); p.setAttribute("fill", col);
+      const t = document.createElementNS(NS, "title"); t.textContent = l + " : " + v + " (" + Math.round(100 * v / tot) + " %)"; p.append(t); svg.append(p); a0 = a1; } }
+  const mid = document.createElementNS(NS, "text"); mid.setAttribute("x", 100); mid.setAttribute("y", 106); mid.setAttribute("text-anchor", "middle"); mid.setAttribute("font-size", "18"); mid.setAttribute("font-weight", "700"); mid.setAttribute("fill", "#0F2A6B");
+  mid.textContent = center; svg.append(mid); box.replaceChildren(svg);
+}
+const FIXED_PAGES = 9; // accueil, boutique, blog, FAQ, panier, commande, compte client, espace parrain, confidentialité
+function renderContent(st, cats) {
+  const c = st.counts || {}, b = st.blog || {};
+  const totalPages = (c.posts_pub || 0) + (c.pages_pub || 0) + (c.products || 0) + (c.categories || 0) + FIXED_PAGES;
+  const k = [
+    ["Pages en ligne (total)", totalPages],
+    ["Articles publiés", c.posts_pub || 0],
+    ["Brouillons (articles + pages)", (c.posts_draft || 0) + (c.pages_draft || 0), (c.posts_draft || 0) + (c.pages_draft || 0) > 0],
+    ["Vues du blog", b.views || 0],
+    ["Lecteurs du blog", b.visitors || 0],
+    ["Temps de lecture moyen", secTxt(b.avg_sec)],
+    ["Lus jusqu'au bout", pctTxt(b.finish_pct)],
+    ["Clics vers la boutique", (b.clicks || 0) + (b.click_pct != null ? " (" + b.click_pct + " %)" : "")],
+  ];
+  $("cKpis").replaceChildren(...k.map(([l, v, w]) => { const d = el("div", null, "kpi" + (w ? " warn" : "")); d.append(el("div", l, "l"), el("div", String(v), "v")); return d; }));
+  // camembert : nombre de pages par type
+  const parts = [["Articles de blog", c.posts_pub || 0, C_COLORS[0]], ["Fiches produits", c.products || 0, C_COLORS[1]], ["Catégories de produits", c.categories || 0, C_COLORS[2]],
+    ["Pages libres", c.pages_pub || 0, C_COLORS[3]], ["Pages fixes du site", FIXED_PAGES, C_COLORS[7]]];
+  donut($("cPie"), parts, totalPages + " pages");
+  $("cPieRows").replaceChildren(...parts.map(([l, v, col]) => { const sw = el("span", null, "sw"); sw.style.background = col; return tr(td(sw, l), td(String(v)), td(Math.round(100 * v / Math.max(1, totalPages)) + " %")); }));
+  // vues par rubrique (sous-rubriques ; une rubrique principale sans enfant compte aussi)
+  const rubs = (st.rubriques || []);
+  const leaves = rubs.filter((r) => !rubs.some((x) => x.parent_id === r.id));
+  hbars($("cRubBars"), leaves.map((r) => { const p = rubs.find((x) => x.id === r.parent_id); return [(p ? p.name + " › " : "") + r.name, r.views, r.name + " : " + r.views + " vues, " + r.posts + " article(s)"]; }).sort((a, b) => b[1] - a[1]), (i) => C_COLORS[i % C_COLORS.length]);
+  // articles les plus lus
+  const posts = (st.posts || []).filter((p) => p.published);
+  hbars($("cTopBars"), posts.filter((p) => p.views > 0).slice(0, 10).map((p) => [p.title, p.views, p.title + " : " + p.views + " vues · " + (p.visitors || 0) + " lecteur(s) · temps moyen " + secTxt(p.avg_sec) + " · lu jusqu'au bout " + pctTxt(p.finish_pct)]));
+  // vues par jour
+  const days = []; const by = Object.fromEntries((b.per_day || []).map((d) => [d.day, d.views]));
+  const n = Math.min(cDays, 90); for (let i = n - 1; i >= 0; i--) { const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10); days.push([d, by[d] || 0]); }
+  const mx = Math.max(1, ...days.map((d) => d[1]));
+  $("cDay").replaceChildren(...days.map(([d, v]) => { const x = el("div", null, "b"); x.style.height = (100 * v / mx) + "%"; x.dataset.t = new Date(d).toLocaleDateString("fr-FR", { day: "numeric", month: "short" }) + " : " + v + " vue(s)"; return x; }));
+  // sources
+  const REF = { direct: "Accès direct / WhatsApp / favoris" };
+  $("cSources").replaceChildren(...((b.sources || []).length ? b.sources.map((s) => tr(td(REF[s.ref] || s.ref), td(el("strong", String(s.views))), td(Math.round(100 * s.views / Math.max(1, b.views)) + " %"))) : [tr(td("Pas encore de lecteurs sur cette période"))]));
+  // conseils
+  const tips = [];
+  const noRub = posts.filter((p) => !p.rubrique_id); if (noRub.length) tips.push("📂 " + noRub.length + " article(s) sans rubrique : « " + noRub.slice(0, 3).map((p) => p.title).join(" », « ") + " ». Choisissez une rubrique dans 📝 Blog.");
+  const zero = posts.filter((p) => !p.views); if (zero.length) tips.push("👀 " + zero.length + " article(s) sans aucune vue sur la période : partagez-les sur Facebook / WhatsApp ou améliorez leur titre.");
+  const noEx = posts.filter((p) => p.no_excerpt); if (noEx.length) tips.push("✍️ " + noEx.length + " article(s) sans extrait : c'est le texte affiché sur Google et Facebook.");
+  const noCv = posts.filter((p) => p.no_cover); if (noCv.length) tips.push("🖼️ " + noCv.length + " article(s) sans image ni vidéo principale : ils attirent moins de clics.");
+  const low = posts.filter((p) => p.reads >= 5 && p.finish_pct != null && p.finish_pct < 30); if (low.length) tips.push("📉 Peu lus jusqu'au bout (< 30 %) : « " + low.slice(0, 3).map((p) => p.title).join(" », « ") + " ». Raccourcissez ou ajoutez des intertitres et images.");
+  const emptyRub = leaves.filter((r) => !r.posts); if (emptyRub.length) tips.push("🗂️ Rubrique(s) sans article : " + emptyRub.map((r) => r.name).join(", ") + ".");
+  const noSeo = (st.pages || []).filter((g) => g.published && g.no_seo); if (noSeo.length) tips.push("🔎 " + noSeo.length + " page(s) libre(s) sans description Google.");
+  if ((c.posts_draft || 0) > 0) tips.push("📝 " + c.posts_draft + " article(s) en brouillon à terminer.");
+  $("cTips").replaceChildren(...(tips.length ? tips : ["Tout est en ordre ✔"]).map((t) => el("li", t)));
+  // détail par article
+  $("cPosts").replaceChildren(...(posts.length ? posts.map((p) => tr(td(el("strong", p.title)), td(rubName(p.rubrique_id) || "—"), td(el("strong", String(p.views))), td(String(p.total_views)), td(String(p.visitors || 0)),
+    td(secTxt(p.avg_sec)), td(pctTxt(p.finish_pct)), td(String(p.clicks || 0)))) : [tr(td("Aucun article publié pour le moment."))]));
+  // rubriques
+  const rv = Object.fromEntries(rubs.map((r) => [r.id, r]));
+  fillRubParent(); $("rCat").replaceChildren(new Option("— Aucune —", ""), ...cats.map((x) => new Option(x.name, x.slug))); if ($("rId").value) $("rCat").value = (RUBS.find((r) => r.id === $("rId").value) || {}).category_slug || "";
+  $("rRows").replaceChildren(...(RUBS.length ? rubTree().map(([r, d]) => tr(td(d ? "   › " : "", el("strong", r.name), r.active ? null : el("span", " (cachée)", "small"), el("br"), el("span", "/blog/rubrique/" + r.slug, "small mono")),
+    td(String(rv[r.id]?.posts ?? 0)), td(String(rv[r.id]?.pages ?? 0)), td(String(rv[r.id]?.views ?? 0)),
+    td(btn("Modifier", "grey", () => editRub(r)), " ", btn("Voir", "grey", () => window.open(SITE + "/blog/rubrique/" + encodeURIComponent(r.slug), "_blank", "noopener")), " ",
+      btn("Supprimer", "red", async () => { if (!confirm("Supprimer la rubrique « " + r.name + " » ? Ses articles et pages restent en ligne, simplement sans rubrique.")) return; await api({ action: "rubrique_delete", id: r.id }); toast("Rubrique supprimée"); resetRub(); await loadPages(); })))) : [tr(td("Aucune rubrique."))]));
+}
+function fillRubParent() {
+  const id = $("rId").value, v = $("rParent").value;
+  $("rParent").replaceChildren(new Option("— Rubrique principale —", ""), ...RUBS.filter((r) => !r.parent_id && r.id !== id).map((r) => new Option(r.name, r.id)));
+  $("rParent").value = v;
+}
+function editRub(r) {
+  $("rTitleH").textContent = "🗂️ Modifier la rubrique : " + r.name; $("rId").value = r.id; $("rName").value = r.name; $("rSlug").value = r.slug; $("rDesc").value = r.description || "";
+  $("rSort").value = r.sort || 0; $("rActive").checked = r.active; fillRubParent(); $("rParent").value = r.parent_id || ""; $("rCat").value = r.category_slug || "";
+  $("rubBox").scrollIntoView({ behavior: "smooth" });
+}
+function resetRub() { $("rTitleH").textContent = "🗂️ Rubriques"; for (const id of ["rId", "rName", "rSlug", "rDesc"]) $(id).value = ""; $("rSort").value = 0; $("rActive").checked = true; $("rParent").value = ""; $("rCat").value = ""; fillRubParent(); }
+$("rReset").addEventListener("click", resetRub);
+$("rSave").addEventListener("click", async () => {
+  try { await api({ action: "rubrique_save", id: $("rId").value || undefined, name: $("rName").value, slug: $("rSlug").value, parent_id: $("rParent").value, category_slug: $("rCat").value,
+      description: $("rDesc").value, sort: $("rSort").value, active: $("rActive").checked });
+    toast("Rubrique enregistrée ✔"); resetRub(); await loadPages(); } catch (e) { toast(errMsg(e)); }
+});
+document.querySelectorAll("#cPeriod button").forEach((b) => b.addEventListener("click", () => {
+  cDays = Number(b.dataset.d); document.querySelectorAll("#cPeriod button").forEach((x) => x.classList.toggle("on", x === b));
+  loadPages().catch((e) => toast(errMsg(e)));
+}));
+$("cNewPage").addEventListener("click", () => { resetPage(); $("gBox").scrollIntoView({ behavior: "smooth" }); $("gTitle").focus(); });
+$("cNewPost").addEventListener("click", async () => { await openTab("blog"); resetPost(); $("bTitle").focus(); });
+$("cNewRub").addEventListener("click", () => { resetRub(); $("rubBox").scrollIntoView({ behavior: "smooth" }); $("rName").focus(); });
 
 // ---------- modèles d'email ----------
 const TPL_VARS = ["{prenom}", "{nom}", "{commande}", "{total}", "{version}", "{produit}", "{produits}", "{cles}", "{bouton}", "{bouton_installation}", "{bouton_whatsapp}", "{lien_commande}", "{whatsapp}"];

@@ -13,6 +13,7 @@ function rewriteTarget(path) {
   if (/^\/boutique\/?$/.test(path)) return "/categorie";
   if (/^\/categorie\/.+/.test(path)) return "/categorie";
   if (/^\/produit\/[^/]+\/?$/.test(path)) return "/produit";
+  if (/^\/blog\/rubrique\/[^/]+\/?$/.test(path)) return "/blog";
   if (/^\/blog\/[^/]+\/?$/.test(path)) return "/article";
   if (/^\/page\/[^/]+\/?$/.test(path)) return "/page";
   return null;

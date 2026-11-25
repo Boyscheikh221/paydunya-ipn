@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Blog — licenceoff.com</title>
 <meta name="description" content="Conseils, guides d'installation et actualités sur Windows, Office et les logiciels.">
-<link rel="stylesheet" href="/shop.css?v=24">
+<link rel="stylesheet" href="/shop.css?v=25">
 <link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="64x64" href="/img/profil-64.png"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
 <meta property="og:image" content="https://www.licenceoff.com/img/partage.jpg">
 <link rel="alternate" type="application/rss+xml" title="Blog licenceoff.com" href="https://vnzpxfoeiixiqxkhdnik.supabase.co/functions/v1/boutique?blog_rss=1">
@@ -14,26 +14,59 @@
 <main class="wrap">
   <div id="crumbs"></div>
   <section class="block" style="padding-top:8px">
-    <h1 style="margin:0 0 6px">Blog</h1>
-    <p class="note" style="margin:0 0 18px">Guides d'installation, astuces et actualités.</p>
+    <h1 id="h1" style="margin:0 0 6px">Blog</h1>
+    <p id="intro" class="note" style="margin:0 0 14px">Guides d'installation, astuces et actualités : caméras de surveillance, licences Windows et Office, antivirus.</p>
+    <nav id="rubs" aria-label="Rubriques du blog"></nav>
+    <div class="blog-sort"><label for="sort">Trier :</label>
+      <select id="sort"><option value="vues">Les plus lus</option><option value="recent">Les plus récents</option><option value="tendance">Tendance (7 jours)</option><option value="rapide">Lecture rapide</option></select></div>
     <div id="posts" class="posts"><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div></div>
   </section>
 </main>
-<script src="/shop.js?v=24"></script>
+<script src="/shop.js?v=25"></script>
 <script>
 LO.page("blog");
 const { el, $ } = LO;
-LO.seo({ path: LO.url.blog });
-$("#crumbs").replaceChildren(LO.crumbs([["Accueil", LO.url.home], ["Blog"]]));
-LO.boutique({ action: "posts" }).then((d) => {
-  const list = d.posts || [];
-  $("#posts").replaceChildren(...list.map((p) => el("a", { class: "post-card", href: LO.url.post(p.slug) },
-    el("div", { class: "cv" }, (p.cover_url || LO.ytThumb(p.cover_video)) ? el("img", { src: p.cover_url || LO.ytThumb(p.cover_video), alt: "", loading: "lazy" }) : null, LO.ytId(p.cover_video) ? el("span", { class: "play", text: "▶" }) : null),
+// /blog (tous les articles) ou /blog/rubrique/<adresse> (une rubrique) ; tri gardé dans l'adresse (?tri=recent)
+const m = location.pathname.match(/^\/blog\/rubrique\/([^/]+)\/?$/);
+const rub = m ? decodeURIComponent(m[1]) : new URLSearchParams(location.search).get("rubrique") || "";
+const SORTS = ["vues", "recent", "tendance", "rapide"];
+let sort = new URLSearchParams(location.search).get("tri"); if (!SORTS.includes(sort)) sort = "vues";
+$("#sort").value = sort;
+const rubUrl = (slug) => slug ? "/blog/rubrique/" + encodeURIComponent(slug) : LO.url.blog;
+const date = (d) => new Date(d).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+function card(p) {
+  const img = p.cover_url || LO.ytThumb(p.cover_video);
+  return el("a", { class: "post-card", href: LO.url.post(p.slug) },
+    el("div", { class: "cv" }, img ? el("img", { src: img, alt: "", loading: "lazy" }) : null, LO.ytId(p.cover_video) ? el("span", { class: "play", text: "▶" }) : null),
     el("div", { class: "body" },
-      el("div", { class: "note", text: new Date(p.published_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }) }),
-      el("h3", { text: p.title }), p.excerpt ? el("p", { class: "note", text: p.excerpt }) : null))));
-  if (!list.length) $("#posts").replaceChildren(el("div", { class: "empty", text: "Les premiers articles arrivent bientôt." }));
-}).catch(() => $("#posts").replaceChildren(el("div", { class: "empty", text: "Erreur de chargement." })));
+      p.rubrique_name && !rub ? el("div", { class: "post-rub", text: p.rubrique_name }) : null,
+      el("div", { class: "note", text: date(p.published_at) + " · " + p.minutes + " min de lecture" + (p.views >= 10 ? " · " + p.views.toLocaleString("fr-FR") + " lectures" : "") }),
+      el("h3", { text: p.title }), p.excerpt ? el("p", { class: "note", text: p.excerpt }) : null));
+}
+function load() {
+  LO.boutique({ action: "posts", rubrique: rub, sort }).then((d) => {
+    const r = d.rubrique;
+    if (d.not_found) $("#intro").textContent = "Cette rubrique n'existe plus. Voici la liste des rubriques :";
+    const title = r ? r.name : "Blog";
+    $("#h1").textContent = d.not_found ? "Rubrique introuvable" : title;
+    if (r) $("#intro").textContent = r.description || "Tous nos articles sur : " + r.name + ".";
+    LO.seo({ title: (r ? r.name + " — Blog" : "Blog") + " — licenceoff.com", description: r ? (r.description || "Articles " + r.name + " : guides et conseils.") : undefined, path: rubUrl(r ? r.slug : "") });
+    $("#crumbs").replaceChildren(LO.crumbs(r ? [["Accueil", LO.url.home], ["Blog", LO.url.blog], ...(r.parent ? [[r.parent.name]] : []), [r.name]] : [["Accueil", LO.url.home], ["Blog"]]));
+    const tabs = d.rubriques || [];
+    $("#rubs").replaceChildren(tabs.length ? el("div", { class: "chips" },
+      el("a", { class: "chip" + (rub ? "" : " on"), href: LO.url.blog + (sort !== "vues" ? "?tri=" + sort : ""), text: "Tous" }),
+      ...tabs.map((t) => el("a", { class: "chip" + (rub === t.slug ? " on" : ""), href: rubUrl(t.slug) + (sort !== "vues" ? "?tri=" + sort : ""), text: t.name + (t.count ? " (" + t.count + ")" : "") }))) : "");
+    const list = d.posts || [];
+    $("#posts").replaceChildren(...list.map(card));
+    if (!list.length) $("#posts").replaceChildren(el("div", { class: "empty", text: r ? "Les premiers articles de cette rubrique arrivent bientôt." : "Les premiers articles arrivent bientôt." }));
+  }).catch(() => $("#posts").replaceChildren(el("div", { class: "empty", text: "Erreur de chargement." })));
+}
+$("#sort").addEventListener("change", () => {
+  sort = $("#sort").value;
+  const u = new URL(location.href); if (sort === "vues") u.searchParams.delete("tri"); else u.searchParams.set("tri", sort);
+  history.replaceState(null, "", u.pathname + u.search); load();
+});
+load();
 </script>
 </body>
 </html>

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Article — licenceoff.com</title>
-<link rel="stylesheet" href="/shop.css?v=24">
+<link rel="stylesheet" href="/shop.css?v=25">
 <link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="64x64" href="/img/profil-64.png"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
 <meta property="og:image" content="https://www.licenceoff.com/img/partage.jpg">
 </head>
@@ -12,13 +12,13 @@
 <main>
   <article class="post" id="view"><div class="skeleton"></div></article>
 </main>
-<script src="/shop.js?v=24"></script>
+<script src="/shop.js?v=25"></script>
 <script>
 LO.page("blog");
 const { el, $ } = LO;
 const slug = LO.slugFromPath("blog", "a");
 LO.boutique({ action: "post", slug }).then((d) => {
-  const p = d.post;
+  const p = d.post, r = d.rubrique;
   if (!p) { $("#view").replaceChildren(LO.crumbs([["Accueil", LO.url.home], ["Blog", LO.url.blog], ["Article introuvable"]]), el("h1", { text: "Article introuvable" }), el("a", { class: "btn", href: LO.url.blog, text: "Retour au blog" })); return; }
   LO.seo({ title: p.title + " — licenceoff.com", description: p.excerpt || (() => { const t = String(p.content || "").replace(/!\[[^\]]*\]\([^)]*\)/g, "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/https?:\/\/\S+/g, "").replace(/[#*>_`-]/g, "").replace(/\s+/g, " ").trim(); return t.length > 155 ? t.slice(0, 155).replace(/\s+\S*$/, "") + "…" : t || p.title; })(), path: LO.url.post(p.slug), image: p.cover_url || LO.ytThumb(p.cover_video) || null });
   LO.jsonLd({ "@context": "https://schema.org", "@type": "BlogPosting", headline: p.title, description: p.excerpt || undefined,
@@ -28,15 +28,58 @@ LO.boutique({ action: "post", slug }).then((d) => {
     publisher: { "@type": "Organization", name: "licenceoff.com", url: LO.SITE, logo: { "@type": "ImageObject", url: LO.SITE + "/img/logo.png" } } });
   const content = el("div", { class: "content" }); content.append(LO.richText(p.content));
   $("#view").replaceChildren(...[
-    LO.crumbs([["Accueil", LO.url.home], ["Blog", LO.url.blog], [p.title]]),
+    LO.crumbs([["Accueil", LO.url.home], ["Blog", LO.url.blog], ...(r ? [[r.name, "/blog/rubrique/" + encodeURIComponent(r.slug)]] : []), [p.title]]),
     el("h1", { text: p.title }),
-    el("div", { class: "note", text: new Date(p.published_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }) }),
+    el("div", { class: "note" }, new Date(p.published_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }) + " · " + p.minutes + " min de lecture",
+      r ? " · " : null, r ? el("a", { href: "/blog/rubrique/" + encodeURIComponent(r.slug), text: r.name }) : null),
     LO.ytId(p.cover_video) ? el("div", { class: "cv" }, LO.ytEmbed(p.cover_video)) : p.cover_url ? el("div", { class: "cv" }, el("img", { src: p.cover_url, alt: "" })) : null,
     content,
     LO.shareBar(LO.SITE + LO.url.post(p.slug), p.title),
     el("div", { class: "panel", style: "margin-top:28px;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap" },
-      el("strong", { text: "Besoin d'une licence ?" }), el("a", { class: "btn orange", href: LO.url.shop, text: "Voir la boutique" }))].filter(Boolean));
+      el("strong", { text: r && r.category_slug === "cameras-surveillance" ? "Besoin d'une caméra de surveillance ?" : "Besoin d'une licence ?" }),
+      el("a", { class: "btn orange", href: r && r.category_slug ? "/categorie/" + encodeURIComponent(r.category_slug) : LO.url.shop, "data-shop": "1", text: r && r.category_slug ? "Voir les produits" : "Voir la boutique" })),
+    (d.related || []).length ? el("section", { class: "related" }, el("h2", { text: "À lire aussi" + (r ? " : " + r.name : "") }),
+      el("div", { class: "posts" }, ...d.related.map((x) => el("a", { class: "post-card", href: LO.url.post(x.slug) },
+        el("div", { class: "cv" }, (x.cover_url || LO.ytThumb(x.cover_video)) ? el("img", { src: x.cover_url || LO.ytThumb(x.cover_video), alt: "", loading: "lazy" }) : null),
+        el("div", { class: "body" }, el("h3", { text: x.title })))))) : null].filter(Boolean));
+  readTracking(p, r);
 }).catch(() => $("#view").replaceChildren(el("p", { text: "Erreur de chargement." })));
+
+// Mesure de lecture (pour le tableau de bord « Pages & blog ») : temps passé onglet visible, jusqu'où l'article est lu,
+// clic vers la boutique. Envoyé une fois en quittant la page. Aucun nom, aucune IP ; identifiant de visite seulement si cookies acceptés.
+// Pixels Meta / Google : seulement si le visiteur a accepté les cookies (LO.px ne fait rien sinon).
+function readTracking(p, r) {
+  const t0 = Date.now(); let shown = 0, since = document.visibilityState === "visible" ? t0 : 0, maxScroll = 0, clicked = false, sent = false, finished = false;
+  const rubName = r ? r.name : "Sans rubrique";
+  LO.px("ViewContent", { content_type: "article", content_name: p.title, content_category: rubName });
+  const art = $("#view");
+  const onScroll = () => {
+    // part de l'article (texte) déjà passée à l'écran
+    const box = (art.querySelector(".content") || art).getBoundingClientRect();
+    maxScroll = Math.max(maxScroll, Math.max(0, Math.min(100, Math.round(100 * (innerHeight - box.top) / (box.height || 1)))));
+    if (!finished && maxScroll >= 90) { finished = true; LO.px("ArticleLu", { content_name: p.title, content_category: rubName }, null, true); }
+  };
+  addEventListener("scroll", onScroll, { passive: true }); onScroll();
+  art.addEventListener("click", (e) => {
+    const a = e.target.closest("a[href]"); if (!a) return;
+    const h = a.getAttribute("href") || "";
+    if (a.dataset.shop || /^\/(produit|categorie|boutique|panier)/.test(h) || /licenceoff\.com\/(produit|categorie|boutique)/.test(h)) {
+      clicked = true; LO.px("ClicBoutique", { content_name: p.title, content_category: rubName }, null, true);
+    }
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") since = Date.now();
+    else { if (since) shown += Date.now() - since; since = 0; send(); }
+  });
+  addEventListener("pagehide", send);
+  function send() {
+    if (sent) return; if (since) { shown += Date.now() - since; since = Date.now(); }
+    if (shown < 3000) return; // moins de 3 secondes : pas une vraie lecture
+    sent = true;
+    const body = JSON.stringify({ action: "read", slug: p.slug, sec: Math.round(shown / 1000), scroll: maxScroll, clicked, v: LO.visitorId(), ref: document.referrer });
+    try { fetch("https://vnzpxfoeiixiqxkhdnik.supabase.co/functions/v1/boutique", { method: "POST", headers: { "Content-Type": "application/json" }, body, keepalive: true }); } catch (_) {}
+  }
+}
 </script>
 </body>
 </html>

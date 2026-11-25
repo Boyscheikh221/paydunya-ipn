@@ -288,7 +288,7 @@ const LO = (() => {
       window.fbq("init", pixelId);
       window.fbq("track", "PageView");
     }
-    for (const a of pxQueue.splice(0)) window.fbq("track", ...a);
+    for (const a of pxQueue.splice(0)) a[0] === "__custom" ? window.fbq("trackCustom", ...a.slice(1)) : window.fbq("track", ...a);
   }
   // ---------- balise Google Ads : chargée SEULEMENT si le visiteur accepte les cookies (comme le pixel Meta) ----------
   // ID (AW-…) et libellé de la conversion « Achat » réglés dans l'admin (Réglages).
@@ -307,7 +307,11 @@ const LO = (() => {
     for (const a of gQueue.splice(0)) gSend(...a);
   }
   // traduit un événement Meta en événement Google (mêmes moments : produit vu, panier, commande, achat)
+  // articles du blog : événements à part (lecture, lu jusqu'au bout, clic vers la boutique) avec la rubrique,
+  // pour créer des audiences « lecteurs caméras », « lecteurs antivirus »… sans mélanger avec les produits du catalogue
+  const G_ARTICLE = { ViewContent: "lecture_article", ArticleLu: "article_lu_jusqu_au_bout", ClicBoutique: "clic_boutique_depuis_article" };
   function gEvent(event, params, opts) {
+    if ((params || {}).content_type === "article" || G_ARTICLE[event] && event !== "ViewContent") return [G_ARTICLE[event] || event, { article: params.content_name, rubrique: params.content_category }];
     const p = params || {}, items = (p.contents || (p.content_ids || []).map((id) => ({ id, quantity: 1 }))).map((c) => ({ id: c.id, quantity: c.quantity || 1, price: c.item_price, google_business_vertical: "retail" }));
     const base = { value: p.value, currency: p.currency || "XOF", items };
     if (event === "ViewContent") return ["view_item", base];
@@ -325,9 +329,11 @@ const LO = (() => {
     if (window.gtag && gadsId) gSend(event, params, opts); else gQueue.push([event, params, opts]);
   }
   // événement : envoyé tout de suite si le pixel est chargé, sinon gardé en attente du chargement (jamais sans accord)
-  function px(event, params, opts) {
+  // custom = true : événement personnalisé Meta (trackCustom), ex. « ArticleLu »
+  function px(event, params, opts, custom) {
     if (consent() !== "yes") return;
     gTrack(event, params, opts);
+    if (custom) { const c = [event, params]; if (window.fbq && pixelId) window.fbq("trackCustom", ...c); else pxQueue.push(["__custom", ...c]); return; }
     const a = opts ? [event, params, opts] : [event, params];
     if (window.fbq && pixelId) window.fbq("track", ...a); else pxQueue.push(a);
   }

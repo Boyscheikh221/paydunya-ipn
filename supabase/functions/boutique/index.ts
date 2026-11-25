@@ -633,6 +633,7 @@ async function sitemap() {
     db.from("posts").select("slug, published_at").eq("published", true),
     db.from("pages").select("slug, updated_at").eq("published", true),
   ]);
+  const { data: rubs } = await db.from("rubriques").select("slug").eq("active", true);
   const catById = Object.fromEntries((cats ?? []).map((c) => [c.id, c]));
   const used = new Set((prods ?? []).map((p) => p.category_id));
   for (const id of [...used]) { const par = catById[id as string]?.parent_id; if (par) used.add(par); }
@@ -645,6 +646,7 @@ async function sitemap() {
     // deno-lint-ignore no-explicit-any
     ...(prods ?? []).map((p: any) => `<url><loc>${site}/produit/${x(encodeURIComponent(p.slug))}</loc></url>`),
     ...(posts ?? []).map((p) => `<url><loc>${site}/blog/${x(encodeURIComponent(p.slug))}</loc>${day(p.published_at)}</url>`),
+    ...(rubs ?? []).map((r) => `<url><loc>${site}/blog/rubrique/${x(encodeURIComponent(r.slug))}</loc></url>`),
     ...(pages ?? []).map((p) => `<url><loc>${site}/page/${x(encodeURIComponent(p.slug))}</loc>${day(p.updated_at)}</url>`),
   ];
   return new Response(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join("\n")}\n</urlset>\n`,
@@ -764,6 +766,25 @@ async function handle(req: Request): Promise<Response> {
         page, visitor: str(body.v, 40) || null, referrer: ref.slice(0, 100) || null,
         device: /Mobi|Android|iPhone/i.test(ua) ? "mobile" : "ordinateur",
       });
+      // compteur de vues de l'article (tri « les plus lus » du blog)
+      const art = page.match(/^\/blog\/([a-z0-9-]{1,120})\/?$/);
+      if (art && art[1] !== "rubrique") await db.rpc("post_view", { p_slug: art[1] });
+      return json({ ok: true });
+    }
+    // ---------- Lecture d'un article : temps passé, jusqu'où, clic vers la boutique (envoyé en quittant la page) ----------
+    case "read": {
+      const ua = req.headers.get("user-agent") ?? "";
+      if (/bot|crawl|spider|preview|facebookexternalhit|whatsapp/i.test(ua)) return json({ ok: true });
+      const slug = str(body.slug, 120);
+      if (!/^[a-z0-9-]{1,120}$/.test(slug)) return json({ ok: true });
+      let ref = "";
+      try { ref = body.ref ? new URL(String(body.ref)).hostname.replace(/^www\./, "") : ""; } catch (_) { /* ignore */ }
+      if (ref.endsWith("licenceoff.com") || ref.endsWith("pages.dev")) ref = "";
+      await db.from("post_reads").insert({
+        post_slug: slug, seconds: Math.max(0, Math.min(3600, Math.round(Number(body.sec) || 0))),
+        scroll: Math.max(0, Math.min(100, Math.round(Number(body.scroll) || 0))), clicked: body.clicked === true,
+        visitor: str(body.v, 40) || null, referrer: ref.slice(0, 100) || null,
+      });
       return json({ ok: true });
     }
 
@@ -812,10 +833,42 @@ async function handle(req: Request): Promise<Response> {
 
     // ---------- Blog ----------
     case "posts": {
-      const { data, error } = await db.from("posts").select("slug, title, excerpt, cover_url, cover_video, published_at")
-        .eq("published", true).order("published_at", { ascending: false }).limit(Math.min(Number(body.limit) || 50, 100));
+      // tri : vues (les plus lus, par défaut), recent, tendance (vues des 7 derniers jours), rapide (lecture la plus courte)
+      const [{ data, error }, { data: rubs }] = await Promise.all([
+        db.rpc("blog_list"),
+        db.from("rubriques").select("id, slug, name, description, parent_id, category_slug, sort").eq("active", true).order("sort").order("name"),
+      ]);
       if (error) return json({ error: "error" }, 500);
-      return json({ posts: data });
+      // deno-lint-ignore no-explicit-any
+      let list: any[] = (data as any[]) ?? [];
+      const all = rubs ?? [];
+      const bySlug = Object.fromEntries(all.map((r) => [r.slug, r]));
+      const counts: Record<string, number> = {};
+      for (const p of list) if (p.rubrique) {
+        counts[p.rubrique] = (counts[p.rubrique] ?? 0) + 1;
+        const par = all.find((r) => r.id === bySlug[p.rubrique]?.parent_id); if (par) counts[par.slug] = (counts[par.slug] ?? 0) + 1;
+      }
+      const want = str(body.rubrique, 80);
+      const cur = want ? bySlug[want] : null;
+      if (want && !cur) return json({ posts: [], rubrique: null, rubriques: [], not_found: true });
+      if (cur) {
+        const kids = new Set([cur.slug, ...all.filter((r) => r.parent_id === cur.id).map((r) => r.slug)]);
+        list = list.filter((p) => kids.has(p.rubrique));
+      }
+      const sort = ["vues", "recent", "tendance", "rapide"].includes(body.sort) ? body.sort : "vues";
+      const date = (p: { published_at: string }) => new Date(p.published_at).getTime();
+      list.sort((a, b) => sort === "recent" ? date(b) - date(a)
+        : sort === "tendance" ? b.views_7d - a.views_7d || b.views - a.views || date(b) - date(a)
+        : sort === "rapide" ? a.words - b.words || date(b) - date(a)
+        : b.views - a.views || date(b) - date(a));
+      const minutes = (w: number) => Math.max(1, Math.round(w / 200));
+      const parentOf = (r: { parent_id: string | null }) => all.find((x) => x.id === r.parent_id);
+      return json({
+        posts: list.slice(0, Math.min(Number(body.limit) || 60, 200)).map((p) => ({ ...p, minutes: minutes(p.words), words: undefined })),
+        rubrique: cur ? { slug: cur.slug, name: cur.name, description: cur.description ?? "", parent: parentOf(cur) ? { slug: parentOf(cur)!.slug, name: parentOf(cur)!.name } : null } : null,
+        // sous-rubriques (onglets du blog) : rubriques sans enfant, avec leur nombre d'articles
+        rubriques: all.filter((r) => !all.some((k) => k.parent_id === r.id)).map((r) => ({ slug: r.slug, name: r.name, count: counts[r.slug] ?? 0 })),
+      });
     }
     // ---------- Pages libres (créées dans l'admin) ----------
     case "nav": { // liens du menu et du pied de page
@@ -837,10 +890,24 @@ async function handle(req: Request): Promise<Response> {
       return json({ page: data });
     }
     case "post": {
-      const { data } = await db.from("posts").select("slug, title, excerpt, content, cover_url, cover_video, published_at, updated_at")
+      const { data } = await db.from("posts").select("slug, title, excerpt, content, cover_url, cover_video, published_at, updated_at, views, rubrique_id")
         .eq("slug", str(body.slug, 120)).eq("published", true).maybeSingle();
       if (!data) return json({ error: "not_found" }, 404);
-      return json({ post: data });
+      const { rubrique_id, ...post } = data;
+      let rubrique = null, related: unknown[] = [];
+      if (rubrique_id) {
+        const { data: r } = await db.from("rubriques").select("slug, name, category_slug, parent_id").eq("id", rubrique_id).eq("active", true).maybeSingle();
+        if (r) {
+          const { data: par } = r.parent_id ? await db.from("rubriques").select("slug, name").eq("id", r.parent_id).maybeSingle() : { data: null };
+          rubrique = { slug: r.slug, name: r.name, category_slug: r.category_slug ?? null, parent: par ?? null };
+          // autres articles de la même rubrique, les plus lus d'abord
+          const { data: rel } = await db.from("posts").select("slug, title, cover_url, cover_video, published_at").eq("published", true)
+            .eq("rubrique_id", rubrique_id).neq("slug", post.slug).order("views", { ascending: false }).limit(3);
+          related = rel ?? [];
+        }
+      }
+      const words = String(post.content || "").trim().split(/\s+/).filter(Boolean).length;
+      return json({ post: { ...post, minutes: Math.max(1, Math.round(words / 200)) }, rubrique, related });
     }
 
     // ---------- Parrainage : code d'un lien (?ref=) et prix du panier ----------
