@@ -27,6 +27,7 @@ LO.boutique({ action: "page", slug }).then((d) => {
       el("p", { text: "Cette page n'existe plus ou a changé d'adresse." }), el("a", { class: "btn", href: LO.url.home, text: "Retour à l'accueil" }));
     return;
   }
+  LO.waFloat(p.show_whatsapp !== false); // WhatsApp : réglable pour chaque page dans l'admin
   LO.seo({ title: p.seo_title || p.title + " — licenceoff.com", description: (p.seo_description || p.content || p.title).replace(/[#*\[\]]/g, "").replace(/\s+/g, " ").slice(0, 160), path: LO.url.page(p.slug), image: p.image_url || null });
   const content = el("div", { class: "content" }); content.append(LO.richText(p.content));
   $("#view").replaceChildren(...[

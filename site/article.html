@@ -19,6 +19,7 @@ const { el, $ } = LO;
 const slug = LO.slugFromPath("blog", "a");
 LO.boutique({ action: "post", slug }).then((d) => {
   const p = d.post, r = d.rubrique;
+  if (p) LO.waFloat(p.show_whatsapp === true); // WhatsApp : seulement si coché pour cet article dans l'admin
   if (!p) { $("#view").replaceChildren(LO.crumbs([["Accueil", LO.url.home], ["Blog", LO.url.blog], ["Article introuvable"]]), el("h1", { text: "Article introuvable" }), el("a", { class: "btn", href: LO.url.blog, text: "Retour au blog" })); return; }
   LO.seo({ title: p.title + " — licenceoff.com", description: p.excerpt || (() => { const t = String(p.content || "").replace(/!\[[^\]]*\]\([^)]*\)/g, "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/https?:\/\/\S+/g, "").replace(/[#*>_`-]/g, "").replace(/\s+/g, " ").trim(); return t.length > 155 ? t.slice(0, 155).replace(/\s+\S*$/, "") + "…" : t || p.title; })(), path: LO.url.post(p.slug), image: p.cover_url || LO.ytThumb(p.cover_video) || null });
   LO.jsonLd({ "@context": "https://schema.org", "@type": "BlogPosting", headline: p.title, description: p.excerpt || undefined,

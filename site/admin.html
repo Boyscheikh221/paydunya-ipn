@@ -30,6 +30,10 @@
   .oripie path:hover { opacity:.85; }
   .oritab { flex:1; min-width:240px; }
   .oritab td:first-child { white-space:nowrap; }
+  /* Pages & blog : sous-menu collant en haut de la page */
+  .subnav { position:sticky; top:0; z-index:5; display:flex; gap:6px; flex-wrap:wrap; background:var(--fond); padding:8px 0 10px; margin:-6px 0 8px; border-bottom:1px solid var(--ligne); }
+  .subnav button { background:#fff; color:var(--nuit); border:1px solid #d6dce8; padding:9px 14px; font-size:14px; }
+  .subnav button.on { background:var(--bleu); color:#fff; border-color:var(--bleu); }
   /* Pages & blog : barres horizontales (articles les plus lus, rubriques) */
   .hbars { display:grid; gap:8px; }
   .hbar { display:grid; grid-template-columns:minmax(120px,38%) 1fr auto; gap:10px; align-items:center; font-size:13px; }
@@ -414,6 +418,7 @@
         <textarea id="bContent" style="min-height:320px" placeholder="Écrivez votre article. Utilisez les boutons au-dessus pour la mise en forme. Pour ajouter une image : bouton 🖼️ Image, ou glissez-déposez / collez une image directement ici."></textarea>
         <div id="bPreview" class="bpreview hidden"></div>
         <label class="check"><input type="checkbox" id="bPub"> En ligne (visible sur le site)</label>
+        <label class="check"><input type="checkbox" id="bWa"> 💬 Afficher le bouton WhatsApp sur cet article (caché par défaut sur le blog)</label>
         <label class="check" id="bFbRow"><input type="checkbox" id="bFb" checked> 📣 Publier aussi sur la page Facebook (à la première publication)</label>
         <div class="small" id="bFbInfo"></div>
         <div class="bar"><button id="bPublish" class="green">🚀 Publier l'article</button><button id="bSave" class="grey">💾 Enregistrer sans publier</button><button id="bReset" class="grey">Nouvel article</button></div>
@@ -427,16 +432,22 @@
 
     <section id="tab-pages" class="hidden">
       <h1>Pages & blog</h1>
+      <div class="subnav" id="cSub" role="tablist" aria-label="Sections de la page">
+        <button data-s="apercu" class="on">📊 Vue d'ensemble</button><button data-s="articles">📈 Articles en détail</button><button data-s="rubriques">🗂️ Rubriques</button><button data-s="pages">📄 Pages libres</button>
+      </div>
       <div class="bar" style="justify-content:space-between">
         <div class="seg" id="cPeriod"><button data-d="7">7 jours</button><button data-d="30" class="on">30 jours</button><button data-d="90">3 mois</button><button data-d="365">1 an</button></div>
         <div class="bar" style="margin:0"><button id="cNewPage" class="green">➕ Nouvelle page</button><button id="cNewPost" class="org">✍️ Nouvel article</button><button id="cNewRub" class="grey">🗂️ Nouvelle rubrique</button></div>
       </div>
+      <div class="sub" data-sub="apercu">
       <div id="cKpis" class="kpis"></div>
       <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px">
         <div class="box"><h2>Vos pages, par type</h2>
           <div class="ori"><div id="cPie" class="oripie"></div><table class="small oritab"><thead><tr><th>Type</th><th>Nombre</th><th>Part</th></tr></thead><tbody id="cPieRows"></tbody></table></div></div>
         <div class="box"><h2>Les sujets qui intéressent le plus</h2><p class="small" style="margin:-6px 0 10px">Vues des articles par rubrique, sur la période choisie</p><div id="cRubBars" class="hbars"></div></div>
       </div>
+      </div>
+      <div class="sub hidden" data-sub="articles">
       <div class="box"><h2>Articles les plus lus</h2><p class="small" style="margin:-6px 0 10px">Vues sur la période choisie (survolez une barre pour le détail)</p><div id="cTopBars" class="hbars"></div></div>
       <div class="box"><h2>Vues du blog, jour par jour</h2><div id="cDay" class="chart"></div></div>
       <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px">
@@ -447,6 +458,8 @@
         <div class="tablewrap"><table class="small"><thead><tr><th>Article</th><th>Rubrique</th><th title="Vues sur la période choisie">Vues</th><th title="Depuis la publication">Vues totales</th><th title="Visiteurs différents (ceux qui ont accepté les cookies)">Visiteurs</th><th title="Temps moyen passé sur l'article">Temps de lecture</th><th title="Part des lecteurs arrivés à la fin de l'article">Lu jusqu'au bout</th><th title="Lecteurs qui ont cliqué vers la boutique ou un produit">Clics boutique</th></tr></thead><tbody id="cPosts"></tbody></table></div>
         <p class="small">Temps de lecture, « lu jusqu'au bout » et clics sont mesurés depuis la mise en place de ce tableau de bord (25/11/2026).</p></div>
 
+      </div>
+      <div class="sub hidden" data-sub="rubriques">
       <div class="box" id="rubBox">
         <h2 id="rTitleH">🗂️ Rubriques</h2>
         <p class="small" style="margin-top:-6px">Les rubriques rangent vos articles et vos pages par sujet (ex. Caméras de surveillance, Licences › Antivirus). Les rubriques « du bas » (sans sous-rubrique) deviennent les onglets du blog : www.licenceoff.com/blog/rubrique/<i>adresse</i>.</p>
@@ -464,6 +477,8 @@
         <table class="small"><thead><tr><th>Rubrique</th><th>Articles</th><th>Pages</th><th>Vues (période)</th><th></th></tr></thead><tbody id="rRows"></tbody></table>
       </div>
 
+      </div>
+      <div class="sub hidden" data-sub="pages">
       <p class="small">Pages libres : À propos, Conditions de vente, une promo, un service… Adresse : www.licenceoff.com/page/<i>adresse</i>.
         Pour une nouvelle catégorie de produits, allez dans 📦 Produits › Catégories : sa page se crée toute seule. Pour écrire un article, utilisez 📝 Blog.</p>
       <div class="box" id="gBox">
@@ -481,6 +496,7 @@
           <div><label>Statut</label><select id="gPub"><option value="1">✅ Publiée</option><option value="0">📝 Brouillon (cachée)</option></select></div>
           <label class="check"><input type="checkbox" id="gMenu"> Afficher dans le menu du haut</label>
           <label class="check"><input type="checkbox" id="gFoot" checked> Afficher dans le pied de page</label>
+          <label class="check"><input type="checkbox" id="gWa" checked> 💬 Bouton WhatsApp sur cette page</label>
         </div>
         <details class="box" style="margin:10px 0 0;padding:12px"><summary style="cursor:pointer;font-weight:700">🔎 Référencement Google (facultatif)</summary>
           <label>Titre pour Google</label><input id="gSeoT" maxlength="120">
@@ -488,6 +504,7 @@
         <div class="bar" style="margin-top:12px"><button id="gSave" class="green">Enregistrer</button><button id="gReset" class="grey">Nouvelle page</button></div>
       </div>
       <div class="box"><table class="small"><thead><tr><th>Page</th><th>Rubrique</th><th>Statut</th><th>Où</th><th>Vues (période)</th><th></th></tr></thead><tbody id="gRows"></tbody></table></div>
+      </div>
     </section>
 
     <!-- ===== FAQ ===== -->
@@ -1808,9 +1825,9 @@ function editPost(p) {
   remember("post", p.id);
   $("bTitleH").textContent = "Modifier : " + p.title; $("bId").value = p.id; $("bTitle").value = p.title; $("bExcerpt").value = p.excerpt || ""; exCount();
   $("bContent").value = p.content || ""; $("bImg").value = p.cover_url || ""; $("bVid").value = p.cover_video || ""; $("bImgPrev").src = p.cover_url || ""; $("bImgPrev").classList.toggle("hidden", !p.cover_url);
-  $("bPub").checked = p.published; $("bRub").value = p.rubrique_id || ""; window.scrollTo(0, 0);
+  $("bPub").checked = p.published; $("bRub").value = p.rubrique_id || ""; $("bWa").checked = p.show_whatsapp === true; window.scrollTo(0, 0);
 }
-function resetPost() { $("bPreview").classList.add("hidden"); $("bContent").classList.remove("hidden"); $("bPrevBtn").textContent = "👁 Aperçu"; $("bEdMsg").textContent = ""; $("bTitleH").textContent = "Nouvel article"; for (const id of ["bId", "bTitle", "bExcerpt", "bContent", "bImg", "bVid"]) $(id).value = ""; $("bImgPrev").classList.add("hidden"); $("bPub").checked = false; $("bRub").value = ""; $("bImgMsg").textContent = ""; exCount(); }
+function resetPost() { $("bPreview").classList.add("hidden"); $("bContent").classList.remove("hidden"); $("bPrevBtn").textContent = "👁 Aperçu"; $("bEdMsg").textContent = ""; $("bTitleH").textContent = "Nouvel article"; for (const id of ["bId", "bTitle", "bExcerpt", "bContent", "bImg", "bVid"]) $(id).value = ""; $("bImgPrev").classList.add("hidden"); $("bPub").checked = false; $("bRub").value = ""; $("bWa").checked = false; $("bImgMsg").textContent = ""; exCount(); }
 function exCount() { const n = $("bExcerpt").value.trim().length;
   $("bExCount").textContent = n ? n + " / 160 caractères" + (n < 70 ? " · un peu court, visez 120 à 155" : n <= 155 ? " · ✔ bonne longueur" : " · Google coupera la fin") : "Vide : on prendra automatiquement le début de l'article (150 caractères). Idéal : 120 à 155 caractères.";
   $("bExCount").style.color = n && (n < 70 || n > 155) ? "#c2410c" : n ? "#15803d" : ""; }
@@ -1911,7 +1928,7 @@ $("bExcerpt").addEventListener("input", exCount); exCount();
 $("bPublish").addEventListener("click", () => { $("bPub").checked = true; $("bSave").click(); });
 $("bSave").addEventListener("click", async () => {
   if (!$("bRub").value && !confirm("Cet article n'a pas de rubrique : il n'apparaîtra dans aucun onglet du blog (seulement dans « Tous »). Continuer quand même ?")) return;
-  try { const d = await api({ action: "post_save", id: $("bId").value || undefined, title: $("bTitle").value, excerpt: $("bExcerpt").value, content: $("bContent").value, cover_url: $("bImg").value, cover_video: $("bVid").value, rubrique_id: $("bRub").value, published: $("bPub").checked, facebook: $("bFb").checked });
+  try { const d = await api({ action: "post_save", id: $("bId").value || undefined, title: $("bTitle").value, excerpt: $("bExcerpt").value, content: $("bContent").value, cover_url: $("bImg").value, cover_video: $("bVid").value, rubrique_id: $("bRub").value, show_whatsapp: $("bWa").checked, published: $("bPub").checked, facebook: $("bFb").checked });
     toast(($("bPub").checked ? "Article publié ✔" : "Brouillon enregistré ✔") + (d.facebook ? (d.facebook.ok ? " · publié sur Facebook ✔" : " · Facebook : " + (ERR[d.facebook.reason] || d.facebook.reason)) : ""));
     resetPost(); await loadBlog(); }
   catch (e) { toast(errMsg(e)); }
@@ -1934,19 +1951,19 @@ function editPage(p) {
   remember("page", p.id);
   $("gTitleH").textContent = "Modifier : " + p.title; $("gId").value = p.id; $("gTitle").value = p.title; $("gSlug").value = p.slug; $("gSort").value = p.sort || 0;
   $("gContent").value = p.content || ""; $("gImg").value = p.image_url || ""; $("gImgPrev").src = p.image_url || ""; $("gImgPrev").classList.toggle("hidden", !p.image_url);
-  $("gPub").value = p.published ? "1" : "0"; $("gMenu").checked = p.in_menu; $("gFoot").checked = p.in_footer; $("gSeoT").value = p.seo_title || ""; $("gSeoD").value = p.seo_description || ""; $("gRub").value = p.rubrique_id || "";
-  $("gBox").scrollIntoView({ behavior: "smooth" });
+  $("gPub").value = p.published ? "1" : "0"; $("gMenu").checked = p.in_menu; $("gFoot").checked = p.in_footer; $("gSeoT").value = p.seo_title || ""; $("gSeoD").value = p.seo_description || ""; $("gRub").value = p.rubrique_id || ""; $("gWa").checked = p.show_whatsapp !== false;
+  showSub("pages"); $("gBox").scrollIntoView({ behavior: "smooth" });
 }
 function resetPage() {
   $("gTitleH").textContent = "Nouvelle page"; for (const id of ["gId", "gTitle", "gSlug", "gContent", "gImg", "gSeoT", "gSeoD"]) $(id).value = "";
-  $("gSort").value = 0; $("gImgPrev").classList.add("hidden"); $("gImgMsg").textContent = ""; $("gPub").value = "1"; $("gMenu").checked = false; $("gFoot").checked = true; $("gRub").value = "";
+  $("gSort").value = 0; $("gImgPrev").classList.add("hidden"); $("gImgMsg").textContent = ""; $("gPub").value = "1"; $("gMenu").checked = false; $("gFoot").checked = true; $("gRub").value = ""; $("gWa").checked = true;
 }
 $("gReset").addEventListener("click", resetPage);
 $("gImgFile").addEventListener("change", () => uploadImage($("gImgFile"), $("gImg"), $("gImgPrev"), $("gImgMsg")));
 $("gSave").addEventListener("click", async () => {
   try {
     await api({ action: "page_save", id: $("gId").value || undefined, title: $("gTitle").value, slug: $("gSlug").value, sort: $("gSort").value, content: $("gContent").value,
-      image_url: $("gImg").value, rubrique_id: $("gRub").value, published: $("gPub").value === "1", in_menu: $("gMenu").checked, in_footer: $("gFoot").checked, seo_title: $("gSeoT").value, seo_description: $("gSeoD").value });
+      image_url: $("gImg").value, rubrique_id: $("gRub").value, show_whatsapp: $("gWa").checked, published: $("gPub").value === "1", in_menu: $("gMenu").checked, in_footer: $("gFoot").checked, seo_title: $("gSeoT").value, seo_description: $("gSeoD").value });
     toast($("gPub").value === "1" ? "Page publiée ✔ (visible dans le menu sous 5 minutes)" : "Brouillon enregistré ✔"); resetPage(); await loadPages();
   } catch (e) { toast(errMsg(e)); }
 });
@@ -2038,7 +2055,7 @@ function fillRubParent() {
 }
 function editRub(r) {
   $("rTitleH").textContent = "🗂️ Modifier la rubrique : " + r.name; $("rId").value = r.id; $("rName").value = r.name; $("rSlug").value = r.slug; $("rDesc").value = r.description || "";
-  $("rSort").value = r.sort || 0; $("rActive").checked = r.active; fillRubParent(); $("rParent").value = r.parent_id || ""; $("rCat").value = r.category_slug || "";
+  showSub("rubriques"); $("rSort").value = r.sort || 0; $("rActive").checked = r.active; fillRubParent(); $("rParent").value = r.parent_id || ""; $("rCat").value = r.category_slug || "";
   $("rubBox").scrollIntoView({ behavior: "smooth" });
 }
 function resetRub() { $("rTitleH").textContent = "🗂️ Rubriques"; for (const id of ["rId", "rName", "rSlug", "rDesc"]) $(id).value = ""; $("rSort").value = 0; $("rActive").checked = true; $("rParent").value = ""; $("rCat").value = ""; fillRubParent(); }
@@ -2052,9 +2069,18 @@ document.querySelectorAll("#cPeriod button").forEach((b) => b.addEventListener("
   cDays = Number(b.dataset.d); document.querySelectorAll("#cPeriod button").forEach((x) => x.classList.toggle("on", x === b));
   loadPages().catch((e) => toast(errMsg(e)));
 }));
-$("cNewPage").addEventListener("click", () => { resetPage(); $("gBox").scrollIntoView({ behavior: "smooth" }); $("gTitle").focus(); });
+// sous-menu de la page : une seule section affichée à la fois (gardée en mémoire pendant la session)
+function showSub(k) {
+  document.querySelectorAll("#tab-pages .sub").forEach((d) => d.classList.toggle("hidden", d.dataset.sub !== k));
+  document.querySelectorAll("#cSub button").forEach((b) => b.classList.toggle("on", b.dataset.s === k));
+  $("cPeriod").classList.toggle("hidden", k === "pages");
+  ss.set("lo_csub", k);
+}
+document.querySelectorAll("#cSub button").forEach((b) => b.addEventListener("click", () => { showSub(b.dataset.s); window.scrollTo({ top: 0 }); }));
+if (ss.get("lo_csub")) showSub(ss.get("lo_csub"));
+$("cNewPage").addEventListener("click", () => { showSub("pages"); resetPage(); $("gBox").scrollIntoView({ behavior: "smooth" }); $("gTitle").focus(); });
 $("cNewPost").addEventListener("click", async () => { await openTab("blog"); resetPost(); $("bTitle").focus(); });
-$("cNewRub").addEventListener("click", () => { resetRub(); $("rubBox").scrollIntoView({ behavior: "smooth" }); $("rName").focus(); });
+$("cNewRub").addEventListener("click", () => { showSub("rubriques"); resetRub(); $("rubBox").scrollIntoView({ behavior: "smooth" }); $("rName").focus(); });
 
 // ---------- modèles d'email ----------
 const TPL_VARS = ["{prenom}", "{nom}", "{commande}", "{total}", "{version}", "{produit}", "{produits}", "{cles}", "{bouton}", "{bouton_installation}", "{bouton_whatsapp}", "{lien_commande}", "{whatsapp}"];

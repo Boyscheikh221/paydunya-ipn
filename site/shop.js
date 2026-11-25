@@ -419,7 +419,9 @@ const LO = (() => {
     const upd = () => { const v = scrollY > innerHeight * 1.5; if (v !== on) { on = v; b.classList.toggle("show", v); } };
     addEventListener("scroll", upd, { passive: true }); upd();
   }
-  function page(active) { captureSource(); header(active); footer(); navPages(active); autoCrumbs(); toTop(); hit(); cookieBar(); captureRef(); }
+  // bouton WhatsApp flottant : caché sur le blog (articles et liste), réglable page par page dans l'admin
+  function waFloat(show) { document.body.classList.toggle("no-wa", !show); }
+  function page(active) { captureSource(); header(active); footer(); waFloat(active !== "blog"); navPages(active); autoCrumbs(); toTop(); hit(); cookieBar(); captureRef(); }
   const DELIVERY_TEXT = {
     key: "Clé de licence livrée immédiatement après paiement",
     key_file: "Clé de licence + lien de téléchargement livrés immédiatement",
@@ -429,5 +431,5 @@ const LO = (() => {
     physical: "Produit physique : nous vous contactons sur WhatsApp pour la livraison",
   };
 
-  return { source, classifySource, px, acct, setAcct, visitorId, track, icon, ICONS, refCode, setRef, cookieBar, url, slugFromPath, seo, jsonLd, crumbs, mainCats, SITE, $, el, fcfa, api, boutique, cart, saveCart, addToCart, cartCount, page, toast, productCard, initials, shareBar, FACEBOOK_PAGE, richText, ytId, ytThumb, ytEmbed, DELIVERY_TEXT };
+  return { waFloat, source, classifySource, px, acct, setAcct, visitorId, track, icon, ICONS, refCode, setRef, cookieBar, url, slugFromPath, seo, jsonLd, crumbs, mainCats, SITE, $, el, fcfa, api, boutique, cart, saveCart, addToCart, cartCount, page, toast, productCard, initials, shareBar, FACEBOOK_PAGE, richText, ytId, ytThumb, ytEmbed, DELIVERY_TEXT };
 })();

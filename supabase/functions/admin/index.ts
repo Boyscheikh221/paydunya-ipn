@@ -1761,7 +1761,7 @@ ${q.valid_until ? `<p style="margin:0 0 12px">Ce devis est valable jusqu'au ${es
           title: str(body.title, 200), slug: slugify(str(body.slug, 120) || str(body.title, 120)),
           excerpt: str(body.excerpt, 400) || null, content: str(body.content, 50000),
           cover_url: str(body.cover_url, 500) || null, cover_video: ytId(str(body.cover_video, 300)) ? str(body.cover_video, 300) : null, published, updated_at: new Date().toISOString(),
-          rubrique_id: str(body.rubrique_id, 40) || null,
+          rubrique_id: str(body.rubrique_id, 40) || null, show_whatsapp: body.show_whatsapp === true,
         };
         if (!row.title || !row.slug) return json({ error: "titre_obligatoire" }, 400);
         let firstPublish = false;
@@ -1790,7 +1790,7 @@ ${q.valid_until ? `<p style="margin:0 0 12px">Ce devis est valable jusqu'au ${es
           seo_title: str(body.seo_title, 120) || null, seo_description: str(body.seo_description, 320) || null,
           published: body.published === true, in_menu: body.in_menu === true, in_footer: body.in_footer === true,
           sort: clamp(Number(body.sort) || 0, 0, 10000), updated_at: new Date().toISOString(),
-          rubrique_id: str(body.rubrique_id, 40) || null,
+          rubrique_id: str(body.rubrique_id, 40) || null, show_whatsapp: body.show_whatsapp !== false,
         };
         if (!row.title || !row.slug) return json({ error: "titre_obligatoire" }, 400);
         const r = body.id ? await db.from("pages").update(row).eq("id", body.id).select().single()

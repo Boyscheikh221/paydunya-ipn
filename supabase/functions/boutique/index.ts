@@ -884,13 +884,13 @@ async function handle(req: Request): Promise<Response> {
         footer: (data ?? []).filter((p) => p.in_footer).map((p) => ({ slug: p.slug, title: p.title })) });
     }
     case "page": {
-      const { data } = await db.from("pages").select("slug, title, content, image_url, seo_title, seo_description, updated_at")
+      const { data } = await db.from("pages").select("slug, title, content, image_url, seo_title, seo_description, updated_at, show_whatsapp")
         .eq("slug", str(body.slug, 120)).eq("published", true).maybeSingle();
       if (!data) return json({ error: "not_found" }, 404);
       return json({ page: data });
     }
     case "post": {
-      const { data } = await db.from("posts").select("slug, title, excerpt, content, cover_url, cover_video, published_at, updated_at, views, rubrique_id")
+      const { data } = await db.from("posts").select("slug, title, excerpt, content, cover_url, cover_video, published_at, updated_at, views, rubrique_id, show_whatsapp")
         .eq("slug", str(body.slug, 120)).eq("published", true).maybeSingle();
       if (!data) return json({ error: "not_found" }, 404);
       const { rubrique_id, ...post } = data;
