@@ -117,8 +117,10 @@ const waButtonHtml = (wa: string) => `<p style="margin:18px 0 12px"><a href="htt
 const buttonHtml = (link: string) => `<p style="text-align:center;margin:22px 0"><a href="${esc(link)}" style="display:inline-block;background:${EM.O};color:#fff;font-weight:800;text-decoration:none;padding:14px 22px;border-radius:10px">Voir ma commande et télécharger</a></p>`;
 
 function vars(c: Ctx) {
-  const parts = String(c.o.customer_name ?? "").trim().split(/\s+/);
-  return { prenom: parts[0] || "", nom: String(c.o.customer_name ?? ""), commande: String(c.o.ref), total: fcfaTxt(c.o.amount_fcfa), lien_commande: c.link, lien_installation: c.install ?? c.link, whatsapp: "https://wa.me/" + c.wa,
+  // nom pas encore donné (« Client », « Client WhatsApp »…) : « Bonjour, » plutôt que « Bonjour Client, »
+  const real = !/^(client( (whatsapp|facebook|wa|fb))?|inconnu|n\/a)?$/i.test(String(c.o.customer_name ?? "").trim());
+  const parts = real ? String(c.o.customer_name ?? "").trim().split(/\s+/) : [];
+  return { prenom: parts[0] || "", nom: real ? String(c.o.customer_name ?? "") : "", commande: String(c.o.ref), total: fcfaTxt(c.o.amount_fcfa), lien_commande: c.link, lien_installation: c.install ?? c.link, whatsapp: "https://wa.me/" + c.wa,
     version: (c.items.map((i) => String(i.product_name ?? "").match(/\b(20(?:07|10|13|16|19|21|24|25|26)|365)\b/)).find(Boolean) ?? [""])[0],
     produit: c.items.map((i) => String(i.product_name ?? "")).filter(Boolean).join(", ") };
 }
@@ -132,7 +134,7 @@ function renderBody(body: string, c: Ctx) {
   if (c.install && !b.includes("{bouton_installation}") && !b.includes("{lien_installation}")) b += "\n\n{bouton_installation}";
   if (!c.install) b = b.replace(/\{bouton_installation\}/g, "");
   if (!b.includes("{bouton_whatsapp}")) b += "\n\n{bouton_whatsapp}"; // toujours un bouton d'assistance
-  const sub = (s: string) => s.replace(/\{(prenom|nom|commande|total|lien_commande|lien_installation|whatsapp|version|produit)\}/g, (_, k) => v[k]).replace(/ {2,}/g, " ");
+  const sub = (s: string) => s.replace(/\{(prenom|nom|commande|total|lien_commande|lien_installation|whatsapp|version|produit)\}/g, (_, k) => v[k]).replace(/ {2,}/g, " ").replace(/(Bonjour|Rebonjour|Merci) ([,!.])/g, "$1$2");
   // HTML
   const blocks = b.replace(/\r/g, "").split(/\n{2,}/).map((para) => {
     const t = para.trim();
@@ -177,7 +179,7 @@ function wrapHtml(inner: string, ref?: string, invoiceUrl?: string) {
 function renderEmail(tpl: Tpl, c: Ctx) {
   const { html, text } = renderBody(tpl.body, c);
   const v = vars(c) as Record<string, string>;
-  const subject = String(tpl.subject || BUILTIN_TPL.subject).replace(/\{(prenom|nom|commande|total|version|produit)\}/g, (_, k) => v[k]).replace(/ {2,}/g, " ").trim().slice(0, 200);
+  const subject = String(tpl.subject || BUILTIN_TPL.subject).replace(/\{(prenom|nom|commande|total|version|produit)\}/g, (_, k) => v[k]).replace(/ {2,}/g, " ").replace(/(Bonjour|Rebonjour|Merci) ([,!.])/g, "$1$2").trim().slice(0, 200);
   const ref = String(c.o.ref || "");
   // lien vers la facture (commande payée avec un numéro de facture)
   const inv = c.o.invoice_no && c.o.public_token ? siteCtx().site + "/facture.html?o=" + encodeURIComponent(c.o.public_token) : undefined;

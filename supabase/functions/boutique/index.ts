@@ -129,8 +129,10 @@ const buttonLabel = (items: Item[]) => items.length && items.every((i) => i.deli
 const buttonHtml = (link: string, label = "Voir ma commande et télécharger") => `<p style="text-align:center;margin:22px 0"><a href="${esc(link)}" style="display:inline-block;background:${EM.O};color:#fff;font-weight:800;text-decoration:none;padding:14px 22px;border-radius:10px">${esc(label)}</a></p>`;
 
 function vars(c: Ctx) {
-  const parts = String(c.o.customer_name ?? "").trim().split(/\s+/);
-  return { prenom: parts[0] || "", nom: String(c.o.customer_name ?? ""), commande: String(c.o.ref), total: fcfaTxt(c.o.amount_fcfa), lien_commande: c.link, lien_installation: c.install ?? c.link, whatsapp: "https://wa.me/" + c.wa,
+  // nom pas encore donné (« Client », « Client WhatsApp »…) : « Bonjour, » plutôt que « Bonjour Client, »
+  const real = !/^(client( (whatsapp|facebook|wa|fb))?|inconnu|n\/a)?$/i.test(String(c.o.customer_name ?? "").trim());
+  const parts = real ? String(c.o.customer_name ?? "").trim().split(/\s+/) : [];
+  return { prenom: parts[0] || "", nom: real ? String(c.o.customer_name ?? "") : "", commande: String(c.o.ref), total: fcfaTxt(c.o.amount_fcfa), lien_commande: c.link, lien_installation: c.install ?? c.link, whatsapp: "https://wa.me/" + c.wa,
     // {version} : 2024, 2021, 2019, 2016, 365… lue dans le nom du produit ; {produit} : nom(s) du produit
     version: (c.items.map((i) => String(i.product_name ?? "").match(/\b(20(?:07|10|13|16|19|21|24|25|26)|365)\b/)).find(Boolean) ?? [""])[0],
     produit: c.items.map((i) => String(i.product_name ?? "")).filter(Boolean).join(", ") };
@@ -145,7 +147,7 @@ function renderBody(body: string, c: Ctx) {
   if (c.install && !b.includes("{bouton_installation}") && !b.includes("{lien_installation}")) b += "\n\n{bouton_installation}";
   if (!c.install) b = b.replace(/\{bouton_installation\}/g, "");
   if (!b.includes("{bouton_whatsapp}")) b += "\n\n{bouton_whatsapp}"; // toujours un bouton d'assistance
-  const sub = (s: string) => s.replace(/\{(prenom|nom|commande|total|lien_commande|lien_installation|whatsapp|version|produit)\}/g, (_, k) => v[k]).replace(/ {2,}/g, " ");
+  const sub = (s: string) => s.replace(/\{(prenom|nom|commande|total|lien_commande|lien_installation|whatsapp|version|produit)\}/g, (_, k) => v[k]).replace(/ {2,}/g, " ").replace(/(Bonjour|Rebonjour|Merci) ([,!.])/g, "$1$2");
   // HTML
   const blocks = b.replace(/\r/g, "").split(/\n{2,}/).map((para) => {
     const t = para.trim();
@@ -194,7 +196,7 @@ function wrapHtml(inner: string, ref?: string, invoiceUrl?: string) {
 function renderEmail(tpl: Tpl, c: Ctx) {
   const { html, text } = renderBody(tpl.body, c);
   const v = vars(c) as Record<string, string>;
-  const subject = String(tpl.subject || BUILTIN_TPL.subject).replace(/\{(prenom|nom|commande|total|version|produit)\}/g, (_, k) => v[k]).replace(/ {2,}/g, " ").trim().slice(0, 200);
+  const subject = String(tpl.subject || BUILTIN_TPL.subject).replace(/\{(prenom|nom|commande|total|version|produit)\}/g, (_, k) => v[k]).replace(/ {2,}/g, " ").replace(/(Bonjour|Rebonjour|Merci) ([,!.])/g, "$1$2").trim().slice(0, 200);
   const ref = String(c.o.ref || "");
   // lien vers la facture (commande payée avec un numéro de facture)
   const inv = c.o.invoice_no && c.o.public_token ? siteCtx().site + "/facture.html?o=" + encodeURIComponent(c.o.public_token) : undefined;
@@ -376,6 +378,16 @@ function waOrderLink(ref: string, items: any[], total: number) {
   return "https://wa.me/" + siteCtx().wa + "?text=" + encodeURIComponent(msg);
 }
 
+// nom déjà connu pour cet email (fiche client, sinon dernière commande avec un vrai nom)
+async function knownName(email: string) {
+  const e = String(email ?? "").toLowerCase();
+  if (!e) return null;
+  const { data: c } = await db.from("customers").select("name").eq("email", e).maybeSingle();
+  if (c?.name && !isPlaceholderName(c.name)) return String(c.name);
+  const { data: os } = await db.from("orders").select("customer_name").eq("email", e).order("created_at", { ascending: false }).limit(20);
+  const hit = (os ?? []).find((o) => !isPlaceholderName(o.customer_name));
+  return hit ? String(hit.customer_name) : null;
+}
 function isPlaceholderName(n?: string | null) {
   const t = String(n ?? "").trim();
   return t.length < 2 || /^client( (whatsapp|facebook|wa|fb))?$/i.test(t) || /^(inconnu|n\/a)$/i.test(t);
@@ -1193,11 +1205,14 @@ async function handle(req: Request): Promise<Response> {
       if (str(body.website, 50)) return json({ error: "spam" }, 400); // champ piège invisible
       const mode = await payMode();
       // mode WhatsApp : seuls l'email et le numéro WhatsApp sont demandés ; le nom sera demandé sur la page de commande
-      const name = str(body.name, 100) || (mode === "whatsapp" ? "Client WhatsApp" : "");
+      // le nom n'est plus demandé au panier (sauf livraison physique) : on reprend celui déjà connu pour cet email,
+      // sinon il sera demandé une seule fois, quand le client voudra voir sa première clé (voir « status » / « set_name »)
       const email = str(body.email, 200).toLowerCase();
       const phone = str(body.phone, 30).replace(/[^\d+]/g, "");
-      if (name.length < 2) return json({ error: "nom_invalide" }, 400);
       if (!/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/.test(email)) return json({ error: "email_invalide" }, 400);
+      const given = str(body.name, 100).replace(/\s+/g, " ").trim();
+      if (given && (given.length < 2 || /[<>@\d]/.test(given))) return json({ error: "nom_invalide" }, 400);
+      const name = given || (await knownName(email)) || "Client";
       if (phone.length < 8) return json({ error: "telephone_invalide" }, 400);
 
       // regroupe le panier : { slug: quantité }
@@ -1239,6 +1254,7 @@ async function handle(req: Request): Promise<Response> {
 
       // livraison des produits physiques (Dakar seulement ; hors Dakar, le client passe par WhatsApp)
       const hasPhysical = prods.some((p) => p.delivery_type === "physical");
+      if (hasPhysical && isPlaceholderName(name)) return json({ error: "nom_invalide" }, 400); // nom utile pour la livraison
       let ship: Record<string, unknown> = { shipping_fee_fcfa: 0 };
       if (hasPhysical) {
         const sh = body.shipping ?? {};
@@ -1455,12 +1471,25 @@ async function handle(req: Request): Promise<Response> {
         return new Date(link.expires_at) < new Date() ? "expired" : link.download_count >= link.max_downloads && !grace ? "used" : "ready";
       };
 
-      // nom pas encore connu (vente WhatsApp / Facebook) : on le demande avant d'afficher les clés et les liens
+      // nom pas encore connu : on le demande une seule fois, avant d'afficher la première clé.
+      // Déjà connu pour cet email (achat précédent, autre commande…) : on le reprend sans rien demander.
+      if (isPlaceholderName(o.customer_name)) {
+        const kn = await knownName(o.email);
+        if (kn) { await db.from("orders").update({ customer_name: kn }).eq("id", o.id); o.customer_name = kn; }
+      }
       const askName = isPlaceholderName(o.customer_name), askPhone = String(o.phone ?? "").replace(/\D/g, "").length < 8;
       const needName = askName || askPhone;
+      // petit mot d'accueil quand le nom est connu : « Bonjour » au premier achat, « Rebonjour » ensuite
+      let hello = null;
+      if (paid && !needName) {
+        const { count: before } = await db.from("orders").select("id", { count: "exact", head: true })
+          .eq("email", String(o.email).toLowerCase()).neq("id", o.id).lt("created_at", o.created_at)
+          .in("status", ["paid", "processing", "installing", "delivered"]);
+        hello = { first: String(o.customer_name).trim().split(/\s+/)[0], returning: (before ?? 0) > 0 };
+      }
       return json({
-        need_name: needName, ask_name: askName, ask_phone: askPhone, email_hint: needName ? maskEmail(o.email) : null,
-        ref: o.ref, status: o.status, amount_fcfa: o.amount_fcfa, created_at: o.created_at, invoice: !!o.invoice_no,
+        need_name: needName, ask_name: askName, ask_phone: askPhone, email_hint: needName ? maskEmail(o.email) : null, hello,
+        ref: o.ref, status: o.status, amount_fcfa: o.amount_fcfa, created_at: o.created_at, invoice: !!o.invoice_no && !askName,
         payment_method: o.payment_method, has_payment_ref: !!o.payment_ref, has_paydunya: !!o.paydunya_token, key_locked: !!o.key_locked,
         // commande à finaliser sur WhatsApp (mode « WhatsApp » de la page Paiements)
         wa_finalize: o.status === "pending" && !o.key_locked && o.payment_method === "whatsapp" ? waOrderLink(o.ref, items, o.amount_fcfa) : null,
@@ -1473,7 +1502,7 @@ async function handle(req: Request): Promise<Response> {
             // délai de grâce de 30 min après le premier clic (voir consume_download)
             const grace = link?.last_download_at && Date.now() - new Date(link.last_download_at).getTime() < 30 * 60_000;
             if (link) state = new Date(link.expires_at) < new Date() ? "expired" : link.download_count >= link.max_downloads && !grace ? "used" : "ready";
-            download = { state: needName && state === "ready" ? "need_name" : state, token: state === "ready" && !needName ? link.token : null };
+            download = { state, token: state === "ready" ? link.token : null }; // le nom n'est demandé qu'au moment de la clé
           }
           return {
             name: i.product_name, slug: i.products?.slug ?? null, image_url: i.products?.image_url ?? "",
@@ -1482,7 +1511,7 @@ async function handle(req: Request): Promise<Response> {
             key_names: i.status === "delivered" && !needName ? (keyNamesByItem[i.id] ?? []) : [],
             pack_downloads: ["delivered", "awaiting_install"].includes(i.status) ? (packLinks[i.id] ?? []).map((l) => {
               const st = linkState(l);
-              return { name: l.products?.name ?? "", state: needName && st === "ready" ? "need_name" : st, token: st === "ready" && !needName ? l.token : null };
+              return { name: l.products?.name ?? "", state: st, token: st === "ready" ? l.token : null };
             }) : [],
             keys_hidden: i.status === "delivered" && needName && (keysByItem[i.id] ?? []).length > 0, download,
             id: i.id, can_claim: i.status === "awaiting_install" && !i.claim_requested_at,

@@ -156,7 +156,8 @@ function render() {
     el("div", { class: "panel" },
       el("h2", { style: "margin:0 0 4px;font-size:18px", text: "Vos coordonnées" }),
       el("p", { class: "note", text: waMode() ? "Indiquez votre email et votre numéro WhatsApp. Votre commande est enregistrée, puis WhatsApp s'ouvre avec un message déjà prêt pour finaliser avec nous." : hasPhysical() ? "Après paiement, nous vous contactons sur WhatsApp pour la livraison. Vos clés et liens éventuels s'affichent sur votre page de commande." : "Après paiement, votre clé et vos liens s'affichent sur votre page de commande." }),
-      ...(waMode() ? [] : f("name", "Nom complet", "text", "name", "ex : Moussa Diop")),
+      // nom demandé ici seulement pour une livraison ; sinon une seule fois, au moment de voir la clé
+      ...(hasPhysical() ? f("name", "Nom complet (pour la livraison)", "text", "name", "ex : Moussa Diop") : []),
       ...f("email", "Email", "email", "email", "vous@exemple.com"),
       ...f("phone", "Numéro WhatsApp", "tel", "tel", "ex : 77 123 45 67"),
       el("input", { id: "website", class: "hp", tabindex: "-1", autocomplete: "off", "aria-hidden": "true" }),

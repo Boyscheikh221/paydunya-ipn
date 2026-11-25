@@ -113,12 +113,12 @@ function itemBlock(i) {
     });
   }
   if (i.keys_hidden || i.download?.state === "need_name") {
-    body.append(el("p", { class: "note", style: "margin-top:8px;font-weight:700", text: "🔒 " + (i.keys_hidden ? "Votre clé est prête" : "Votre logiciel est prêt") + " : indiquez vos coordonnées ci-dessus pour l'afficher." }));
+    body.append(el("p", { class: "note", style: "margin-top:8px;font-weight:700", text: "🔒 " + (i.keys_hidden ? "Votre clé est prête" : "Votre logiciel est prêt") + " : indiquez votre nom ci-dessus pour l'afficher." }));
   } else if (i.download) dlBlock(body, i.download, "Télécharger le logiciel");
   // pack : un bouton de téléchargement par logiciel inclus
   const packDl = i.pack_downloads || [];
   if (packDl.some((d) => d.state === "need_name")) {
-    if (!i.keys_hidden) body.append(el("p", { class: "note", style: "margin-top:8px;font-weight:700", text: "🔒 Vos logiciels sont prêts : indiquez vos coordonnées ci-dessus pour les afficher." }));
+    if (!i.keys_hidden) body.append(el("p", { class: "note", style: "margin-top:8px;font-weight:700", text: "🔒 Vos logiciels sont prêts : indiquez votre nom ci-dessus pour les afficher." }));
   } else {
     packDl.forEach((d) => dlBlock(body, d, "Télécharger " + (d.name || "le logiciel"), false));
     if (packDl.some((d) => d.state === "ready")) body.append(el("p", { class: "note", text: "Chaque lien de téléchargement ne fonctionne qu'une seule fois. Lancez-le depuis l'ordinateur où vous installez le logiciel. Le téléchargement ne démarre pas ou s'arrête ? Recliquez sur le bouton : c'est possible pendant 30 minutes. Si Windows ou l'antivirus affiche un avertissement, choisissez « Conserver » puis « Exécuter quand même » : c'est le programme d'installation officiel." }));
@@ -135,6 +135,10 @@ function itemBlock(i) {
     const box = el("div", { class: "claim", style: "margin-top:12px;padding:12px;border-radius:12px;background:#E8F1FC" + (fromInstallEmail ? ";outline:3px solid #F5A21B" : "") },
       el("p", { class: "note", style: "margin:0", text: "Étape 2 : une fois le logiciel installé, cliquez ci-dessous pour recevoir votre clé de licence (par email et sur cette page)." }), b, msg);
     body.append(box);
+  } else if (i.can_claim) {
+    // le nom n'est pas encore connu : il est demandé une seule fois, juste au-dessus, avant la clé
+    body.append(el("div", { class: "claim", style: "margin-top:12px;padding:12px;border-radius:12px;background:#E8F1FC" + (fromInstallEmail ? ";outline:3px solid #F5A21B" : "") },
+      el("p", { class: "note", style: "margin:0", text: "Étape 2 : une fois le logiciel installé, indiquez votre nom en haut de la page (une seule fois), puis cliquez sur « J'ai fini l'installation » pour recevoir votre clé." })));
   } else if (i.claimed && i.status !== "delivered") {
     body.append(el("p", { class: "note", text: i.status === "awaiting_install" || i.status === "to_process" || i.status === "waiting_stock"
       ? "Demande de clé reçue ✔ Elle arrive très vite par email et sur cette page." : "" }));
@@ -144,7 +148,7 @@ function itemBlock(i) {
   return box;
 }
 
-// commande passée par WhatsApp / Facebook : le client donne son nom et son téléphone avant de voir sa clé
+// le nom est demandé une seule fois, au moment de voir la première clé ; ensuite il reste associé à l'email
 let CUR = {};
 function nameForm() {
   const inp = (ph, type, ac) => el("input", { class: "field", placeholder: ph, type: type || "text", autocomplete: ac || "off", style: "margin-top:8px" });
@@ -163,8 +167,8 @@ function nameForm() {
     msg.textContent = d.error === "nom_invalide" ? "Vérifiez votre prénom et votre nom (lettres seulement)." : d.error === "telephone_invalide" ? "Vérifiez votre numéro WhatsApp." : "Erreur, réessayez.";
   });
   return el("div", { class: "panel", style: "margin-bottom:14px;border:2px solid var(--orange,#F5A21B)" },
-    el("h2", { style: "margin:0 0 6px;font-size:18px", text: "Encore une étape pour voir votre clé" }),
-    el("p", { class: "note", style: "margin:0", text: "Indiquez vos coordonnées : elles figurent sur votre facture et créent votre compte client licenceoff.com" + (CUR.email_hint ? " (" + CUR.email_hint + ")" : "") + ", pour retrouver vos clés à tout moment." }),
+    el("h2", { style: "margin:0 0 6px;font-size:18px", text: CUR.ask_name ? "Comment vous appelez-vous ?" : "Encore une étape pour voir votre clé" }),
+    el("p", { class: "note", style: "margin:0", text: (CUR.ask_name ? "On vous le demande une seule fois. " : "") + "Votre nom figure sur votre facture et reste associé à votre email" + (CUR.email_hint ? " (" + CUR.email_hint + ")" : "") + " : vos prochaines commandes et votre compte client le reprennent automatiquement." }),
     CUR.ask_name ? el("div", { style: "display:grid;grid-template-columns:1fr 1fr;gap:0 8px" }, first, last) : null,
     CUR.ask_phone ? phone : null,
     el("label", { class: "note", style: "display:flex;gap:8px;align-items:flex-start;margin-top:10px;cursor:pointer" }, mkt, "Recevoir les offres et nouveautés licenceoff.com par email (désinscription en un clic)."),
@@ -229,8 +233,16 @@ async function load() {
 
   CUR = o;
   const parts = [head];
-  // mode WhatsApp : l'étape WhatsApp d'abord, le prénom/nom ensuite
-  if (o.need_name && !(o.status === "pending" && o.wa_finalize)) parts.push(nameForm());
+  // nom demandé une seule fois, au moment où la clé est prête (pas avant le paiement, pas pendant l'attente du stock)
+  const paidNow = ["paid", "processing", "installing", "delivered"].includes(o.status);
+  if (o.need_name && paidNow && !o.items.some((i) => i.status === "waiting_stock" || (i.claimed && i.status !== "delivered"))) parts.push(nameForm());
+  // petit mot d'accueil quand le nom est connu
+  if (o.hello && o.hello.first) {
+    const ready = o.items.some((i) => (i.keys || []).length);
+    parts.push(el("div", { class: "panel", style: "margin-bottom:14px;background:#E8F1FC;border:0" },
+      el("p", { style: "margin:0;font-size:17px;font-weight:800", text: (o.hello.returning ? "👋 Rebonjour " : "👋 Bonjour ") + o.hello.first + (o.hello.returning ? ", ravi de vous revoir !" : " !") }),
+      el("p", { class: "note", style: "margin:4px 0 0", text: (o.hello.returning ? "Merci pour votre confiance. " : "Merci pour votre achat. ") + (ready ? "Votre clé est juste en dessous." : "Tout ce dont vous avez besoin est sur cette page.") })));
+  }
   if (o.status === "pending" && o.key_locked) {
     parts.push(el("div", { class: "panel", style: "margin-bottom:14px;border:2px solid var(--orange,#F5A21B)" },
       el("h2", { style: "margin:0 0 6px;font-size:18px", text: "🔒 Votre clé est réservée" }),
@@ -244,7 +256,6 @@ async function load() {
       el("p", { style: "margin:0 0 10px", text: "Dernière étape : finalisez avec nous sur WhatsApp. Le message est déjà écrit, il suffit de l'envoyer. Nous vous indiquons comment payer (Wave ou Orange Money), puis votre commande s'affiche ici." }),
       el("a", { class: "btn block", href: o.wa_finalize, target: "_blank", rel: "noopener", style: "background:#25d366;border-color:#25d366;color:#fff", text: "💬 Continuer sur WhatsApp" }),
       el("p", { class: "note", style: "margin:8px 0 0", text: "Total : " + fcfa(o.amount_fcfa) + ". Gardez cette page : vos clés et liens s'y afficheront." })));
-    if (o.need_name) parts.push(nameForm());
     if (autoWa) { autoWa = false; history.replaceState(null, "", location.pathname + "?o=" + encodeURIComponent(token)); setTimeout(() => { location.href = o.wa_finalize; }, 1500); }
   } else if (o.status === "pending") {
     const msg = el("p", { class: "msg" });
