@@ -32,6 +32,9 @@
   .r { text-align:right; white-space:nowrap; }
   .tot { margin-left:auto; margin-top:16px; width:100%; max-width:320px; }
   .tot div { display:flex; justify-content:space-between; padding:6px 0; }
+  .old { color:var(--gris); text-decoration:line-through; font-weight:400; font-size:12px; }
+  .off { display:inline-block; background:#e8f6ee; color:#15803d; font-weight:700; font-size:11px; padding:1px 6px; border-radius:4px; margin-top:2px; }
+  .tot .save { color:#15803d; font-weight:700; }
   .tot .big { font-size:18px; font-weight:800; border-top:2px solid var(--nuit); margin-top:4px; padding-top:10px; }
   .notes { margin-top:24px; color:var(--gris); font-size:13px; line-height:1.55; white-space:pre-line; }
   .foot { margin-top:32px; border-top:1px solid var(--ligne); padding-top:12px; color:var(--gris); font-size:12px; text-align:center; line-height:1.5; }
@@ -70,7 +73,10 @@ function render(d) {
     s.ninea ? "NINEA : " + s.ninea : "", s.rc ? "RC : " + s.rc : ""].filter(Boolean);
   const vat = Number(d.vat_rate) || 0;
   const ht = vat ? Math.round(d.total / (1 + vat / 100)) : d.total;
-  const rows = d.lines.map((l) => `<tr><td>${esc(l.name)}</td><td class="r">${l.qty}</td><td class="r hide">${money(l.unit_price)}</td><td class="r">${money(l.qty * l.unit_price)}</td></tr>`).join("");
+  // prix baissé : ancien prix barré + pourcentage de remise sur la ligne
+  const old = (l) => l.list_price > l.unit_price ? `<s class="old">${money(l.list_price)}</s><br>` : "";
+  const pct = (l) => l.list_price > l.unit_price ? `<br><span class="off">−${Math.round(100 * (l.list_price - l.unit_price) / l.list_price)} %</span>` : "";
+  const rows = d.lines.map((l) => `<tr><td>${esc(l.name)}${pct(l)}</td><td class="r">${l.qty}</td><td class="r hide">${old(l)}${money(l.unit_price)}</td><td class="r">${l.list_price > l.unit_price ? `<s class="old">${money(l.qty * l.list_price)}</s><br>` : ""}${money(l.qty * l.unit_price)}</td></tr>`).join("");
   const pay = !quote && d.payment ? [d.payment.method ? "Mode de paiement : " + esc(PAY[d.payment.method] || d.payment.method) : "", d.payment.ref ? "Référence : " + esc(d.payment.ref) : ""].filter(Boolean).join("<br>") : "";
   root.innerHTML = `<div class="doc">
   ${d.cancelled ? '<div class="stamp">ANNULÉE</div>' : ""}
@@ -95,6 +101,7 @@ function render(d) {
   </table>
   <div class="tot">
     ${vat ? `<div><span>Total HT</span><span>${money(ht)}</span></div><div><span>TVA ${vat} %</span><span>${money(d.total - ht)}</span></div>` : ""}
+    ${d.savings > 0 ? `<div><span>Prix normal</span><span><s class="old">${money(d.total + d.savings)}</s></span></div><div class="save"><span>${esc(d.savings_label || "Remise accordée")} (−${d.savings_pct ?? Math.round(100 * d.savings / (d.total + d.savings))} %)</span><span>−${money(d.savings)}</span></div>` : ""}
     <div class="big"><span>Total${vat ? " TTC" : ""}</span><span>${money(d.total)}</span></div>
     ${vat ? "" : '<div style="color:var(--gris);font-size:12px;justify-content:flex-end">TVA non applicable</div>'}
   </div>

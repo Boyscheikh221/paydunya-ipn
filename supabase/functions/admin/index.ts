@@ -481,6 +481,7 @@ async function createAdminOrder(body: any): Promise<Response | { o: any }> {
       : computed > 0 ? Math.round(byId[l.id].price_fcfa * amount / computed)
       : Math.round(amount / items.reduce((n: number, x: { qty: number }) => n + x.qty, 0)),
     quantity: l.qty,
+    list_price: byId[l.id].price_fcfa, // prix du site au moment de la vente : la facture affiche la remise s'il a été baissé
   })));
   if (e2) { await db.from("orders").delete().eq("id", o.id); return json({ error: e2.message }, 500); }
   return { o };

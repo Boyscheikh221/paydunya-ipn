@@ -1350,23 +1350,29 @@ async function handle(req: Request): Promise<Response> {
       }
       if (!oTok) return json({ error: "not_found" }, 404);
       const { data: o } = await db.from("orders")
-        .select("ref, invoice_no, invoice_at, status, amount_fcfa, vat_rate, customer_name, email, phone, billing_company, billing_address, shipping_address, shipping_fee_fcfa, discount_fcfa, payment_method, payment_ref, paid_at, created_at, fees_fcfa, order_items(product_name, quantity, unit_price, created_at)")
+        .select("ref, invoice_no, invoice_at, status, amount_fcfa, vat_rate, customer_name, email, phone, billing_company, billing_address, shipping_address, shipping_fee_fcfa, discount_fcfa, payment_method, payment_ref, paid_at, created_at, fees_fcfa, referral_code, order_items(product_name, quantity, unit_price, list_price, created_at)")
         .eq("public_token", oTok).maybeSingle();
       if (!o || !o.invoice_no) return json({ error: "pas_de_facture" }, 404);
       // deno-lint-ignore no-explicit-any
-      const lines: { name: string; qty: number; unit_price: number }[] = ((o.order_items ?? []) as any[])
-        .sort((a, b) => a.created_at.localeCompare(b.created_at))
-        .map((i) => ({ name: i.product_name, qty: i.quantity, unit_price: i.unit_price }));
+      const items = ((o.order_items ?? []) as any[]).sort((a, b) => a.created_at.localeCompare(b.created_at));
+      // prix barré : list_price = prix du site au moment de la vente, unit_price = prix réellement payé (déjà remisé)
+      const lines: { name: string; qty: number; unit_price: number; list_price?: number }[] = items
+        .map((i) => ({ name: i.product_name, qty: i.quantity, unit_price: i.unit_price,
+          ...(i.list_price != null && i.list_price > i.unit_price ? { list_price: i.list_price } : {}) }));
+      const savings = lines.reduce((t, l) => t + (l.list_price ? (l.list_price - l.unit_price) * l.qty : 0), 0);
+      const listTotal = lines.reduce((t, l) => t + (l.list_price ?? l.unit_price) * l.qty, 0); // produits au prix normal (sans frais)
       if (o.shipping_fee_fcfa > 0) lines.push({ name: "Livraison", qty: 1, unit_price: o.shipping_fee_fcfa });
       if (o.fees_fcfa > 0) lines.push({ name: "Frais de transaction", qty: 1, unit_price: o.fees_fcfa });
-      if (o.discount_fcfa > 0) lines.push({ name: "Remise (code parrain)", qty: 1, unit_price: -o.discount_fcfa });
+      // anciennes commandes sans prix barré : la remise parrain sur une ligne à part
+      if (o.discount_fcfa > 0 && !items.some((i) => i.list_price != null)) lines.push({ name: "Remise (code parrain)", qty: 1, unit_price: -o.discount_fcfa });
       const diff = o.amount_fcfa - lines.reduce((t, l) => t + l.qty * l.unit_price, 0);
       if (diff !== 0) lines.push({ name: diff < 0 ? "Remise" : "Ajustement", qty: 1, unit_price: diff });
       return json({ kind: "invoice", seller, no: o.invoice_no, date: o.invoice_at ?? o.paid_at ?? o.created_at, ref: o.ref,
         status: o.status, cancelled: o.status === "cancelled",
         customer: { name: o.customer_name, company: o.billing_company, email: o.email, phone: o.phone, address: o.billing_address || o.shipping_address },
         payment: { method: o.payment_method, ref: o.payment_ref, date: o.paid_at },
-        lines, total: o.amount_fcfa, vat_rate: Number(o.vat_rate) || 0 });
+        lines, total: o.amount_fcfa, vat_rate: Number(o.vat_rate) || 0,
+        savings, savings_pct: listTotal > 0 ? Math.round(100 * savings / listTotal) : 0, savings_label: o.referral_code ? "Remise code " + o.referral_code : "Remise accordée" });
     }
 
     case "set_name": { // le client donne son prénom et son nom (commande passée par WhatsApp / Facebook) → commande, facture, fiche client
