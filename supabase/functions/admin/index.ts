@@ -362,7 +362,7 @@ async function sendDeliveryEmail(orderId: string, force = false, templateId?: st
 async function sendInstallEmail(orderId: string, force = false): Promise<{ sent: boolean; count?: number; reason?: string }> {
   if (!(Deno.env.get("RESEND_API_KEY") ?? "").trim()) return { sent: false, reason: "resend_non_configure" };
   const { data: o } = await db.from("orders")
-    .select("id, ref, public_token, invoice_no, customer_name, email, amount_fcfa, status, order_items(id, product_name, delivery_type, quantity, status, created_at, install_emailed_at, products(install_template_id))")
+    .select("id, ref, public_token, invoice_no, customer_name, email, amount_fcfa, status, order_items(id, product_name, delivery_type, quantity, status, created_at, install_emailed_at, products(install_template_id, manual_key, manual_link, installer_path))")
     .eq("id", orderId).maybeSingle();
   if (!o || !o.email) return { sent: false, reason: "commande_introuvable" };
   let items: Item[] = ((o.order_items ?? []) as Item[]).filter((i) => i.status === "awaiting_install" && (force || !i.install_emailed_at));
@@ -375,6 +375,35 @@ async function sendInstallEmail(orderId: string, force = false): Promise<{ sent:
     if (!items.length) return { sent: false, reason: "deja_envoye" };
   }
   items.sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+  const { site: site0, wa: wa0 } = siteCtx();
+  const link0 = site0 + "/commande.html?o=" + encodeURIComponent(o.public_token);
+  // clé envoyée à la main : pas de bouton « J'ai fini l'installation », on annonce que la clé arrive
+  // deno-lint-ignore no-explicit-any
+  const manualKey = items.filter((i) => (i as any).products?.manual_key);
+  let sent0 = 0;
+  if (manualKey.length) {
+    // deno-lint-ignore no-explicit-any
+    const withDl = manualKey.some((i) => (i as any).products?.installer_path && !(i as any).products?.manual_link);
+    const nm = String(o.customer_name || "").trim();
+    const first = /^(client( (whatsapp|facebook|wa|fb))?|inconnu|n\/a)?$/i.test(nm) ? "" : nm.split(/\s+/)[0];
+    const names = manualKey.map((i) => (Number(i.quantity) > 1 ? i.quantity + " × " : "") + i.product_name);
+    const P = (t: string) => `<p style="margin:0 0 12px;line-height:1.6">${t}</p>`;
+    const html = P("Bonjour" + (first ? " " + esc(first) : "") + ",") +
+      P(`Merci pour votre commande <b>${esc(o.ref)}</b> (${esc(fcfaTxt(o.amount_fcfa))}). Votre paiement est bien reçu.`) +
+      `<ul style="margin:0 0 12px;padding-left:20px;line-height:1.6">${names.map((x) => "<li>" + esc(x) + "</li>").join("")}</ul>` +
+      (withDl ? P("<b>Étape 1 :</b> téléchargez et installez le logiciel depuis votre page de commande (bouton ci-dessous). Le lien ne fonctionne qu'une seule fois.") : "") +
+      P(`🔑 <b>Votre clé d'activation vous est envoyée par notre équipe</b>, par email et sur votre page de commande, dans les plus brefs délais (jours ouvrés). Vous n'avez rien à faire.`) +
+      `<p style="text-align:center;margin:22px 0"><a href="${esc(link0)}" style="display:inline-block;background:${EM.O};color:#fff;font-weight:800;text-decoration:none;padding:14px 22px;border-radius:10px">Voir ma commande</a></p>` +
+      P("Une question ? Répondez à cet email ou écrivez-nous sur WhatsApp.") + waButtonHtml(wa0);
+    const text = "Bonjour" + (first ? " " + first : "") + ",\n\nMerci pour votre commande " + o.ref + " (" + fcfaTxt(o.amount_fcfa) + "). Votre paiement est bien reçu.\n\n" + names.join("\n") +
+      (withDl ? "\n\nÉtape 1 : téléchargez et installez le logiciel depuis votre page de commande." : "") +
+      "\n\nVotre clé d'activation vous est envoyée par notre équipe, par email et sur votre page de commande, dans les plus brefs délais.\n\nVoir ma commande : " + link0 + "\n\nWhatsApp : https://wa.me/" + wa0 + "\n\nlicenceoff.com — Dakar, Sénégal";
+    const r = await resendSend(o.email, { subject: "Commande " + o.ref + " : paiement reçu, votre clé arrive", html: wrapHtml(html, o.ref), text, headers: { "X-Entity-Ref-ID": o.ref + "-cle-manuelle" } });
+    if (r.ok) sent0++;
+    else if (!force) await db.from("order_items").update({ install_emailed_at: null }).in("id", manualKey.map((i) => i.id));
+    items = items.filter((i) => !manualKey.includes(i));
+    if (!items.length) return sent0 ? { sent: true, count: sent0 } : { sent: false, reason: "envoi_echoue" };
+  }
   const { data: tpls } = await db.from("email_templates").select("id, subject, body, is_default, kind").eq("kind", "install");
   const byId = Object.fromEntries((tpls ?? []).map((t) => [t.id, t]));
   const def: Tpl = (tpls ?? []).find((t) => t.is_default) ?? BUILTIN_INSTALL_TPL;
@@ -1008,7 +1037,7 @@ Deno.serve(async (req) => {
       // ================= Commandes =================
       case "orders_list": {
         let q = db.from("orders")
-          .select("*, order_items(id, product_id, product_name, delivery_type, unit_price, quantity, status, created_at, claim_requested_at, license_keys(key_value, note, added_at, product_id, products(name)), downloads(token, status, download_count, max_downloads, expires_at, created_at))")
+          .select("*, order_items(id, product_id, product_name, delivery_type, unit_price, quantity, status, created_at, claim_requested_at, manual_link_url, manual_link_sent_at, license_keys(key_value, note, added_at, product_id, products(name)), downloads(token, status, download_count, max_downloads, expires_at, created_at))")
           .order("created_at", { ascending: false }).limit(300);
         if (body.status) q = q.eq("status", str(body.status, 20));
         const s = str(body.q, 80).replace(/[,()*]/g, " ").trim();
@@ -1079,6 +1108,39 @@ Deno.serve(async (req) => {
         }
         // silent : livraison sans email au client (ex. vente à un revendeur, PDF d'instructions envoyé à la main)
         return json({ result: body.silent === true ? await deliver(body.id, true, false) : await deliver(body.id) });
+      }
+
+      case "item_send_link": { // 📎 produit « d'exception » : l'admin envoie le lien du logiciel à la main
+        const url = str(body.url, 1000).trim();
+        if (!/^https:\/\/\S+$/i.test(url)) return json({ error: "lien_invalide" }, 400);
+        const { data: it } = await db.from("order_items")
+          .select("id, order_id, product_name, delivery_type, status, orders(id, ref, public_token, customer_name, email, status)")
+          .eq("id", str(body.id, 40)).maybeSingle();
+        if (!it) return json({ error: "commande_introuvable" }, 404);
+        // deno-lint-ignore no-explicit-any
+        const ord = it.orders as any;
+        if (!ord || ord.status === "cancelled") return json({ error: "commande_annulee" }, 400);
+        if (ord.status === "pending") return json({ error: "paiement_non_valide" }, 400);
+        await db.from("order_items").update({ manual_link_url: url, manual_link_sent_at: new Date().toISOString() }).eq("id", it.id);
+        if (it.delivery_type === "file" && it.status === "to_process") await db.rpc("complete_order_item", { p_item_id: it.id });
+        let email = { sent: false } as { sent: boolean; reason?: string };
+        if ((Deno.env.get("RESEND_API_KEY") ?? "").trim() && ord.email) {
+          const { site, wa } = siteCtx();
+          const page = site + "/commande.html?o=" + encodeURIComponent(ord.public_token);
+          const nm = String(ord.customer_name || "").trim();
+          const first = /^(client( (whatsapp|facebook|wa|fb))?|inconnu|n\/a)?$/i.test(nm) ? "" : nm.split(/\s+/)[0];
+          const P = (t: string) => `<p style="margin:0 0 12px;line-height:1.6">${t}</p>`;
+          const html = P("Bonjour" + (first ? " " + esc(first) : "") + ",") +
+            P(`Voici le lien pour télécharger <b>${esc(it.product_name)}</b> (commande <b>${esc(ord.ref)}</b>) :`) +
+            `<p style="text-align:center;margin:22px 0"><a href="${esc(url)}" style="display:inline-block;background:${EM.O};color:#fff;font-weight:800;text-decoration:none;padding:14px 22px;border-radius:10px">⬇ Télécharger le logiciel</a></p>` +
+            P(`Le lien est aussi sur <a href="${esc(page)}">votre page de commande</a>. Besoin d'aide pour l'installation ? Répondez à cet email ou écrivez-nous sur WhatsApp.`) + waButtonHtml(wa);
+          const r = await resendSend(ord.email, { subject: "Votre logiciel " + it.product_name + " — commande " + ord.ref, html: wrapHtml(html, ord.ref),
+            text: "Bonjour" + (first ? " " + first : "") + ",\n\nTélécharger " + it.product_name + " : " + url + "\n\nVotre page de commande : " + page + "\n\nWhatsApp : https://wa.me/" + wa + "\n\nlicenceoff.com — Dakar, Sénégal",
+            headers: { "X-Entity-Ref-ID": ord.ref + "-lien" } });
+          email = r.ok ? { sent: true } : { sent: false, reason: "envoi_echoue" };
+        }
+        await logEvent("info", "livraison", "Lien du logiciel envoyé à la main", { produit: it.product_name }, ord.ref);
+        return json({ ok: true, email });
       }
 
       case "ship_start": { // 🚚 produit physique : expédition en cours → email au client
@@ -1473,6 +1535,9 @@ Deno.serve(async (req) => {
           install_template_id: str(body.install_template_id, 40) || null,
           wholesale_price_fcfa: body.wholesale_price_fcfa === "" || body.wholesale_price_fcfa == null ? null : clamp(Math.round(Number(body.wholesale_price_fcfa) || 0), 0, 100_000_000),
           two_step: body.two_step === true,
+          // produits « d'exception » : clé et/ou lien du logiciel envoyés à la main par l'admin
+          manual_key: dtype !== "physical" && body.manual_key === true,
+          manual_link: dtype !== "physical" && body.manual_link === true,
           // stock commun : prend ses clés dans le stock d'un autre produit (ex. Windows 10 Pro ← Windows 11 Pro)
           key_source_id: STOCK_TYPES.includes(dtype) && !bundle?.length && str(body.key_source_id, 40) && str(body.key_source_id, 40) !== body.id ? str(body.key_source_id, 40) : null,
           sku: str(body.sku, 60) || null,
@@ -1487,7 +1552,7 @@ Deno.serve(async (req) => {
           const { count: users } = body.id ? await db.from("products").select("id", { count: "exact", head: true }).eq("key_source_id", body.id) : { count: 0 };
           if (!src || src.key_source_id || srcPack || users || !STOCK_TYPES.includes(src.delivery_type)) return json({ error: "stock_source_invalide" }, 400);
         }
-        if (["key_file", "file"].includes(dtype) && !row.installer_path) return json({ error: "fichier_obligatoire" }, 400);
+        if (["key_file", "file"].includes(dtype) && !row.installer_path && !row.manual_link) return json({ error: "fichier_obligatoire" }, 400); // lien envoyé à la main : pas de fichier
         if (row.installer_path && /^[a-z]+:/i.test(row.installer_path) && !/^https:\/\/[^\s]+$/i.test(row.installer_path)) return json({ error: "lien_invalide" }, 400);
         const r = body.id ? await db.from("products").update(row).eq("id", body.id).select().single()
           : await db.from("products").insert(row).select().single();

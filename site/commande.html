@@ -115,6 +115,11 @@ function itemBlock(i) {
   if (i.keys_hidden || i.download?.state === "need_name") {
     body.append(el("p", { class: "note", style: "margin-top:8px;font-weight:700", text: "🔒 " + (i.keys_hidden ? "Votre clé est prête" : "Votre logiciel est prêt") + " : indiquez votre nom ci-dessus pour l'afficher." }));
   } else if (i.download) dlBlock(body, i.download, "Télécharger le logiciel");
+  // produit d'exception : lien du logiciel envoyé à la main par l'équipe
+  if (i.manual_link) {
+    body.append(el("a", { class: "btn block", style: "margin-top:10px", href: i.manual_link, target: "_blank", rel: "noopener", text: "⬇ Télécharger le logiciel" }));
+  } else if (i.link_by_team) body.append(el("p", { class: "note", style: "margin-top:8px;font-weight:700", text: "📎 Le lien de téléchargement du logiciel vous est envoyé par notre équipe très vite (par email et sur cette page)." }));
+  if (i.key_by_team) body.append(el("p", { class: "note", style: "margin-top:8px;font-weight:700", text: "🔑 Votre clé d'activation vous est envoyée par notre équipe dans les plus brefs délais (par email et sur cette page). Vous n'avez rien à faire." }));
   // pack : un bouton de téléchargement par logiciel inclus
   const packDl = i.pack_downloads || [];
   if (packDl.some((d) => d.state === "need_name")) {
@@ -135,14 +140,14 @@ function itemBlock(i) {
     const box = el("div", { class: "claim", style: "margin-top:12px;padding:12px;border-radius:12px;background:#E8F1FC" + (fromInstallEmail ? ";outline:3px solid #F5A21B" : "") },
       el("p", { class: "note", style: "margin:0", text: "Étape 2 : une fois le logiciel installé, cliquez ci-dessous pour recevoir votre clé de licence (par email et sur cette page)." }), b, msg);
     body.append(box);
-  } else if (i.can_claim) {
+  } else if (i.can_claim && !i.key_by_team) {
     // le nom n'est pas encore connu : il est demandé une seule fois, juste au-dessus, avant la clé
     body.append(el("div", { class: "claim", style: "margin-top:12px;padding:12px;border-radius:12px;background:#E8F1FC" + (fromInstallEmail ? ";outline:3px solid #F5A21B" : "") },
       el("p", { class: "note", style: "margin:0", text: "Étape 2 : une fois le logiciel installé, indiquez votre nom en haut de la page (une seule fois), puis cliquez sur « J'ai fini l'installation » pour recevoir votre clé." })));
   } else if (i.claimed && i.status !== "delivered") {
     body.append(el("p", { class: "note", text: i.status === "awaiting_install" || i.status === "to_process" || i.status === "waiting_stock"
       ? "Demande de clé reçue ✔ Elle arrive très vite par email et sur cette page." : "" }));
-  } else if (i.status === "to_process" && i.delivery_type !== "physical") body.append(el("p", { class: "note", text: "Notre équipe traite cet article et vous contacte rapidement sur WhatsApp." }));
+  } else if (i.status === "to_process" && i.delivery_type !== "physical" && !i.link_by_team) body.append(el("p", { class: "note", text: "Notre équipe traite cet article et vous contacte rapidement sur WhatsApp." }));
   if (i.reviewed) body.append(el("p", { class: "note", text: "⭐ Merci pour votre avis !" }));
   else if (i.can_review) body.append(reviewForm(i));
   return box;

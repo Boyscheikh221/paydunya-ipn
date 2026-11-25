@@ -338,6 +338,11 @@
           <label class="check" style="margin:0"><input type="checkbox" id="pTwo"> Livraison en 2 temps : le client reçoit d'abord le logiciel, puis clique « J'ai fini l'installation » pour recevoir sa clé</label>
           <div id="pTwoBox" class="grid" style="margin-top:8px"><div><label>Email d'installation (étape 1)</label><select id="pInstTpl"></select></div></div>
         </div>
+        <div id="pManWrap" class="box" style="background:#fff7e6;margin:10px 0 0;padding:12px">
+          <div class="small" style="font-weight:700;margin-bottom:6px">⭐ Produit d'exception (envoi à la main après le paiement)</div>
+          <label class="check" style="margin:0"><input type="checkbox" id="pManKey"> 🔑 Clé envoyée à la main : rien ne part automatiquement, je clique « Envoyer la clé » dans la commande</label>
+          <label class="check" id="pManLinkLbl" style="margin:6px 0 0"><input type="checkbox" id="pManLink"> 📎 Lien du logiciel envoyé à la main : je colle le lien dans la commande (pas de fichier à mettre ici)</label>
+        </div>
         <details id="pSeoBox" class="box" style="margin:10px 0 0;padding:12px">
           <summary style="cursor:pointer;font-weight:700">🔎 Référencement Google (facultatif)</summary>
           <label>Titre pour Google <span id="pSeoTN" class="small"></span></label><input id="pSeoT" maxlength="120" placeholder="ex : Office 2024 Pro Plus — licence à vie, livraison immédiate">
@@ -826,7 +831,7 @@ const STOCK_TYPES = ["key", "key_file", "stock"];
 let stock = []; // stock de clés par produit (rempli par le tableau de bord)
 const METHOD = { whatsapp: "💬 WhatsApp", wave: "Wave", orange_money: "Orange Money", free_money: "Free Money", especes: "Espèces", paydunya: "PayDunya", manuel: "Transfert manuel", autre: "Autre" };
 const ERR = {
-  pack_invalide: "Pack invalide : choisissez des produits livrés avec une clé ou des identifiants (pas un autre pack).", paiement_non_valide: "Validez d'abord le paiement de la commande avant de libérer une clé.", rien_a_expedier: "Aucun produit physique à expédier dans cette commande.", commande_annulee: "Cette commande est annulée.", pas_de_produit_physique: "Cette commande n'a pas de produit physique.", pas_dans_le_pack: "Ce produit ne fait pas partie du pack.", deja_livre: "Cet article est déjà livré.", stock_source_invalide: "Stock commun impossible : choisissez un produit avec son propre stock de clés (pas un pack, ni un produit qui prend déjà ses clés ailleurs).", pack_sans_stock: "Un pack n'a pas de stock propre : ajoutez les clés dans le stock de chaque produit du pack.",
+  pack_invalide: "Pack invalide : choisissez des produits livrés avec une clé ou des identifiants (pas un autre pack).", paiement_non_valide: "Validez d'abord le paiement de la commande avant de libérer une clé.", rien_a_expedier: "Aucun produit physique à expédier dans cette commande.", lien_invalide: "Le lien doit commencer par https://", commande_annulee: "Cette commande est annulée.", pas_de_produit_physique: "Cette commande n'a pas de produit physique.", pas_dans_le_pack: "Ce produit ne fait pas partie du pack.", deja_livre: "Cet article est déjà livré.", stock_source_invalide: "Stock commun impossible : choisissez un produit avec son propre stock de clés (pas un pack, ni un produit qui prend déjà ses clés ailleurs).", pack_sans_stock: "Un pack n'a pas de stock propre : ajoutez les clés dans le stock de chaque produit du pack.",
   rien_a_noter: "Rien à noter : le client a déjà donné son avis sur tous ses produits, ou la commande n'a pas d'adresse email valide.",
   integrateur_pas_branche: "Cet intégrateur n'est pas encore branché au site : demandez à Claude de le brancher quand votre compte est actif.",
   cles_manquantes: "Enregistrez d'abord toutes les clés de cet intégrateur.", cle_invalide: "Clé invalide (pas d'espace, vérifiez le copier-coller).",
@@ -1420,6 +1425,15 @@ async function loadOrders() {
           await run({ action: "item_release_component", id: i.id, component_id: c.component_id }, "Clé « " + nm + " » libérée ✔", reload)();
         }));
       }
+      // produit d'exception : lien du logiciel et/ou clé envoyés à la main
+      const exP = products.find((x) => x.id === i.product_id);
+      if (exP && exP.manual_key && i.status === "awaiting_install") box.append(el("br"), el("span", "🔑 Clé à envoyer par vous (le client attend)", "small"));
+      if (i.manual_link_url) box.append(el("br"), el("span", "📎 Lien envoyé" + (i.manual_link_sent_at ? " le " + dt(i.manual_link_sent_at) : ""), "small"));
+      if (exP && exP.manual_link && !["pending", "cancelled"].includes(o.status) && i.status !== "cancelled") acts.append(btn(i.manual_link_url ? "📎 Renvoyer un lien" : "📎 Envoyer le lien du logiciel", i.manual_link_url ? "grey" : "green", async () => {
+        const url = prompt("Lien de téléchargement de « " + i.product_name + " » pour " + (o.customer_name || o.email) + " (https://…).\nLe client le reçoit par email et le voit sur sa page de commande.", i.manual_link_url || "");
+        if (!url) return;
+        await run({ action: "item_send_link", id: i.id, url: url.trim() }, "Lien envoyé au client ✔", reload)();
+      }));
       if (i.status === "awaiting_install") acts.append(btn(packOpen ? "🔑 Libérer toutes les clés du pack" : "🔑 Envoyer la clé maintenant", packOpen ? "grey" : "green", async () => { if (confirm(packOpen ? "Libérer TOUTES les clés du pack maintenant ?" : "Envoyer la clé sans attendre que le client confirme l'installation ?")) await run({ action: "item_send_key_now", id: i.id }, "Clé envoyée ✔", reload)(); }));
       if (i.status === "to_process" && i.delivery_type === "manual") acts.append(btn("✔ Marquer fait", "green", run({ action: "item_complete", id: i.id }, "Article marqué livré ✔", reload)));
       if (o.status !== "cancelled" && ["delivered", "awaiting_install"].includes(i.status) && ["key_file", "file"].includes(i.delivery_type) && (i.downloads || []).length)
@@ -1578,6 +1592,8 @@ function syncType() {
   $("pTplBox").classList.toggle("hidden", phys);
   if (phys) $("pSrcBox").classList.add("hidden"); else fillSrcVis();
   $("pPhysInfo").classList.toggle("hidden", !phys);
+  $("pManWrap").classList.toggle("hidden", phys);
+  $("pManLinkLbl").classList.toggle("hidden", !["key_file", "file", "pack"].includes(t));
 }
 $("pPhysical").addEventListener("change", syncType);
 // aperçu Google : titre ~60 caractères, description ~155
@@ -1666,14 +1682,14 @@ function editProduct(p) {
   $("pType").value = p.delivery_type === "physical" ? "key" : isPack(p) ? "pack" : p.delivery_type; $("pLink").value = ext ? p.installer_path : ""; $("pKeys").value = ""; resetKind("pKeys"); fillSrc(p); keysInfo(p);
   syncType(); loadFiles(ext ? "" : p.installer_path || "").catch(() => {});
   $("pAuto").checked = p.auto_deliver !== false; $("pActive").value = p.active ? "1" : "0"; $("pFeatured").checked = p.featured;
-  $("pLow").value = p.low_stock_threshold; $("pSort").value = p.sort || 0; $("pTpl").value = p.email_template_id || ""; $("pTwo").checked = !!p.two_step; $("pInstTpl").value = p.install_template_id || ""; twoVis();
+  $("pLow").value = p.low_stock_threshold; $("pSort").value = p.sort || 0; $("pTpl").value = p.email_template_id || ""; $("pTwo").checked = !!p.two_step; $("pInstTpl").value = p.install_template_id || ""; twoVis(); $("pManKey").checked = !!p.manual_key; $("pManLink").checked = !!p.manual_link;
   $("pForm").scrollIntoView({ behavior: "smooth" });
 }
 function resetProduct() {
   $("pFormTitle").textContent = "Nouveau produit";
   for (const id of ["pId", "pName", "pPrice", "pCompare", "pWholesale", "pDesc", "pImg", "pFile"]) $(id).value = "";
   $("pCat").value = ""; $("pType").value = "key"; $("pPackRows").replaceChildren(); $("pKeysNote").value = ""; $("pPhysical").checked = false; $("pQty").value = ""; $("pWeight").value = ""; $("pSku").value = ""; $("pSeoT").value = ""; $("pSeoD").value = ""; seoPrev(); $("pLink").value = ""; $("pKeys").value = ""; resetKind("pKeys"); fillSrc(null); keysInfo(null); syncType(); $("pImgPrev").classList.add("hidden"); $("pImgMsg").textContent = ""; setGallery([]);
-  $("pAuto").checked = true; $("pActive").value = "1"; $("pFeatured").checked = false; $("pLow").value = 5; $("pSort").value = 0; $("pTpl").value = ""; $("pTwo").checked = false; $("pInstTpl").value = ""; twoVis();
+  $("pAuto").checked = true; $("pActive").value = "1"; $("pFeatured").checked = false; $("pLow").value = 5; $("pSort").value = 0; $("pTpl").value = ""; $("pTwo").checked = false; $("pInstTpl").value = ""; twoVis(); $("pManKey").checked = false; $("pManLink").checked = false;
 }
 $("pReset").addEventListener("click", resetProduct);
 async function saveProduct(publish) {
@@ -1689,7 +1705,7 @@ async function saveProduct(publish) {
     const saved = await api({ action: "product_save", id: $("pId").value || undefined, name: $("pName").value, category_id: $("pCat").value, stock_qty: $("pQty").value,
       price_fcfa: $("pPrice").value, compare_price_fcfa: $("pCompare").value, wholesale_price_fcfa: $("pWholesale").value, description: $("pDesc").value, image_url: $("pImg").value, gallery: getGallery(),
       delivery_type: phys ? "physical" : pack ? "key" : $("pType").value, installer_path: pack ? "" : link || $("pFile").value, bundle, auto_deliver: $("pAuto").checked, active: $("pActive").value === "1", sku: $("pSku").value, weight_g: $("pWeight").value, seo_title: $("pSeoT").value, seo_description: $("pSeoD").value,
-      featured: $("pFeatured").checked, low_stock_threshold: $("pLow").value, sort: $("pSort").value, email_template_id: $("pTpl").value, two_step: $("pTwo").checked, install_template_id: $("pInstTpl").value, key_source_id: pack || phys ? "" : $("pSrc").value });
+      featured: $("pFeatured").checked, low_stock_threshold: $("pLow").value, sort: $("pSort").value, email_template_id: $("pTpl").value, two_step: $("pTwo").checked, manual_key: !phys && $("pManKey").checked, manual_link: !phys && $("pManLink").checked && ["key_file", "file", "pack"].includes($("pType").value), install_template_id: $("pInstTpl").value, key_source_id: pack || phys ? "" : $("pSrc").value });
     let msg = "Produit enregistré ✔";
     if (!phys && !pack && STOCK_TYPES.includes($("pType").value) && $("pKeys").value.trim()) {
       const kp = kindPayload("pKeys");

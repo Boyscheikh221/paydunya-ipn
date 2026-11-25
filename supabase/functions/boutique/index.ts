@@ -1332,6 +1332,9 @@ async function handle(req: Request): Promise<Response> {
       if (!token || !itemId) return json({ error: "not_found" }, 404);
       const { data: o } = await db.from("orders").select("id").eq("public_token", token).maybeSingle();
       if (!o) return json({ error: "not_found" }, 404);
+      const { data: pre } = await db.from("order_items").select("id, products(manual_key)").eq("id", itemId).eq("order_id", o.id).maybeSingle();
+      // deno-lint-ignore no-explicit-any
+      if ((pre as any)?.products?.manual_key) return json({ error: "cle_envoyee_par_equipe" }, 400); // produit d'exception : c'est l'admin qui envoie la clé
       const { data: it } = await db.from("order_items").update({ claim_requested_at: new Date().toISOString() })
         .eq("id", itemId).eq("order_id", o.id).eq("status", "awaiting_install").is("claim_requested_at", null).select("id");
       if (!it?.length) return json({ error: "deja_demande" }, 400);
@@ -1441,7 +1444,7 @@ async function handle(req: Request): Promise<Response> {
       const token = str(body.o, 64);
       if (!token) return json({ error: "not_found" }, 404);
       const { data: o } = await db.from("orders")
-        .select("id, ref, invoice_no, status, amount_fcfa, payment_method, payment_ref, paydunya_token, key_locked, customer_name, email, phone, created_at, delivered_at, shipping_method, shipping_fee_fcfa, shipping_address, shipping_zone, ship_started_at, ship_note, ship_done_at, order_items(id, product_id, product_name, delivery_type, unit_price, quantity, status, created_at, claim_requested_at, products(slug, image_url, installer_path))")
+        .select("id, ref, invoice_no, status, amount_fcfa, payment_method, payment_ref, paydunya_token, key_locked, customer_name, email, phone, created_at, delivered_at, shipping_method, shipping_fee_fcfa, shipping_address, shipping_zone, ship_started_at, ship_note, ship_done_at, order_items(id, product_id, product_name, delivery_type, unit_price, quantity, status, created_at, claim_requested_at, manual_link_url, products(slug, image_url, installer_path, manual_key, manual_link))")
         .eq("public_token", token).maybeSingle();
       if (!o) return json({ error: "not_found" }, 404);
       const paid = ["paid", "processing", "installing", "delivered"].includes(o.status);
@@ -1538,7 +1541,12 @@ async function handle(req: Request): Promise<Response> {
               return { name: l.products?.name ?? "", state: st, token: st === "ready" ? l.token : null };
             }) : [],
             keys_hidden: i.status === "delivered" && needName && (keysByItem[i.id] ?? []).length > 0, download,
-            id: i.id, can_claim: i.status === "awaiting_install" && !i.claim_requested_at,
+            id: i.id,
+            // produit d'exception : la clé est envoyée par l'admin (pas de bouton client) ; lien du logiciel envoyé à la main
+            can_claim: i.status === "awaiting_install" && !i.claim_requested_at && !i.products?.manual_key && !(i.products?.manual_link && !i.manual_link_url),
+            key_by_team: i.status === "awaiting_install" && !!i.products?.manual_key,
+            manual_link: paid && i.manual_link_url ? i.manual_link_url : null,
+            link_by_team: paid && !!i.products?.manual_link && !i.manual_link_url && i.status !== "cancelled",
             claimed: !!i.claim_requested_at && i.status !== "delivered",
             reviewed: reviewedIds.has(i.id),
             can_review: i.status === "delivered" && !!i.products?.slug && !reviewedIds.has(i.id),
