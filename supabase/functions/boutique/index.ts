@@ -425,7 +425,13 @@ async function keyUnits(ids: string[]) {
   const { data: b } = await db.from("product_bundle_items").select("bundle_id, component_id, qty").in("bundle_id", ids);
   const packs: Record<string, { component_id: string; qty: number }[]> = {};
   for (const r of b ?? []) (packs[r.bundle_id] ??= []).push(r);
-  const raw = await keyUnitsRaw([...new Set([...ids.filter((id) => !packs[id]), ...(b ?? []).map((r) => r.component_id)])]);
+  // stock commun : un produit peut prendre ses clés dans le stock d'un autre (products.key_source_id)
+  const need = [...new Set([...ids.filter((id) => !packs[id]), ...(b ?? []).map((r) => r.component_id)])];
+  const { data: srcRows } = need.length ? await db.from("products").select("id, key_source_id").in("id", need) : { data: [] };
+  const srcOf: Record<string, string> = Object.fromEntries((srcRows ?? []).map((p) => [p.id, p.key_source_id || p.id]));
+  const raw0 = await keyUnitsRaw([...new Set(need.map((id) => srcOf[id] ?? id))]);
+  const raw: Record<string, { units: number; unlimited: boolean }> = {};
+  for (const id of need) if (raw0[srcOf[id] ?? id]) raw[id] = raw0[srcOf[id] ?? id];
   for (const id of ids) {
     if (packs[id]) {
       let units = Infinity, unlimited = true;

@@ -323,6 +323,7 @@
           <div><label>Statut</label><select id="pActive"><option value="1">✅ Publié (visible sur le site)</option><option value="0">📝 Brouillon (caché)</option></select></div>
           <label class="check"><input type="checkbox" id="pFeatured"> Mettre en avant (accueil)</label>
           <div><label>Alerte stock bas sous</label><input id="pLow" type="number" min="0" value="5"></div>
+          <div id="pSrcBox"><label>🔁 Clés prises dans le stock de</label><select id="pSrc"></select><div class="small">Stock commun : ce produit utilise les clés d'un autre produit (ex. Windows 10 Pro ← Windows 11 Pro). Son lien, son prix et ses emails ne changent pas.</div></div>
           <div><label>Ordre d'affichage</label><input id="pSort" type="number" min="0" value="0"></div>
           <div><label>Email de la clé (ou de livraison)</label><select id="pTpl"></select></div>
         </div>
@@ -818,7 +819,7 @@ const STOCK_TYPES = ["key", "key_file", "stock"];
 let stock = []; // stock de clés par produit (rempli par le tableau de bord)
 const METHOD = { whatsapp: "💬 WhatsApp", wave: "Wave", orange_money: "Orange Money", free_money: "Free Money", especes: "Espèces", paydunya: "PayDunya", manuel: "Transfert manuel", autre: "Autre" };
 const ERR = {
-  pack_invalide: "Pack invalide : choisissez des produits livrés avec une clé ou des identifiants (pas un autre pack).", pack_sans_stock: "Un pack n'a pas de stock propre : ajoutez les clés dans le stock de chaque produit du pack.",
+  pack_invalide: "Pack invalide : choisissez des produits livrés avec une clé ou des identifiants (pas un autre pack).", paiement_non_valide: "Validez d'abord le paiement de la commande avant de libérer une clé.", pas_dans_le_pack: "Ce produit ne fait pas partie du pack.", deja_livre: "Cet article est déjà livré.", stock_source_invalide: "Stock commun impossible : choisissez un produit avec son propre stock de clés (pas un pack, ni un produit qui prend déjà ses clés ailleurs).", pack_sans_stock: "Un pack n'a pas de stock propre : ajoutez les clés dans le stock de chaque produit du pack.",
   rien_a_noter: "Rien à noter : le client a déjà donné son avis sur tous ses produits, ou la commande n'a pas d'adresse email valide.",
   integrateur_pas_branche: "Cet intégrateur n'est pas encore branché au site : demandez à Claude de le brancher quand votre compte est actif.",
   cles_manquantes: "Enregistrez d'abord toutes les clés de cet intégrateur.", cle_invalide: "Clé invalide (pas d'espace, vérifiez le copier-coller).",
@@ -1397,7 +1398,19 @@ async function loadOrders() {
       if (ls[0]) box.append(el("br"), el("span", "Lien : ", "small"), tag(linkState(ls[0])));
       const acts = el("div", null, "acts"); acts.style.marginTop = "4px";
       if (i.claim_requested_at && i.status !== "delivered") box.append(el("br"), el("span", "📩 Le client a fini l'installation et demande sa clé", "small"));
-      if (i.status === "awaiting_install") acts.append(btn("🔑 Envoyer la clé maintenant", "green", async () => { if (confirm("Envoyer la clé sans attendre que le client confirme l'installation ?")) await run({ action: "item_send_key_now", id: i.id }, "Clé envoyée ✔", reload)(); }));
+      // pack : libérer les clés une à une (chaque produit du pack a son bouton)
+      const packP = products.find((x) => x.id === i.product_id);
+      const packOpen = isPack(packP) && !["pending", "cancelled"].includes(o.status) && ["awaiting_install", "waiting_stock", "to_process", "pending"].includes(i.status);
+      if (packOpen) for (const c of packP.bundle) {
+        const cp = products.find((x) => x.id === c.component_id), nm = cp ? cp.name : "produit";
+        const have = (i.license_keys || []).filter((k) => k.product_id === c.component_id).length;
+        if (have >= i.quantity * c.qty) acts.append(el("span", "✔ Clé « " + nm + " » libérée", "small"));
+        else acts.append(btn("🔑 Libérer la clé « " + nm + " »", "green", async () => {
+          if (!confirm("Libérer la clé « " + nm + " » pour " + (o.customer_name || o.email) + " ?\nLe client la reçoit par email et la voit sur sa page de commande. Les autres clés du pack restent cachées.")) return;
+          await run({ action: "item_release_component", id: i.id, component_id: c.component_id }, "Clé « " + nm + " » libérée ✔", reload)();
+        }));
+      }
+      if (i.status === "awaiting_install") acts.append(btn(packOpen ? "🔑 Libérer toutes les clés du pack" : "🔑 Envoyer la clé maintenant", packOpen ? "grey" : "green", async () => { if (confirm(packOpen ? "Libérer TOUTES les clés du pack maintenant ?" : "Envoyer la clé sans attendre que le client confirme l'installation ?")) await run({ action: "item_send_key_now", id: i.id }, "Clé envoyée ✔", reload)(); }));
       if (i.status === "to_process" && ["manual", "physical"].includes(i.delivery_type)) acts.append(btn(i.delivery_type === "physical" ? "📦 Marquer livré" : "✔ Marquer fait", "green", run({ action: "item_complete", id: i.id }, "Article marqué livré ✔", reload)));
       if (o.status !== "cancelled" && ["delivered", "awaiting_install"].includes(i.status) && ["key_file", "file"].includes(i.delivery_type) && (i.downloads || []).length)
         acts.append(btn("🔄 Renouveler le lien", "org", () => renewLink(o, i, reload)));
@@ -1545,8 +1558,20 @@ function seoPrev() {
   $("pSeoDN").textContent = "(" + $("pSeoD").value.length + "/155 conseillé)";
 }
 for (const id of ["pSeoT", "pSeoD", "pName", "pDesc"]) $(id).addEventListener("input", seoPrev);
+// stock commun : liste des produits dont on peut prendre les clés (avec leur propre stock, pas un pack)
+function fillSrc(p) {
+  const opts = products.filter((x) => (!p || x.id !== p.id) && STOCK_TYPES.includes(x.delivery_type) && !isPack(x) && !x.key_source_id);
+  $("pSrc").replaceChildren(new Option("Son propre stock", ""), ...opts.map((x) => new Option(x.name, x.id)));
+  $("pSrc").value = p && p.key_source_id ? p.key_source_id : "";
+  const users = p ? products.filter((x) => x.key_source_id === p.id) : [];
+  $("pSrcBox").classList.toggle("hidden", users.length > 0); // ce produit sert déjà de stock à d'autres
+}
 function keysInfo(p) {
   const s = p ? stock.find((x) => x.id === p.id) : null;
+  const src = p && p.key_source_id ? products.find((x) => x.id === p.key_source_id) : null;
+  const users = p ? products.filter((x) => x.key_source_id === p.id) : [];
+  if (src) { $("pKeysInfo").textContent = "🔁 Stock commun : les clés viennent de « " + src.name + " » (ajoutez-les dans ce produit)." + (s ? " " + (s.available ?? 0) + " envoi(s) possible(s)." : ""); return; }
+  if (users.length) { $("pKeysInfo").textContent = (s ? (s.available ?? 0) + " envoi(s) possible(s) en stock" : "") + " · 🔁 stock partagé avec : " + users.map((x) => x.name).join(", "); return; }
   $("pKeysInfo").textContent = s ? (s.available ?? 0) + " envoi(s) possible(s) en stock" + (s.reusable ? " + un sérialiseur réutilisable sans limite" : "") : "";
 }
 $("pType").addEventListener("change", syncType);
@@ -1590,7 +1615,7 @@ function editProduct(p) {
   $("pPhysical").checked = p.delivery_type === "physical"; $("pQty").value = p.stock_qty ?? ""; $("pWeight").value = p.weight_g ?? ""; $("pSku").value = p.sku || "";
   $("pSeoT").value = p.seo_title || ""; $("pSeoD").value = p.seo_description || ""; seoPrev();
   $("pPackRows").replaceChildren(); for (const r of p.bundle || []) packRow(r);
-  $("pType").value = p.delivery_type === "physical" ? "key" : isPack(p) ? "pack" : p.delivery_type; $("pLink").value = ext ? p.installer_path : ""; $("pKeys").value = ""; resetKind("pKeys"); keysInfo(p);
+  $("pType").value = p.delivery_type === "physical" ? "key" : isPack(p) ? "pack" : p.delivery_type; $("pLink").value = ext ? p.installer_path : ""; $("pKeys").value = ""; resetKind("pKeys"); fillSrc(p); keysInfo(p);
   syncType(); loadFiles(ext ? "" : p.installer_path || "").catch(() => {});
   $("pAuto").checked = p.auto_deliver !== false; $("pActive").value = p.active ? "1" : "0"; $("pFeatured").checked = p.featured;
   $("pLow").value = p.low_stock_threshold; $("pSort").value = p.sort || 0; $("pTpl").value = p.email_template_id || ""; $("pTwo").checked = !!p.two_step; $("pInstTpl").value = p.install_template_id || ""; twoVis();
@@ -1599,7 +1624,7 @@ function editProduct(p) {
 function resetProduct() {
   $("pFormTitle").textContent = "Nouveau produit";
   for (const id of ["pId", "pName", "pPrice", "pCompare", "pWholesale", "pDesc", "pImg", "pFile"]) $(id).value = "";
-  $("pCat").value = ""; $("pType").value = "key"; $("pPackRows").replaceChildren(); $("pKeysNote").value = ""; $("pPhysical").checked = false; $("pQty").value = ""; $("pWeight").value = ""; $("pSku").value = ""; $("pSeoT").value = ""; $("pSeoD").value = ""; seoPrev(); $("pLink").value = ""; $("pKeys").value = ""; resetKind("pKeys"); keysInfo(null); syncType(); $("pImgPrev").classList.add("hidden"); $("pImgMsg").textContent = "";
+  $("pCat").value = ""; $("pType").value = "key"; $("pPackRows").replaceChildren(); $("pKeysNote").value = ""; $("pPhysical").checked = false; $("pQty").value = ""; $("pWeight").value = ""; $("pSku").value = ""; $("pSeoT").value = ""; $("pSeoD").value = ""; seoPrev(); $("pLink").value = ""; $("pKeys").value = ""; resetKind("pKeys"); fillSrc(null); keysInfo(null); syncType(); $("pImgPrev").classList.add("hidden"); $("pImgMsg").textContent = "";
   $("pAuto").checked = true; $("pActive").value = "1"; $("pFeatured").checked = false; $("pLow").value = 5; $("pSort").value = 0; $("pTpl").value = ""; $("pTwo").checked = false; $("pInstTpl").value = ""; twoVis();
 }
 $("pReset").addEventListener("click", resetProduct);
@@ -1616,7 +1641,7 @@ async function saveProduct(publish) {
     const saved = await api({ action: "product_save", id: $("pId").value || undefined, name: $("pName").value, category_id: $("pCat").value, stock_qty: $("pQty").value,
       price_fcfa: $("pPrice").value, compare_price_fcfa: $("pCompare").value, wholesale_price_fcfa: $("pWholesale").value, description: $("pDesc").value, image_url: $("pImg").value,
       delivery_type: phys ? "physical" : pack ? "key" : $("pType").value, installer_path: pack ? "" : link || $("pFile").value, bundle, auto_deliver: $("pAuto").checked, active: $("pActive").value === "1", sku: $("pSku").value, weight_g: $("pWeight").value, seo_title: $("pSeoT").value, seo_description: $("pSeoD").value,
-      featured: $("pFeatured").checked, low_stock_threshold: $("pLow").value, sort: $("pSort").value, email_template_id: $("pTpl").value, two_step: $("pTwo").checked, install_template_id: $("pInstTpl").value });
+      featured: $("pFeatured").checked, low_stock_threshold: $("pLow").value, sort: $("pSort").value, email_template_id: $("pTpl").value, two_step: $("pTwo").checked, install_template_id: $("pInstTpl").value, key_source_id: pack || phys ? "" : $("pSrc").value });
     let msg = "Produit enregistré ✔";
     if (!phys && !pack && STOCK_TYPES.includes($("pType").value) && $("pKeys").value.trim()) {
       const kp = kindPayload("pKeys");

@@ -623,7 +623,13 @@ async function keyUnits(ids: string[]) {
   const { data: b } = await db.from("product_bundle_items").select("bundle_id, component_id, qty").in("bundle_id", ids);
   const packs: Record<string, { component_id: string; qty: number }[]> = {};
   for (const r of b ?? []) (packs[r.bundle_id] ??= []).push(r);
-  const raw = await keyUnitsRaw([...new Set([...ids.filter((id) => !packs[id]), ...(b ?? []).map((r) => r.component_id)])]);
+  // stock commun : un produit peut prendre ses clés dans le stock d'un autre (products.key_source_id)
+  const need = [...new Set([...ids.filter((id) => !packs[id]), ...(b ?? []).map((r) => r.component_id)])];
+  const { data: srcRows } = need.length ? await db.from("products").select("id, key_source_id").in("id", need) : { data: [] };
+  const srcOf: Record<string, string> = Object.fromEntries((srcRows ?? []).map((p) => [p.id, p.key_source_id || p.id]));
+  const raw0 = await keyUnitsRaw([...new Set(need.map((id) => srcOf[id] ?? id))]);
+  const raw: Record<string, { units: number; unlimited: boolean }> = {};
+  for (const id of need) if (raw0[srcOf[id] ?? id]) raw[id] = raw0[srcOf[id] ?? id];
   for (const id of ids) {
     if (packs[id]) {
       let units = Infinity, unlimited = true;
@@ -638,9 +644,12 @@ async function keyUnits(ids: string[]) {
 }
 async function deliverWaiting(productId: string) {
   // les packs qui contiennent ce produit attendent peut-être aussi ces clés
-  const { data: pk } = await db.from("product_bundle_items").select("bundle_id").eq("component_id", productId);
+  // stock commun : les produits qui prennent leurs clés dans ce stock attendent peut-être aussi
+  const { data: sh } = await db.from("products").select("id").eq("key_source_id", productId);
+  const prods = [productId, ...(sh ?? []).map((r) => r.id)];
+  const { data: pk } = await db.from("product_bundle_items").select("bundle_id").in("component_id", prods);
   const { data } = await db.from("order_items").select("order_id, orders!inner(paid_at, status)")
-    .in("product_id", [productId, ...(pk ?? []).map((r) => r.bundle_id)]).eq("status", "waiting_stock").limit(200);
+    .in("product_id", [...prods, ...(pk ?? []).map((r) => r.bundle_id)]).eq("status", "waiting_stock").limit(200);
   // deno-lint-ignore no-explicit-any
   const ids = [...new Set((data ?? []).sort((a: any, b: any) => String(a.orders.paid_at).localeCompare(String(b.orders.paid_at))).map((r) => r.order_id))];
   let n = 0;
@@ -935,7 +944,7 @@ Deno.serve(async (req) => {
       // ================= Commandes =================
       case "orders_list": {
         let q = db.from("orders")
-          .select("*, order_items(id, product_id, product_name, delivery_type, unit_price, quantity, status, created_at, claim_requested_at, license_keys(key_value, note, added_at, products(name)), downloads(token, status, download_count, max_downloads, expires_at, created_at))")
+          .select("*, order_items(id, product_id, product_name, delivery_type, unit_price, quantity, status, created_at, claim_requested_at, license_keys(key_value, note, added_at, product_id, products(name)), downloads(token, status, download_count, max_downloads, expires_at, created_at))")
           .order("created_at", { ascending: false }).limit(300);
         if (body.status) q = q.eq("status", str(body.status, 20));
         const s = str(body.q, 80).replace(/[,()*]/g, " ").trim();
@@ -1076,6 +1085,45 @@ Deno.serve(async (req) => {
         return json({ result: await deliver(it[0].order_id, true) });
       }
 
+      case "item_release_component": { // pack : libérer la clé d'UN produit du pack (décision de l'admin), email avec cette clé seulement
+        const { data: it } = await db.from("order_items")
+          .select("id, order_id, product_id, product_name, delivery_type, quantity, status, created_at, orders(id, ref, public_token, invoice_no, customer_name, email, amount_fcfa, status)")
+          .eq("id", str(body.id, 40)).maybeSingle();
+        if (!it) return json({ error: "commande_introuvable" }, 400);
+        // deno-lint-ignore no-explicit-any
+        const ord = it.orders as any;
+        if (!ord || ord.status === "cancelled") return json({ error: "commande_annulee" }, 400);
+        if (ord.status === "pending") return json({ error: "paiement_non_valide" }, 400); // aucune clé tant que le paiement n'est pas validé
+        if (!["awaiting_install", "waiting_stock", "to_process", "pending"].includes(it.status)) return json({ error: "deja_livre" }, 400);
+        const { data: comp } = await db.from("product_bundle_items").select("component_id, qty")
+          .eq("bundle_id", it.product_id).eq("component_id", str(body.component_id, 40)).maybeSingle();
+        if (!comp) return json({ error: "pas_dans_le_pack" }, 400);
+        const { data: cprod } = await db.from("products").select("name, email_template_id").eq("id", comp.component_id).maybeSingle();
+        const need = it.quantity * comp.qty;
+        const { data: got, error: ek } = await db.rpc("take_keys", { p_item: it.id, p_product: comp.component_id, p_qty: need });
+        if (ek) return json({ error: ek.message }, 500);
+        if ((got ?? 0) < need) return json({ error: "out_of_stock" }, 400);
+        // toutes les clés du pack sont libérées → livraison normale de l'article (statut, email récapitulatif)
+        const { data: all } = await db.from("product_bundle_items").select("component_id, qty").eq("bundle_id", it.product_id);
+        const { data: ks } = await db.from("license_keys").select("key_value, product_id, products(name)").eq("order_item_id", it.id);
+        const done = (all ?? []).every((c) => (ks ?? []).filter((k) => k.product_id === c.component_id).length >= it.quantity * c.qty);
+        if (done) {
+          await db.from("order_items").update({ claim_requested_at: new Date().toISOString() }).eq("id", it.id).is("claim_requested_at", null);
+          return json({ ok: true, all: true, result: await deliver(it.order_id, true) });
+        }
+        // email avec la clé de ce produit seulement (modèle du produit, sinon le modèle par défaut)
+        const cp = cprod ?? { name: "", email_template_id: null };
+        const { data: tpls } = await db.from("email_templates").select("id, subject, body, is_default, kind");
+        const tpl: Tpl = (tpls ?? []).find((t) => t.id === cp.email_template_id) ?? (tpls ?? []).find((t) => t.is_default && t.kind !== "install") ?? BUILTIN_TPL;
+        const { site, wa } = siteCtx();
+        const keys = (ks ?? []).filter((k) => k.product_id === comp.component_id);
+        const mail = renderEmail(tpl, { o: ord, link: site + "/commande.html?o=" + encodeURIComponent(ord.public_token), wa,
+          items: [{ product_name: cp.name || it.product_name, delivery_type: "key", quantity: it.quantity, status: "delivered", license_keys: keys }] });
+        const r = body.send_email === false ? { ok: false, reason: "non_demande" } : await resendSend(ord.email, mail);
+        await logEvent("info", "admin", "Clé d'un pack libérée", { commande: ord.ref, produit: cp.name });
+        return json({ ok: true, all: false, email: r.ok ? { sent: true } : { sent: false, reason: (r as { reason?: string }).reason } });
+      }
+
       case "item_new_link": {
         const { data, error } = await db.rpc("new_item_link", { p_item_id: body.id, p_token: newToken(), p_days: LINK_DAYS });
         if (error) return json({ error: error.message }, 500);
@@ -1179,7 +1227,10 @@ Deno.serve(async (req) => {
       }
 
       case "keys_import": {
-        const { data: p } = await db.from("products").select("id, delivery_type").eq("id", body.product_id).maybeSingle();
+        let { data: p } = await db.from("products").select("id, delivery_type, key_source_id").eq("id", body.product_id).maybeSingle();
+        if (!p) return json({ error: "produit_introuvable" }, 400);
+        // stock commun : les clés vont dans le stock du produit source (ex. clés Windows 10 Pro → stock Windows 11 Pro)
+        if (p.key_source_id) ({ data: p } = await db.from("products").select("id, delivery_type, key_source_id").eq("id", p.key_source_id).maybeSingle());
         if (!p) return json({ error: "produit_introuvable" }, 400);
         if (!STOCK_TYPES.includes(p.delivery_type)) return json({ error: "produit_sans_stock" }, 400);
         const { count: isPack } = await db.from("product_bundle_items").select("bundle_id", { count: "exact", head: true }).eq("bundle_id", p.id);
@@ -1318,12 +1369,20 @@ Deno.serve(async (req) => {
           install_template_id: str(body.install_template_id, 40) || null,
           wholesale_price_fcfa: body.wholesale_price_fcfa === "" || body.wholesale_price_fcfa == null ? null : clamp(Math.round(Number(body.wholesale_price_fcfa) || 0), 0, 100_000_000),
           two_step: body.two_step === true,
+          // stock commun : prend ses clés dans le stock d'un autre produit (ex. Windows 10 Pro ← Windows 11 Pro)
+          key_source_id: STOCK_TYPES.includes(dtype) && !bundle?.length && str(body.key_source_id, 40) && str(body.key_source_id, 40) !== body.id ? str(body.key_source_id, 40) : null,
           sku: str(body.sku, 60) || null,
           weight_g: Number(body.weight_g) > 0 ? clamp(Math.round(Number(body.weight_g)), 0, 10_000_000) : null,
           seo_title: str(body.seo_title, 120) || null,
           seo_description: str(body.seo_description, 320) || null,
         };
         if (!row.slug || !row.name) return json({ error: "nom_obligatoire" }, 400);
+        if (row.key_source_id) { // un seul niveau : la source doit avoir son propre stock (pas un pack, pas elle-même liée)
+          const { data: src } = await db.from("products").select("id, delivery_type, key_source_id").eq("id", row.key_source_id).maybeSingle();
+          const { count: srcPack } = await db.from("product_bundle_items").select("bundle_id", { count: "exact", head: true }).eq("bundle_id", row.key_source_id);
+          const { count: users } = body.id ? await db.from("products").select("id", { count: "exact", head: true }).eq("key_source_id", body.id) : { count: 0 };
+          if (!src || src.key_source_id || srcPack || users || !STOCK_TYPES.includes(src.delivery_type)) return json({ error: "stock_source_invalide" }, 400);
+        }
         if (["key_file", "file"].includes(dtype) && !row.installer_path) return json({ error: "fichier_obligatoire" }, 400);
         if (row.installer_path && /^[a-z]+:/i.test(row.installer_path) && !/^https:\/\/[^\s]+$/i.test(row.installer_path)) return json({ error: "lien_invalide" }, 400);
         const r = body.id ? await db.from("products").update(row).eq("id", body.id).select().single()
