@@ -1446,8 +1446,12 @@ async function handle(req: Request): Promise<Response> {
       // deno-lint-ignore no-explicit-any
       const packLinks: Record<string, any[]> = {};
       const prodOf = Object.fromEntries(items.map((i) => [i.id, i.product_id]));
+      let keysLater = false;
       if (paid && ids.length) {
-        const { data: ks } = await db.from("license_keys").select("order_item_id, key_value, product_id, products(name)").in("order_item_id", ids).order("sent_at");
+        const { data: ks } = await db.from("license_keys").select("order_item_id, key_value, product_id, sent_at, products(name)").in("order_item_id", ids).order("sent_at");
+        // pack : clés libérées à des moments différents → le client revient chercher la suivante (« Rebonjour »)
+        const times = (ks ?? []).map((k) => new Date(k.sent_at ?? 0).getTime()).filter((t) => t > 0);
+        if (times.length > 1 && Math.max(...times) - Math.min(...times) > 5 * 60_000) keysLater = true;
         for (const k of ks ?? []) {
           (keysByItem[k.order_item_id] ??= []).push(k.key_value);
           // deno-lint-ignore no-explicit-any
@@ -1485,7 +1489,7 @@ async function handle(req: Request): Promise<Response> {
         const { count: before } = await db.from("orders").select("id", { count: "exact", head: true })
           .eq("email", String(o.email).toLowerCase()).neq("id", o.id).lt("created_at", o.created_at)
           .in("status", ["paid", "processing", "installing", "delivered"]);
-        hello = { first: String(o.customer_name).trim().split(/\s+/)[0], returning: (before ?? 0) > 0 };
+        hello = { first: String(o.customer_name).trim().split(/\s+/)[0], returning: (before ?? 0) > 0 || keysLater };
       }
       return json({
         need_name: needName, ask_name: askName, ask_phone: askPhone, email_hint: needName ? maskEmail(o.email) : null, hello,
