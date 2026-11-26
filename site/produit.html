@@ -87,7 +87,9 @@ function show(p) {
         el("li", { text: "Assistance à l'installation sur WhatsApp" })),
       p.description ? el("div", {}, el("h2", { style: "font-size:18px;margin:26px 0 8px", text: "Description" }), el("div", { class: "desc", text: p.description })) : null,
     )), el("section", { id: "related", class: "block hidden" }), reviewsEl(p));
-  if ("IntersectionObserver" in window) new IntersectionObserver(([e]) => { const on = !e.isIntersecting && e.boundingClientRect.top < 0; bar.classList.toggle("show", on); bar.setAttribute("aria-hidden", String(!on)); }).observe($("#mainActions"));
+  const ma = $("#mainActions");
+  const checkBar = () => { const on = ma.getBoundingClientRect().bottom < 0; bar.classList.toggle("show", on); bar.setAttribute("aria-hidden", String(!on)); };
+  addEventListener("scroll", checkBar, { passive: true }); addEventListener("resize", checkBar); checkBar();
   related(p);
 }
 // « Vous aimerez aussi » : même catégorie (ou même famille), produits disponibles d'abord
