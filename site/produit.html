@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Produit — licenceoff.com</title>
-<link rel="stylesheet" href="/shop.css?v=30">
+<link rel="stylesheet" href="/shop.css?v=31">
 <link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="64x64" href="/img/profil-64.png"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
 <meta property="og:image" content="https://www.licenceoff.com/img/partage.jpg">
 </head>
@@ -12,7 +12,7 @@
 <main class="wrap">
   <div id="view"><div class="product"><div class="skeleton"></div><div class="skeleton"></div></div></div>
 </main>
-<script src="/shop.js?v=30"></script>
+<script src="/shop.js?v=31"></script>
 <script>
 LO.page("shop");
 const { el, $, fcfa } = LO;
@@ -61,6 +61,14 @@ function show(p) {
     onclick: () => { clampQ(); LO.addToCart(p, Number(qtyIn.value)); LO.toast("Ajouté au panier ✔"); } });
   const buy = el("button", { class: "btn orange", disabled: !p.in_stock, text: "Acheter maintenant",
     onclick: () => { clampQ(); LO.addToCart(p, Number(qtyIn.value)); location.href = LO.url.cart; } });
+  const waAsk = "https://wa.me/221777860777?text=" + encodeURIComponent("Bonjour, je voudrais commander : " + p.name + ". Est-il bientôt disponible ?");
+  const actions = p.in_stock ? [qty, add, buy, favBtn(p)] : [el("a", { class: "btn orange", href: waAsk, target: "_blank", rel: "noopener", text: "Commander sur WhatsApp" }), favBtn(p)];
+  // mobile : barre d'achat fixe en bas, visible quand les boutons principaux sont sortis de l'écran
+  const bar = el("div", { class: "buybar", "aria-hidden": "true" },
+    el("div", {}, el("b", { text: fcfa(p.price_fcfa) }), el("span", { class: "note", text: p.in_stock ? "En stock" : "Sur commande" })),
+    p.in_stock ? el("button", { class: "btn", type: "button", tabindex: "-1", text: "Ajouter au panier", onclick: () => { clampQ(); LO.addToCart(p, Number(qtyIn.value)); LO.toast("Ajouté au panier ✔"); } })
+      : el("a", { class: "btn orange", href: waAsk, target: "_blank", rel: "noopener", tabindex: "-1", text: "Commander sur WhatsApp" }));
+  document.body.append(bar); document.body.classList.add("has-buybar");
 
   $("#view").replaceChildren(LO.crumbs([["Accueil", LO.url.home], ["Boutique", LO.url.shop], ...(par ? [[par.name, LO.url.category(par.slug)]] : []), ...(catPath ? [[p.category_name || "Catégorie", catPath]] : []), [p.name]]), el("div", { class: "product" },
     gallery(p),
@@ -69,16 +77,35 @@ function show(p) {
       rt ? el("a", { class: "rating-line", href: "#avis" }, starsEl(rt.avg), el("span", { text: String(rt.avg).replace(".", ",") + "/5 · " + rt.count + " avis" })) : null,
       el("div", { class: "price" }, fcfa(p.price_fcfa), off ? el("s", { text: fcfa(p.compare_price_fcfa) }) : null,
         off ? el("span", { class: "tag t-wait", style: "margin-left:8px;vertical-align:middle", text: "-" + off + " %" }) : null),
-      p.promo_ends_at ? el("p", { class: "note", style: "margin:4px 0 0;color:#B45309;font-weight:700", text: "🏷️ " + (p.promo_name || "Promo") + " : jusqu'au " + new Date(p.promo_ends_at).toLocaleString("fr-FR", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Dakar" }) }) : null,
+      p.promo_ends_at ? el("p", { class: "note", style: "margin:4px 0 0;color:#B45309;font-weight:700", text: (p.promo_name || "Promo") + " : jusqu'au " + new Date(p.promo_ends_at).toLocaleString("fr-FR", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Dakar" }) }) : null,
       el("p", { class: p.in_stock ? "" : "msg", text: p.in_stock ? "✔ En stock" : "Rupture de stock pour le moment. Écrivez-nous sur WhatsApp pour être prévenu." }),
-      el("div", { style: "display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:16px 0" }, qty, add, buy, favBtn(p)),
+      el("div", { id: "mainActions", style: "display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:16px 0" }, ...actions),
       LO.shareBar(LO.SITE + LO.url.product(p.slug), p.name),
       el("ul", { class: "perks" },
         el("li", { text: LO.DELIVERY_TEXT[p.delivery_type] || "Livraison rapide" }),
         el("li", { text: "Paiement Wave ou Orange Money" }),
         el("li", { text: "Assistance à l'installation sur WhatsApp" })),
       p.description ? el("div", {}, el("h2", { style: "font-size:18px;margin:26px 0 8px", text: "Description" }), el("div", { class: "desc", text: p.description })) : null,
-    )), reviewsEl(p));
+    )), el("section", { id: "related", class: "block hidden" }), reviewsEl(p));
+  if ("IntersectionObserver" in window) new IntersectionObserver(([e]) => { const on = !e.isIntersecting && e.boundingClientRect.top < 0; bar.classList.toggle("show", on); bar.setAttribute("aria-hidden", String(!on)); }).observe($("#mainActions"));
+  related(p);
+}
+// « Vous aimerez aussi » : même catégorie (ou même famille), produits disponibles d'abord
+async function related(p) {
+  try {
+    const d = await LO.boutique({ action: "catalog" }); if (!d.products) return;
+    const parentOf = Object.fromEntries(d.categories.map((c) => [c.slug, c.parent]));
+    const fam = (s) => parentOf[s] || s;
+    const names = Object.fromEntries(d.categories.map((c) => [c.slug, c.name]));
+    const others = d.products.filter((x) => x.slug !== p.slug);
+    const score = (x) => (x.category === p.category ? 4 : fam(x.category) === fam(p.category) ? 2 : 0) + (x.in_stock ? 1 : 0);
+    const list = others.map((x) => [score(x), x]).filter(([s]) => s >= 2).sort((a, b) => b[0] - a[0]).map(([, x]) => x);
+    const pick = (list.length >= 2 ? list : others.slice().sort((a, b) => (b.in_stock ? 1 : 0) - (a.in_stock ? 1 : 0))).slice(0, 4);
+    if (!pick.length) return;
+    const sec = $("#related");
+    sec.replaceChildren(el("div", { class: "sec-title" }, el("h2", { text: "Vous aimerez aussi" })), el("div", { class: "grid" }, ...pick.map((x) => LO.productCard(x, names[x.category]))));
+    sec.classList.remove("hidden");
+  } catch (_) {}
 }
 
 // favori : réservé aux clients connectés (sinon, on propose de se connecter)

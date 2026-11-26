@@ -152,12 +152,12 @@ const LO = (() => {
     const year = new Date().getFullYear();
     document.body.append(
       el("div", { class: "strip" }, el("div", { class: "wrap" },
-        el("span", { text: "Au Sénégal 🇸🇳" }), el("span", { text: "Des licences authentiques" }), el("span", { text: "Rapide et fiable" }))),
+        (() => { const f = el("span", {}, "Au Sénégal"); f.insertAdjacentHTML("beforeend", '<svg width="18" height="12" viewBox="0 0 3 2" aria-label="drapeau du Sénégal" role="img" style="vertical-align:-1px;margin-left:5px;border-radius:2px"><rect width="1" height="2" fill="#00853F"/><rect x="1" width="1" height="2" fill="#FDEF42"/><rect x="2" width="1" height="2" fill="#E31B23"/><path d="M1.5 .62l.1.3h.32l-.26.19.1.3-.26-.19-.26.19.1-.3-.26-.19h.32z" fill="#00853F"/></svg>'); return f; })(), el("span", { text: "Des licences authentiques" }), el("span", { text: "Rapide et fiable" }))),
       el("footer", { class: "site" }, el("div", { class: "wrap" },
         el("div", { class: "cols" },
           el("div", {}, el("div", { class: "logo" }, el("span", { class: "a", text: "licence" }), el("span", { class: "b", text: "off" }), el("span", { class: "c", text: ".com" })),
             el("p", { text: "Licences & solutions numériques. Licences et logiciels authentiques, livrés en quelques minutes. Basé à Dakar." }),
-            el("p", { class: "tag-line", text: "Vos logiciels, notre engagement !" }),
+            el("p", { class: "tag-line", text: "Solutions numériques rapides et fiables" }),
             el("div", { class: "socials" },
               el("a", { class: "so fb", href: FACEBOOK_PAGE, target: "_blank", rel: "noopener", "aria-label": "Notre page Facebook", title: "Suivez-nous sur Facebook" }, brand(BRANDS.fb, 20, "#fff")),
               el("a", { class: "so wa", href: "https://wa.me/" + WHATSAPP_NUMBER, target: "_blank", rel: "noopener", "aria-label": "WhatsApp", title: "Écrivez-nous sur WhatsApp" }, brand(BRANDS.wa, 20, "#fff")))),
@@ -192,12 +192,14 @@ const LO = (() => {
   function productCard(p, catName) {
     const off = p.compare_price_fcfa && p.compare_price_fcfa > p.price_fcfa ? Math.round(100 - p.price_fcfa * 100 / p.compare_price_fcfa) : 0;
     const link = url.product(p.slug);
-    const btn = el("button", { class: "btn" + (p.in_stock ? "" : " light"), disabled: !p.in_stock, text: p.in_stock ? "Ajouter au panier" : "Rupture de stock" });
-    btn.addEventListener("click", (e) => { e.preventDefault(); addToCart(p, 1); toast("Ajouté au panier ✔"); });
+    const btn = el("button", { class: "btn" + (p.in_stock ? "" : " wa-ask"), text: p.in_stock ? "Ajouter au panier" : "Commander sur WhatsApp" });
+    btn.addEventListener("click", (e) => { e.preventDefault();
+      if (!p.in_stock) { window.open("https://wa.me/" + WHATSAPP_NUMBER + "?text=" + encodeURIComponent("Bonjour, je voudrais commander : " + p.name + ". Est-il bientôt disponible ?"), "_blank", "noopener"); return; }
+      addToCart(p, 1); toast("Ajouté au panier ✔"); });
     return el("a", { class: "card", href: link },
       el("div", { class: "img" },
         p.image_url ? el("img", { src: p.image_url, alt: p.name, loading: "lazy" }) : el("span", { class: "ph", text: initials(p.name) }),
-        !p.in_stock ? el("span", { class: "badge out", text: "Rupture" }) : off ? el("span", { class: "badge", text: "-" + off + " %" }) : null),
+        !p.in_stock ? el("span", { class: "badge out", text: "Sur commande" }) : off ? el("span", { class: "badge", text: "-" + off + " %" }) : null),
       el("div", { class: "body" },
         catName ? el("div", { class: "cat", text: catName }) : null,
         el("div", { class: "name", text: p.name }),

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>Mon panier — licenceoff.com</title>
-<link rel="stylesheet" href="/shop.css?v=30">
+<link rel="stylesheet" href="/shop.css?v=31">
 <style>.line-warn { color: #b91c1c; font-weight: 700; font-size: 14px; margin-top: 2px; } .line .rm { min-height: 44px; padding: 0 8px; }</style>
 <link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="64x64" href="/img/profil-64.png"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
 <meta property="og:image" content="https://www.licenceoff.com/img/partage.jpg">
@@ -16,7 +16,7 @@
   <h1 style="margin:24px 0 0">Mon panier</h1>
   <div id="view"></div>
 </main>
-<script src="/shop.js?v=30"></script>
+<script src="/shop.js?v=31"></script>
 <script>
 LO.page("shop");
 const { el, $, fcfa } = LO;
@@ -96,13 +96,13 @@ function shipBox(update) {
   addr.addEventListener("input", () => { ship.address = addr.value; });
   const zone = el("input", { class: "field", placeholder: "ex : Médina, Parcelles, Almadies…", maxlength: "80" }); zone.value = ship.zone;
   zone.addEventListener("input", () => { ship.zone = zone.value; });
-  const posInfo = el("span", { class: "note", text: ship.lat != null ? "📍 Position enregistrée ✔" : "" });
-  const posBtn = el("button", { class: "btn light", type: "button", style: "margin-top:8px", text: "📍 Partager ma position" });
+  const posInfo = el("span", { class: "note", text: ship.lat != null ? "Position enregistrée ✔" : "" });
+  const posBtn = el("button", { class: "btn light", type: "button", style: "margin-top:8px", text: "Partager ma position" });
   posBtn.addEventListener("click", () => {
     if (!navigator.geolocation) { posInfo.textContent = "Votre téléphone ne permet pas de partager la position. Écrivez bien l'adresse."; return; }
     posBtn.disabled = true; posInfo.textContent = "Recherche de votre position…";
     navigator.geolocation.getCurrentPosition(
-      (p) => { ship.lat = p.coords.latitude; ship.lng = p.coords.longitude; posBtn.disabled = false; posInfo.textContent = "📍 Position enregistrée ✔ (le livreur trouvera plus facilement)"; },
+      (p) => { ship.lat = p.coords.latitude; ship.lng = p.coords.longitude; posBtn.disabled = false; posInfo.textContent = "Position enregistrée (le livreur trouvera plus facilement)"; },
       () => { posBtn.disabled = false; posInfo.textContent = "Position non partagée. Ce n'est pas grave : l'adresse suffit."; },
       { enableHighAccuracy: true, timeout: 15000 });
   });
@@ -142,7 +142,7 @@ function render() {
         unavail(i) ? el("div", { class: "line-warn", text: unavail(i) === "gone" ? "Ce produit n'est plus vendu. Retirez-le du panier." : "En rupture de stock. Retirez-le ou écrivez-nous sur WhatsApp." })
           : el("div", { class: "note" }, priceOf(i) < i.price ? el("s", { text: fcfa(i.price), style: "margin-right:6px" }) : null, fcfa(priceOf(i)) + " l'unité"),
         el("div", { style: "display:flex;gap:12px;align-items:center;margin-top:6px" },
-          el("div", { class: "qty", style: "transform:scale(.85);transform-origin:left" },
+          el("div", { class: "qty" },
             el("button", { type: "button", text: "−", onclick: () => setQ(i.qty - 1) }), q, el("button", { type: "button", text: "+", onclick: () => setQ(i.qty + 1) })),
           el("button", { class: "rm", text: "Retirer", onclick: () => { const all = LO.cart(); all.splice(idx, 1); LO.saveCart(all); rerender(); } }))),
       el("strong", { style: unavail(i) ? "text-decoration:line-through;color:#94a3b8" : "", text: fcfa(priceOf(i) * i.qty) }));
@@ -161,9 +161,9 @@ function render() {
     feeLine.replaceChildren(el("span", { text: "Livraison" + (ship.method === "home" ? " à domicile" : ship.method === "bus" ? " par bus" : "") }), el("span", { text: fee ? fcfa(fee) : "—" }));
     feeLine.classList.toggle("hidden", !hasPhysical());
     const pd = ptsDiscount(), pay = total - pd + fee;
-    ptsLine.replaceChildren(el("span", { text: "🎁 Points fidélité (" + (pq ? pq.usable : 0) + " points)" }), el("span", { text: "− " + fcfa(pd) }));
+    ptsLine.replaceChildren(el("span", { text: "Points fidélité (" + (pq ? pq.usable : 0) + " points)" }), el("span", { text: "− " + fcfa(pd) }));
     ptsLine.classList.toggle("hidden", !pd);
-    earnLine.textContent = "🎁 Cette commande vous rapportera " + Math.floor((total - pd) / 1000) + " point(s) fidélité, crédités à la livraison.";
+    earnLine.textContent = "Cette commande vous rapportera " + Math.floor((total - pd) / 1000) + " point(s) fidélité, crédités à la livraison.";
     totVal.textContent = fcfa(pay);
     go.textContent = waMode() ? "Commander · " + fcfa(pay) : "Commander et payer " + fcfa(pay);
     go.classList.toggle("hidden", hasPhysical() && ship.method === "out");
@@ -218,7 +218,7 @@ function render() {
       ptsLine, feeLine,
       el("div", { class: "tot", style: "margin-top:8px" }, el("span", { text: "Total" }), totVal),
       earnLine, go, msg,
-      el("p", { class: "note", style: "margin-top:12px", text: waMode() ? "💬 Paiement par Wave ou Orange Money, finalisé avec nous sur WhatsApp. Votre clé s'affiche sur votre page de commande dès le paiement confirmé." : "🔒 Paiement sécurisé par PayDunya : Wave, Orange Money, Free Money ou carte." }))));
+      el("p", { class: "note", style: "margin-top:12px", text: waMode() ? "Paiement par Wave ou Orange Money, finalisé avec nous sur WhatsApp. Votre clé s'affiche sur votre page de commande dès le paiement confirmé." : "🔒 Paiement sécurisé par PayDunya : Wave, Orange Money, Free Money ou carte." }))));
   // client connecté : son email est déjà rempli
   if (pq && pq.logged && !$("#email").value) { $("#email").value = pq.email; if (!$("#phone").value && pq.phone) $("#phone").value = pq.phone; }
   update();
@@ -228,20 +228,20 @@ async function rerender() { render(); if (LO.acct()) { await loadPoints(); rende
 function pointsBox(update) {
   const box = el("div", { class: "pts-box" });
   if (!pq || !pq.logged) {
-    box.append(el("b", { text: "🎁 Programme de fidélité" }), el("p", { class: "note", style: "margin:4px 0 0" },
+    box.append(el("b", { text: "Programme de fidélité" }), el("p", { class: "note", style: "margin:4px 0 0" },
       "Chaque achat et chaque avis vous rapportent des points, à utiliser en réduction. Déjà des points ? ",
       el("a", { href: "/compte?retour=" + encodeURIComponent("/panier"), text: "Connectez-vous à votre compte" }), " pour les utiliser."));
     return box;
   }
   if (!pq.usable) {
-    box.append(el("b", { text: "🎁 Vos points fidélité : " + pq.balance }), el("p", { class: "note", style: "margin:4px 0 0",
+    box.append(el("b", { text: "Vos points fidélité : " + pq.balance }), el("p", { class: "note", style: "margin:4px 0 0",
       text: pq.balance < pq.min ? "Utilisables dès " + pq.min + " points (" + fcfa(pq.min * pq.value) + " de réduction). Encore " + (pq.min - pq.balance) + " points à gagner !" : "Pas de réduction possible sur ce panier." }));
     return box;
   }
   const cb = el("input", { type: "checkbox", style: "margin-top:3px;width:18px;height:18px" }); cb.checked = usePts;
   cb.addEventListener("change", () => { usePts = cb.checked; update(); });
   box.append(el("label", { style: "display:flex;gap:10px;align-items:flex-start;cursor:pointer" }, cb,
-    el("span", {}, el("b", { text: "🎁 Utiliser mes points : − " + fcfa(pq.discount) }),
+    el("span", {}, el("b", { text: "Utiliser mes points : − " + fcfa(pq.discount) }),
       el("span", { class: "note", style: "display:block", text: pq.usable + " points utilisés sur " + pq.balance + " (1 point = " + pq.value + " F, réduction limitée à 20 % de la commande)." }))));
   return box;
 }
