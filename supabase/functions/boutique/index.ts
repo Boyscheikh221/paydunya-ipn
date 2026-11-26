@@ -75,20 +75,28 @@ function originOf(o: any) {
 //   {prenom} {nom} {commande} {total} {produits} {cles} {bouton} {lien_commande} {whatsapp}
 //   + pour l'email d'installation (livraison en 2 temps) : {bouton_installation} {lien_installation}
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
-const fcfaTxt = (n: number) => new Intl.NumberFormat("fr-FR").format(n).replace(/ | /g, " ") + " FCFA";
+const fcfaTxt = (n: number) => new Intl.NumberFormat("fr-FR").format(n).replace(/[\s\u202f]/g, "\u00a0") + "\u00a0FCFA"; // espaces insécables : « 15 000 FCFA » ne se coupe jamais
+// prénom pour « Bonjour Moussa, » ; nom absent ou par défaut (« Client », « Client WhatsApp »…) → « Bonjour, »
+const firstName = (n: unknown) => { const t = String(n ?? "").trim(); return /^(client( (whatsapp|facebook|wa|fb))?|inconnu|n\/a)?$/i.test(t) ? "" : t.split(/\s+/)[0]; };
+const hello = (n: unknown) => { const f = firstName(n); return "Bonjour" + (f ? " " + f : "") + ","; };
+const SLOGAN = "licenceoff.com — Solutions numériques rapides et fiables";
+// Windows 10 / 11 (pas Server) : déjà installé sur la plupart des PC → le bouton dit « recevoir ma clé », pas « j'ai fini l'installation »
+const isWindowsDesktop = (items: { product_name?: string }[]) => items.length > 0 && items.every((i) => /windows\s*(10|11)\b/i.test(String(i.product_name ?? "")) && !/server|office|pack/i.test(String(i.product_name ?? "")));
 const EM = { B: "#1E4FB8", N: "#0F2A6B", O: "#F5A21B", C: "#FBF7EE" };
 
 type Tpl = { id: string | null; subject: string; body: string };
+// durée réelle du lien de téléchargement (LINK_DAYS = 7 ; nouvel essai possible 30 min si le téléchargement coupe)
+const LINK_TXT = "Le lien est valable 7 jours, pour un seul téléchargement (s'il coupe, recliquez dans les 30 minutes).";
 const BUILTIN_TPL: Tpl = {
   id: null,
-  subject: "Votre commande {commande} est prête — licenceoff.com",
-  body: "Bonjour {prenom},\n\nMerci pour votre commande **{commande}** ({total}). Elle est prête !\n\n{produits}\n\n{cles}\n\n{bouton}\n\nGardez cet email : votre page de commande regroupe vos clés et vos téléchargements.\n\nBesoin d'aide pour installer ou activer ? [Écrivez-nous sur WhatsApp]({whatsapp}).",
+  subject: "Votre commande {commande} est prête",
+  body: "Bonjour {prenom},\n\nMerci pour votre commande **{commande}** ({total}). Elle est prête !\n\n{produits}\n\n{cles}\n\n{bouton}\n\nGardez cet email : votre page de commande regroupe vos clés et vos téléchargements.\n\nBesoin d'aide pour installer ou activer ? Écrivez-nous sur WhatsApp.",
 };
 
 const BUILTIN_INSTALL_TPL: Tpl = {
   id: null,
-  subject: "Commande {commande} : installez votre logiciel — licenceoff.com",
-  body: "Bonjour {prenom},\n\nMerci pour votre commande **{commande}** ({total}). Votre paiement est bien reçu.\n\n**Étape 1 : téléchargez et installez le logiciel.** Le lien ne fonctionne qu'une seule fois.\n\n{bouton}\n\n**Étape 2 : recevez votre clé de licence.** Une fois l'installation terminée, cliquez sur ce bouton. Il ne fonctionne qu'une fois.\n\n{bouton_installation}\n\nUn souci ? [Écrivez-nous sur WhatsApp]({whatsapp}).",
+  subject: "Installez votre logiciel — commande {commande}",
+  body: "Bonjour {prenom},\n\nMerci pour votre commande **{commande}** ({total}). Votre paiement est bien reçu.\n\n**Étape 1 : téléchargez et installez le logiciel.** " + LINK_TXT + "\n\n{bouton}\n\n**Étape 2 : recevez votre clé de licence.** Une fois l'installation terminée, cliquez sur ce bouton. Il ne fonctionne qu'une fois.\n\n{bouton_installation}\n\nUn souci ? Écrivez-nous sur WhatsApp.",
 };
 
 // deno-lint-ignore no-explicit-any
@@ -119,9 +127,9 @@ function keysHtml(items: Item[]) {
 function keysText(items: Item[]) {
   return items.filter((i) => (i.license_keys ?? []).length).map((i) => i.product_name + " :\n" + i.license_keys.map((k: { key_value: string }) => { const a = acctParts(k.key_value), lbl = keyLabel(i, k); return (lbl ? "  " + lbl + " :\n" : "") + (a ? "  Identifiant : " + a[0] + "\n  Mot de passe : " + a[1] : "  " + k.key_value); }).join("\n")).join("\n");
 }
-const productsHtml = (items: Item[]) => "<ul style=\"margin:6px 0;padding-left:20px\">" + items.map((i) => `<li><b>${i.quantity > 1 ? i.quantity + " × " : ""}${esc(i.product_name)}</b>${["key_file", "file"].includes(i.delivery_type) ? " — logiciel à télécharger depuis votre page de commande (lien à usage unique)" : ""}${i.status === "to_process" ? " — notre équipe vous contacte sur WhatsApp" : ""}</li>`).join("") + "</ul>";
+const productsHtml = (items: Item[]) => "<ul style=\"margin:6px 0;padding-left:20px\">" + items.map((i) => `<li><b>${i.quantity > 1 ? i.quantity + " × " : ""}${esc(i.product_name)}</b>${["key_file", "file"].includes(i.delivery_type) ? " — logiciel à télécharger depuis votre page de commande" : ""}${i.status === "to_process" ? " — notre équipe vous contacte sur WhatsApp" : ""}</li>`).join("") + "</ul>";
 const productsText = (items: Item[]) => items.map((i) => "- " + (i.quantity > 1 ? i.quantity + " x " : "") + i.product_name).join("\n");
-const installButtonHtml = (link: string) => `<p style="text-align:center;margin:22px 0 6px"><a href="${esc(link)}" style="display:inline-block;background:#15803d;color:#fff;font-weight:800;text-decoration:none;padding:14px 22px;border-radius:10px">✅ J'ai fini l'installation : recevoir ma clé</a></p><p style="text-align:center;margin:0 0 14px;font-size:12px;color:#5b6b86">Bouton à usage unique</p>`;
+const installButtonHtml = (link: string, windows = false) => `<p style="text-align:center;margin:22px 0 6px"><a href="${esc(link)}" style="display:inline-block;background:#15803d;color:#fff;font-weight:800;text-decoration:none;padding:14px 22px;border-radius:10px">${windows ? "✅ Recevoir ma clé Windows" : "✅ J'ai fini l'installation : recevoir ma clé"}</a></p><p style="text-align:center;margin:0 0 14px;font-size:12px;color:#5b6b86">Bouton à usage unique</p>`;
 // bouton « Assistance WhatsApp » (remplace le numéro de téléphone dans les signatures)
 const waButtonHtml = (wa: string) => `<p style="margin:18px 0 12px"><a href="https://wa.me/${esc(wa)}" style="display:inline-block;background:#25D366;color:#fff;font-weight:800;text-decoration:none;padding:11px 18px;border-radius:10px">💬 Assistance WhatsApp</a></p>`;
 // produits livrés par compte : le bouton mène à la page de commande où chaque identifiant a son bouton « Copier »
@@ -147,6 +155,7 @@ function renderBody(body: string, c: Ctx) {
   if (c.install && !b.includes("{bouton_installation}") && !b.includes("{lien_installation}")) b += "\n\n{bouton_installation}";
   if (!c.install) b = b.replace(/\{bouton_installation\}/g, "");
   if (!b.includes("{bouton_whatsapp}")) b += "\n\n{bouton_whatsapp}"; // toujours un bouton d'assistance
+  b = b.replace(/\[([^\]]+)\]\(\{whatsapp\}\)/g, "$1"); // le bouton suffit : pas de lien WhatsApp en double
   const sub = (s: string) => s.replace(/\{(prenom|nom|commande|total|lien_commande|lien_installation|whatsapp|version|produit)\}/g, (_, k) => v[k]).replace(/ {2,}/g, " ").replace(/(Bonjour|Rebonjour|Merci) ([,!.])/g, "$1$2");
   // HTML
   const blocks = b.replace(/\r/g, "").split(/\n{2,}/).map((para) => {
@@ -154,7 +163,7 @@ function renderBody(body: string, c: Ctx) {
     if (t === "{produits}") return productsHtml(c.items);
     if (t === "{cles}") return keysHtml(c.items);
     if (t === "{bouton}") return buttonHtml(c.link, buttonLabel(c.items));
-    if (t === "{bouton_installation}") return installButtonHtml(c.install ?? c.link);
+    if (t === "{bouton_installation}") return installButtonHtml(c.install ?? c.link, isWindowsDesktop(c.items));
     if (t === "{bouton_whatsapp}") return waButtonHtml(c.wa);
     // bouton lien libre dans un modèle : {bouton_lien:Texte du bouton|https://…} (seul sur sa ligne)
     const bl = t.match(/^\{bouton_lien:([^|}]{1,80})\|(https:\/\/[^\s}]+)\}$/);
@@ -166,20 +175,20 @@ function renderBody(body: string, c: Ctx) {
     if (lines.every((l) => /^\s*-\s+/.test(l))) return "<ul style=\"margin:6px 0;padding-left:20px\">" + lines.map((l) => "<li>" + inline(l.replace(/^\s*-\s+/, "")) + "</li>").join("") + "</ul>";
     return `<p style="margin:0 0 12px;line-height:1.6">${lines.map(inline).join("<br>")}</p>`;
   }).join("");
-  const html = blocks.replace(/\{produits\}/g, productsHtml(c.items)).replace(/\{cles\}/g, keysHtml(c.items)).replace(/\{bouton\}/g, buttonHtml(c.link, buttonLabel(c.items))).replace(/\{bouton_installation\}/g, installButtonHtml(c.install ?? c.link)).replace(/\{bouton_whatsapp\}/g, waButtonHtml(c.wa));
+  const html = blocks.replace(/\{produits\}/g, productsHtml(c.items)).replace(/\{cles\}/g, keysHtml(c.items)).replace(/\{bouton\}/g, buttonHtml(c.link, buttonLabel(c.items))).replace(/\{bouton_installation\}/g, installButtonHtml(c.install ?? c.link, isWindowsDesktop(c.items))).replace(/\{bouton_whatsapp\}/g, waButtonHtml(c.wa));
   // Texte
   const text = sub(b).replace(/\*\*(.+?)\*\*/g, "$1").replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, "$1 : $2")
     .replace(/\{produits\}/g, productsText(c.items)).replace(/\{cles\}/g, keysText(c.items)).replace(/\{bouton\}/g, "Votre commande : " + c.link)
-    .replace(/\{bouton_installation\}/g, "Installation terminée ? Recevez votre clé (lien à usage unique) : " + (c.install ?? c.link))
+    .replace(/\{bouton_installation\}/g, (isWindowsDesktop(c.items) ? "Recevoir ma clé Windows" : "Installation terminée ? Recevez votre clé") + " (bouton à usage unique) : " + (c.install ?? c.link))
     .replace(/\{bouton_whatsapp\}/g, "Assistance WhatsApp : https://wa.me/" + c.wa)
     .replace(/\{bouton_lien:([^|}]{1,80})\|(https:\/\/[^\s}]+)\}/g, "$1 : $2");
   return { html, text };
 }
 // Email « transactionnel » sobre (fond blanc, peu d'images, pas de slogan) : Gmail le classe
 // plus souvent dans « Principal » que dans « Promotions ».
-function wrapHtml(inner: string, ref?: string, invoiceUrl?: string) {
+function wrapHtml(inner: string, ref?: string, invoiceUrl?: string, tip = false) {
   const { B, N, O } = EM;
-  const why = ref ? `Cet email concerne votre commande <b>${esc(ref)}</b> sur licenceoff.com.<br>` : "";
+  const why = ref ? `Commande <b>${esc(ref)}</b> · ` : "";
   return `<!doctype html><html lang="fr"><body style="margin:0;background:#ffffff;font-family:Segoe UI,Arial,sans-serif;color:${N}">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:20px 12px">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px">
@@ -187,25 +196,45 @@ function wrapHtml(inner: string, ref?: string, invoiceUrl?: string) {
   <td style="padding-right:10px;vertical-align:middle"><img src="https://www.licenceoff.com/img/profil-64.png" width="40" height="40" alt="" style="display:block;border:0;width:40px;height:40px"></td>
   <td style="vertical-align:middle;font-size:20px;font-weight:800;color:${B}">licence<span style="color:${O}">off</span><span style="font-size:14px;font-weight:700">.com</span></td></tr></table></td></tr>
 <tr><td style="padding:20px 0;font-size:15px;line-height:1.5">${inner}</td></tr>
-<tr><td style="border-top:1px solid #e3e8f0;padding:12px 0;color:#6b7690;font-size:12px">
-  ${why}${invoiceUrl ? `Votre facture : <a href="${esc(invoiceUrl)}" style="color:${B}">voir et télécharger la facture</a><br>` : ""}Une question ? Répondez simplement à cet email.<br>
-  Pour recevoir nos prochains emails sans problème, ajoutez commandes@licenceoff.com à vos contacts. Si cet email est arrivé dans « Promotions » ou « Spam », déplacez-le dans « Principal ».<br>
-  licenceoff.com — Dakar, Sénégal</td></tr>
+<tr><td style="border-top:1px solid #e3e8f0;padding:12px 0;color:#6b7690;font-size:12px;line-height:1.6">
+  ${why}Une question ? Répondez simplement à cet email.<br>
+  ${invoiceUrl ? `Votre facture : <a href="${esc(invoiceUrl)}" style="color:${B}">voir et télécharger</a><br>` : ""}${tip ? "Ajoutez commandes@licenceoff.com à vos contacts pour bien recevoir nos emails.<br>" : ""}
+  ${esc(SLOGAN)} · Dakar, Sénégal</td></tr>
 </table></td></tr></table></body></html>`;
+}
+// même pied de page, version texte
+function footerText(ref?: string, invoiceUrl?: string, tip = false) {
+  return "\n\n" + (ref ? "Commande " + ref + " · " : "") + "Une question ? Répondez simplement à cet email." +
+    (invoiceUrl ? "\nVotre facture : " + invoiceUrl : "") + (tip ? "\nAjoutez commandes@licenceoff.com à vos contacts pour bien recevoir nos emails." : "") + "\n" + SLOGAN + " · Dakar, Sénégal";
 }
 function renderEmail(tpl: Tpl, c: Ctx) {
   const { html, text } = renderBody(tpl.body, c);
   const v = vars(c) as Record<string, string>;
-  const subject = String(tpl.subject || BUILTIN_TPL.subject).replace(/\{(prenom|nom|commande|total|version|produit)\}/g, (_, k) => v[k]).replace(/ {2,}/g, " ").replace(/(Bonjour|Rebonjour|Merci) ([,!.])/g, "$1$2").trim().slice(0, 200);
+  const subject = String(tpl.subject || BUILTIN_TPL.subject).replace(/\{(prenom|nom|commande|total|version|produit)\}/g, (_, k) => v[k]).replace(/ {2,}/g, " ").replace(/(Bonjour|Rebonjour|Merci) ([,!.])/g, "$1$2")
+    .replace(/\s*[—–-]\s*licenceoff(\.com)?\s*$/i, "").trim().slice(0, 200); // l'expéditeur s'appelle déjà « licenceoff.com »
   const ref = String(c.o.ref || "");
+  const hasRef = ref && ref !== "—";
   // lien vers la facture (commande payée avec un numéro de facture)
   const inv = c.o.invoice_no && c.o.public_token ? siteCtx().site + "/facture.html?o=" + encodeURIComponent(c.o.public_token) : undefined;
-  const subj = ref && ref !== "—" && !subject.includes(ref) ? (subject + " — commande " + ref).slice(0, 200) : subject;
+  const subj = hasRef && !subject.includes(ref) ? (subject + " — commande " + ref).slice(0, 200) : subject;
   return {
-    subject: subj, html: wrapHtml(html, ref && ref !== "—" ? ref : undefined, inv),
-    text: text + (ref && ref !== "—" ? "\n\nCet email concerne votre commande " + ref + " sur licenceoff.com." : "") + (inv ? "\nVotre facture : " + inv : "") + "\nUne question ? Répondez simplement à cet email.\nPour recevoir nos prochains emails sans problème, ajoutez commandes@licenceoff.com à vos contacts. Si cet email est arrivé dans « Promotions » ou « Spam », déplacez-le dans « Principal ».\nlicenceoff.com — Dakar, Sénégal",
-    headers: ref && ref !== "—" ? { "X-Entity-Ref-ID": ref } : undefined,
+    subject: subj, html: wrapHtml(html, hasRef ? ref : undefined, inv, true),
+    text: text + footerText(hasRef ? ref : undefined, inv, true),
+    headers: hasRef ? { "X-Entity-Ref-ID": ref } : undefined,
   };
+}
+// Modèle d'email → instructions « neutres » pour un client final de revendeur :
+// on retire tout ce qui parle de la commande, du prix, de la page de commande, du site ou de l'assistance licenceoff.
+function neutralInstructions(body: string, product: string) {
+  const version = (product.match(/\b(20(?:07|10|13|16|19|21|24|25|26)|365)\b/) ?? [""])[0];
+  const drop = /\{(commande|total|bouton|lien_commande|whatsapp|bouton_whatsapp|bouton_installation|lien_installation|produits)\}|licenceoff|commande|wa\.me|whatsapp/i;
+  return body.replace(/\r/g, "").split(/\n{2,}/)
+    .filter((p) => p.trim() && !drop.test(p) && !/^\s*(\{cles\}|Bonjour\b[^\n]*)\s*$/i.test(p))
+    .map((p) => p.trim()
+      .replace(/\{prenom\}|\{nom\}/g, "").replace(/Bonjour\s*,/, "Bonjour,")
+      .replace(/\{version\}/g, version).replace(/\{produit\}/g, product)
+      .replace(/^\{bouton_lien:([^|}]+)\|(https:\/\/[^\s}]+)\}$/, "[[$1]]($2)"))
+    .join("\n\n");
 }
 function siteCtx() {
   return {
@@ -213,7 +242,7 @@ function siteCtx() {
     wa: (Deno.env.get("WHATSAPP_NUMBER") ?? "221777860777").replace(/\D/g, ""),
   };
 }
-async function resendSend(to: string, mail: { subject: string; html: string; text: string; headers?: Record<string, string> }, replyTo?: string, from?: string) {
+async function resendSend(to: string, mail: { subject: string; html: string; text: string; headers?: Record<string, string>; attachments?: { filename: string; content: string }[] }, replyTo?: string, from?: string) {
   const key = (Deno.env.get("RESEND_API_KEY") ?? "").trim();
   if (!key) { await logEvent("warn", "email", "Email non envoyé : clé Resend absente dans Supabase (secret RESEND_API_KEY)", { destinataire: to }); return { ok: false, reason: "resend_non_configure" }; }
   const r = await fetch("https://api.resend.com/emails", {
@@ -223,7 +252,7 @@ async function resendSend(to: string, mail: { subject: string; html: string; tex
       from: (from ?? (Deno.env.get("RESEND_FROM") ?? "licenceoff.com <commandes@licenceoff.com>")).trim().replace(/^"?licenceoff"?\s*</i, "licenceoff.com <"),
       // les réponses des clients arrivent dans l'admin (onglet Messages) via contact@licenceoff.com
       to: [to], reply_to: replyTo ?? ((Deno.env.get("RESEND_REPLY_TO") ?? "").trim() || "contact@licenceoff.com"),
-      subject: mail.subject, html: mail.html, text: mail.text, headers: mail.headers,
+      subject: mail.subject, html: mail.html, text: mail.text, headers: mail.headers, attachments: mail.attachments,
     }),
   }).catch(() => null);
   if (!r || !r.ok) {
@@ -283,7 +312,7 @@ async function sendDeliveryEmail(orderId: string, force = false, templateId?: st
 async function sendInstallEmail(orderId: string, force = false): Promise<{ sent: boolean; count?: number; reason?: string }> {
   if (!(Deno.env.get("RESEND_API_KEY") ?? "").trim()) return { sent: false, reason: "resend_non_configure" };
   const { data: o } = await db.from("orders")
-    .select("id, ref, public_token, invoice_no, customer_name, email, amount_fcfa, status, order_items(id, product_name, delivery_type, quantity, status, created_at, install_emailed_at, products(install_template_id))")
+    .select("id, ref, public_token, invoice_no, customer_name, email, amount_fcfa, status, order_items(id, product_name, delivery_type, quantity, status, created_at, install_emailed_at, products(install_template_id, manual_key, manual_link, installer_path))")
     .eq("id", orderId).maybeSingle();
   if (!o || !o.email) return { sent: false, reason: "commande_introuvable" };
   let items: Item[] = ((o.order_items ?? []) as Item[]).filter((i) => i.status === "awaiting_install" && (force || !i.install_emailed_at));
@@ -296,6 +325,33 @@ async function sendInstallEmail(orderId: string, force = false): Promise<{ sent:
     if (!items.length) return { sent: false, reason: "deja_envoye" };
   }
   items.sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+  const { site: site0, wa: wa0 } = siteCtx();
+  const link0 = site0 + "/commande.html?o=" + encodeURIComponent(o.public_token);
+  // clé envoyée à la main : pas de bouton « J'ai fini l'installation », on annonce que la clé arrive
+  // deno-lint-ignore no-explicit-any
+  const manualKey = items.filter((i) => (i as any).products?.manual_key);
+  let sent0 = 0;
+  if (manualKey.length) {
+    // deno-lint-ignore no-explicit-any
+    const withDl = manualKey.some((i) => (i as any).products?.installer_path && !(i as any).products?.manual_link);
+    const names = manualKey.map((i) => (Number(i.quantity) > 1 ? i.quantity + " × " : "") + i.product_name);
+    const P = (t: string) => `<p style="margin:0 0 12px;line-height:1.6">${t}</p>`;
+    const html = P(esc(hello(o.customer_name))) +
+      P(`Merci pour votre commande <b>${esc(o.ref)}</b> (${esc(fcfaTxt(o.amount_fcfa))}). Votre paiement est bien reçu.`) +
+      `<ul style="margin:0 0 12px;padding-left:20px;line-height:1.6">${names.map((x) => "<li>" + esc(x) + "</li>").join("")}</ul>` +
+      (withDl ? P("<b>Étape 1 :</b> téléchargez et installez le logiciel depuis votre page de commande (bouton ci-dessous). " + LINK_TXT) : "") +
+      P(`🔑 <b>Votre clé d'activation vous est envoyée par notre équipe</b>, par email et sur votre page de commande, dans les plus brefs délais (jours ouvrés). Vous n'avez rien à faire.`) +
+      `<p style="text-align:center;margin:22px 0"><a href="${esc(link0)}" style="display:inline-block;background:${EM.O};color:#fff;font-weight:800;text-decoration:none;padding:14px 22px;border-radius:10px">Voir ma commande</a></p>` +
+      P("Une question ? Répondez à cet email ou écrivez-nous sur WhatsApp.") + waButtonHtml(wa0);
+    const text = hello(o.customer_name) + "\n\nMerci pour votre commande " + o.ref + " (" + fcfaTxt(o.amount_fcfa) + "). Votre paiement est bien reçu.\n\n" + names.join("\n") +
+      (withDl ? "\n\nÉtape 1 : téléchargez et installez le logiciel depuis votre page de commande." : "") +
+      "\n\nVotre clé d'activation vous est envoyée par notre équipe, par email et sur votre page de commande, dans les plus brefs délais.\n\nVoir ma commande : " + link0 + "\n\nAssistance WhatsApp : https://wa.me/" + wa0 + footerText(o.ref, undefined, true);
+    const r = await resendSend(o.email, { subject: "Paiement reçu, votre clé arrive — commande " + o.ref, html: wrapHtml(html, o.ref, undefined, true), text, headers: { "X-Entity-Ref-ID": o.ref + "-cle-manuelle" } });
+    if (r.ok) sent0++;
+    else if (!force) await db.from("order_items").update({ install_emailed_at: null }).in("id", manualKey.map((i) => i.id));
+    items = items.filter((i) => !manualKey.includes(i));
+    if (!items.length) return sent0 ? { sent: true, count: sent0 } : { sent: false, reason: "envoi_echoue" };
+  }
   const { data: tpls } = await db.from("email_templates").select("id, subject, body, is_default, kind").eq("kind", "install");
   const byId = Object.fromEntries((tpls ?? []).map((t) => [t.id, t]));
   const def: Tpl = (tpls ?? []).find((t) => t.is_default) ?? BUILTIN_INSTALL_TPL;
@@ -376,6 +432,32 @@ function waOrderLink(ref: string, items: any[], total: number) {
   const list = items.map((i) => (Number(i.quantity) > 1 ? i.quantity + " x " : "") + i.product_name).join(", ");
   const msg = "Bonjour, je viens de commander sur licenceoff.com. Commande " + ref + " : " + list + ", " + fcfaTxt(total) + ". Comment on procède ?";
   return "https://wa.me/" + siteCtx().wa + "?text=" + encodeURIComponent(msg);
+}
+
+// Email « Commande reçue » (commande passée sur le site, paiement par WhatsApp) : récapitulatif, montant,
+// comment payer (Wave / Orange Money sur WhatsApp) et lien de la page de commande.
+// deno-lint-ignore no-explicit-any
+async function sendOrderReceivedEmail(c: { ref: string; token: string; name: string; email: string; total: number; shipping: number; discount: number; items: any[] }) {
+  const { site } = siteCtx();
+  const link = site + "/commande.html?o=" + encodeURIComponent(c.token);
+  const pay = waOrderLink(c.ref, c.items, c.total);
+  const phys = c.items.some((i) => i.delivery_type === "physical"), digi = c.items.some((i) => i.delivery_type !== "physical");
+  const next = phys && digi ? "vous recevez vos logiciels par email et nous préparons la livraison du reste"
+    : phys ? "nous préparons votre livraison (48 h, jours ouvrés) et vous tenons informé par email" : "vous recevez votre commande par email";
+  const list = c.items.map((i) => (Number(i.quantity) > 1 ? i.quantity + " × " : "") + i.product_name);
+  const extra = [c.shipping ? "livraison " + fcfaTxt(c.shipping) + " incluse" : "", c.discount ? "réduction fidélité de " + fcfaTxt(c.discount) + " déduite" : ""].filter(Boolean).join(", ");
+  const P = (t: string) => `<p style="margin:0 0 12px;line-height:1.6">${t}</p>`;
+  const html = P(esc(hello(c.name))) + P(`Merci ! Nous avons bien reçu votre commande <b>${esc(c.ref)}</b> :`) +
+    `<ul style="margin:0 0 12px;padding-left:20px;line-height:1.6">${list.map((x) => "<li>" + esc(x) + "</li>").join("")}</ul>` +
+    P(`Total à régler : <b>${esc(fcfaTxt(c.total))}</b>${extra ? " (" + esc(extra) + ")" : ""}.`) +
+    P(`<b>Comment payer :</b> par Wave ou Orange Money. Écrivez-nous sur WhatsApp avec le bouton vert ci-dessous : nous vous donnons le numéro et nous confirmons votre paiement. Ensuite, ${esc(next)}.`) +
+    `<p style="text-align:center;margin:22px 0 10px"><a href="${esc(pay)}" style="display:inline-block;background:#25D366;color:#fff;font-weight:800;text-decoration:none;padding:14px 22px;border-radius:10px">💬 Régler sur WhatsApp</a></p>` +
+    `<p style="text-align:center;margin:0 0 22px"><a href="${esc(link)}" style="display:inline-block;background:${EM.O};color:#fff;font-weight:800;text-decoration:none;padding:12px 20px;border-radius:10px">Voir ma commande</a></p>` +
+    P("Gardez cet email : votre page de commande affichera vos clés, vos liens et le suivi de livraison.");
+  const text = hello(c.name) + "\n\nMerci ! Nous avons bien reçu votre commande " + c.ref + " :\n" + list.map((x) => "- " + x).join("\n") +
+    "\n\nTotal à régler : " + fcfaTxt(c.total) + (extra ? " (" + extra + ")" : "") + ".\n\nComment payer : par Wave ou Orange Money. Écrivez-nous sur WhatsApp : nous vous donnons le numéro et nous confirmons votre paiement. Ensuite, " + next + "." +
+    "\n\nRégler sur WhatsApp : " + pay + "\nVoir ma commande : " + link + "\n\nGardez cet email : votre page de commande affichera vos clés, vos liens et le suivi de livraison." + footerText(c.ref, undefined, true);
+  return await resendSend(c.email, { subject: "Commande reçue : il reste à la régler — commande " + c.ref, html: wrapHtml(html, c.ref, undefined, true), text, headers: { "X-Entity-Ref-ID": c.ref + "-recue" } });
 }
 
 // numéro sénégalais : 77 123 45 67, +221 77…, 00221 77… → +22177…, sinon null (mobiles 70/75/76/77/78, fixes 33)
@@ -1015,7 +1097,7 @@ async function handle(req: Request): Promise<Response> {
       const { site } = siteCtx();
       const link = site + "/compte?t=" + t;
       await resendSend(email, {
-        subject: "Votre lien de connexion — licenceoff.com",
+        subject: "Votre lien de connexion à votre compte",
         html: wrapHtml(`<p style="margin:0 0 12px">Bonjour,</p><p style="margin:0 0 12px">Cliquez sur ce bouton pour ouvrir votre compte licenceoff.com : vos commandes, vos clés, vos favoris. Le lien marche une seule fois, pendant 30 minutes.</p><p style="text-align:center;margin:22px 0"><a href="${esc(link)}" style="display:inline-block;background:${EM.O};color:#fff;font-weight:800;text-decoration:none;padding:14px 22px;border-radius:10px">Ouvrir mon compte</a></p><p style="font-size:13px;color:#5b6b86">Vous n'avez rien demandé ? Ignorez cet email.</p>`),
         text: "Votre lien de connexion (30 minutes, une seule fois) : " + link,
       });
@@ -1154,7 +1236,7 @@ async function handle(req: Request): Promise<Response> {
         const { site } = siteCtx();
         const link = site + "/parrain?t=" + t;
         await resendSend(pr.email, {
-          subject: "Votre lien de connexion — espace parrain licenceoff.com",
+          subject: "Votre lien de connexion à l'espace parrain",
           html: wrapHtml(`<p style="margin:0 0 12px">Bonjour ${esc(String(pr.name).split(/\s+/)[0])},</p><p style="margin:0 0 12px">Cliquez sur ce bouton pour ouvrir votre espace parrain. Le lien marche une seule fois, pendant 30 minutes.</p><p style="text-align:center;margin:22px 0"><a href="${esc(link)}" style="display:inline-block;background:${EM.O};color:#fff;font-weight:800;text-decoration:none;padding:14px 22px;border-radius:10px">Ouvrir mon espace parrain</a></p><p style="font-size:13px;color:#5b6b86">Vous n'avez rien demandé ? Ignorez cet email.</p>`),
           text: "Votre lien de connexion (30 minutes, une seule fois) : " + link,
         });
@@ -1365,6 +1447,11 @@ async function handle(req: Request): Promise<Response> {
         // case « recevoir les offres par email » cochée par le client (jamais cochée d'office)
         if (body.marketing === true) await setMarketing(email, true, "commande");
         await logEvent("info", "boutique", "Nouvelle commande de " + name + " : " + row.amount_fcfa + " FCFA (en attente de paiement)", { articles: priced.map((x) => x.q + " x " + x.p.name), code_parrain: rc?.code ?? null, points_fidelite: pts.points || null }, row.ref);
+        // mode WhatsApp : email « Commande reçue » (lien de la commande + comment payer), au cas où le client ferme WhatsApp
+        if (mode === "whatsapp") await sendOrderReceivedEmail({ ref: row.ref, token: row.public_token, name, email, total: row.amount_fcfa,
+          shipping: Number(ship.shipping_fee_fcfa) || 0, discount: pts.discount || 0,
+          items: priced.map((x) => ({ product_name: x.p.name, quantity: x.q, delivery_type: x.p.delivery_type })) })
+          .catch((e) => logEvent("error", "email", "Erreur pendant l'email « commande reçue »", e, row.ref));
         return json({ ref: row.ref, token: row.public_token, pay_mode: mode,
           wa: mode === "whatsapp" ? waOrderLink(row.ref, priced.map((x) => ({ product_name: x.p.name, quantity: x.q })), row.amount_fcfa) : null });
       }

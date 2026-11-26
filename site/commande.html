@@ -128,22 +128,24 @@ function itemBlock(i) {
     packDl.forEach((d) => dlBlock(body, d, "Télécharger " + (d.name || "le logiciel"), false));
     if (packDl.some((d) => d.state === "ready")) body.append(el("p", { class: "note", text: "Chaque lien de téléchargement ne fonctionne qu'une seule fois. Lancez-le depuis l'ordinateur où vous installez le logiciel. Le téléchargement ne démarre pas ou s'arrête ? Recliquez sur le bouton : c'est possible pendant 30 minutes. Si Windows ou l'antivirus affiche un avertissement, choisissez « Conserver » puis « Exécuter quand même » : c'est le programme d'installation officiel." }));
   }
+  // Windows 10 / 11 : déjà installé sur la plupart des PC, on ne parle pas d'« installation terminée »
+  const winDesk = /windows\s*(10|11)\b/i.test(i.name || "") && !/server|office|pack/i.test(i.name || "");
   if (i.can_claim && !CUR.need_name) {
     const msg = el("p", { class: "msg" });
-    const b = el("button", { class: "btn orange block", style: "margin-top:12px", text: "✅ J'ai fini l'installation : recevoir ma clé" });
+    const b = el("button", { class: "btn orange block", style: "margin-top:12px", text: winDesk ? "✅ Recevoir ma clé Windows" : "✅ J'ai fini l'installation : recevoir ma clé" });
     b.addEventListener("click", async () => {
-      if (!confirm("Confirmez-vous que l'installation est terminée ? Ce bouton ne fonctionne qu'une fois.")) return;
+      if (!confirm(winDesk ? "Windows est bien installé sur votre ordinateur ? Ce bouton ne fonctionne qu'une fois." : "Confirmez-vous que l'installation est terminée ? Ce bouton ne fonctionne qu'une fois.")) return;
       b.disabled = true; b.textContent = "Envoi de votre clé…";
       try { await LO.boutique({ action: "claim", o: token, i: i.id }); } catch (_) {}
       load();
     });
     const box = el("div", { class: "claim", style: "margin-top:12px;padding:12px;border-radius:12px;background:#E8F1FC" + (fromInstallEmail ? ";outline:3px solid #F5A21B" : "") },
-      el("p", { class: "note", style: "margin:0", text: "Étape 2 : une fois le logiciel installé, cliquez ci-dessous pour recevoir votre clé de licence (par email et sur cette page)." }), b, msg);
+      el("p", { class: "note", style: "margin:0", text: winDesk ? "Windows est déjà sur votre ordinateur ? Cliquez directement ci-dessous pour recevoir votre clé (par email et sur cette page). Le téléchargement ne sert que pour un ordinateur sans Windows." : "Étape 2 : une fois le logiciel installé, cliquez ci-dessous pour recevoir votre clé de licence (par email et sur cette page)." }), b, msg);
     body.append(box);
   } else if (i.can_claim && !i.key_by_team) {
     // le nom n'est pas encore connu : il est demandé une seule fois, juste au-dessus, avant la clé
     body.append(el("div", { class: "claim", style: "margin-top:12px;padding:12px;border-radius:12px;background:#E8F1FC" + (fromInstallEmail ? ";outline:3px solid #F5A21B" : "") },
-      el("p", { class: "note", style: "margin:0", text: "Étape 2 : une fois le logiciel installé, indiquez votre nom en haut de la page (une seule fois), puis cliquez sur « J'ai fini l'installation » pour recevoir votre clé." })));
+      el("p", { class: "note", style: "margin:0", text: winDesk ? "Pour recevoir votre clé Windows, indiquez votre nom en haut de la page (une seule fois), puis cliquez sur « Recevoir ma clé Windows »." : "Étape 2 : une fois le logiciel installé, indiquez votre nom en haut de la page (une seule fois), puis cliquez sur « J'ai fini l'installation » pour recevoir votre clé." })));
   } else if (i.claimed && i.status !== "delivered") {
     body.append(el("p", { class: "note", text: i.status === "awaiting_install" || i.status === "to_process" || i.status === "waiting_stock"
       ? "Demande de clé reçue ✔ Elle arrive très vite par email et sur cette page." : "" }));
