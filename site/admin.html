@@ -23,7 +23,7 @@
   nav .badge { margin-left:auto; background:var(--orange); color:#fff; border-radius:99px; padding:0 7px; font-size:12px; }
   .seg { display:inline-flex; border:1px solid #d6dce8; border-radius:10px; overflow:hidden; }
   .seg button { background:#fff; color:#334; border:0; border-radius:0; padding:6px 12px; font-weight:600; }
-  .seg button.on { background:var(--blue,#1E4FB8); color:#fff; }
+  .seg button.on { background:var(--bleu); color:#fff; }
   .ori { display:flex; gap:18px; align-items:center; flex-wrap:wrap; }
   .oripie { width:200px; height:200px; flex:none; }
   .oripie path { stroke:#fff; stroke-width:2px; }
@@ -160,6 +160,93 @@
   .bpreview { border:1px solid #dbe3ef; border-radius:10px; padding:16px 20px; background:#fff; font-size:16px; line-height:1.7; max-height:520px; overflow:auto; }
   .bpreview img { max-width:100%; border-radius:10px; } .bpreview figure { margin:16px 0; } .bpreview figcaption { text-align:center; color:#6b7690; font-size:13px; }
   .bpreview blockquote { margin:12px 0; padding:8px 14px; border-left:4px solid #F5A21B; background:#fbf7ee; } .bpreview .video { background:#000; color:#fff; padding:30px; text-align:center; border-radius:10px; }
+  /* ---------- confort de l'interface (audit admin du 26/11/2026) ---------- */
+  :root { --gris:#4b5a73; }
+  body { font-size:15px; }
+  label { font-size:13px; } .small { font-size:13px; } th { font-size:12.5px; }
+  input, select, textarea { font-size:15px; }
+  button { min-height:36px; font-size:14px; }
+  .ph .x, .tx, .swt, .seg button, .edbar button { min-height:0; }
+  :focus-visible { outline:3px solid var(--orange); outline-offset:2px; }
+  input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offset:0; }
+  /* menu en groupes */
+  nav .ngroup { font-size:11px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:#8ea3cc; padding:14px 10px 4px; }
+  nav .ngroup:first-of-type { padding-top:2px; }
+  nav button { padding:8px 10px; font-size:14.5px; }
+  nav button svg { width:18px; height:18px; flex:none; opacity:.85; }
+  nav button .nl { flex:1; display:flex; align-items:center; gap:6px; min-width:0; }
+  nav button:hover { background:rgba(255,255,255,.07); color:#fff; }
+  /* message en bas de l'écran */
+  #toast { display:flex; align-items:center; gap:12px; padding:10px 10px 10px 16px; box-shadow:0 8px 24px rgba(0,0,0,.25); }
+  #toast.hidden { display:none; }
+  #toast.bad { background:var(--rouge); }
+  #toast .tx { background:transparent; color:#fff; padding:2px 6px; font-size:15px; opacity:.85; }
+  /* fenêtres dans la page */
+  .dlg-wrap { position:fixed; inset:0; background:rgba(15,42,107,.45); z-index:100; display:flex; align-items:center; justify-content:center; padding:16px; }
+  .dlg { background:#fff; border-radius:14px; padding:20px; width:100%; max-width:480px; box-shadow:0 20px 50px rgba(0,0,0,.3); max-height:90vh; overflow:auto; }
+  .dlg-msg { white-space:pre-wrap; line-height:1.5; margin-bottom:14px; }
+  .dlg textarea { min-height:80px; }
+  .dlg-err { color:var(--rouge); font-weight:700; font-size:13px; min-height:18px; margin-top:4px; }
+  .dlg-bar { display:flex; justify-content:flex-end; gap:8px; margin-top:12px; }
+  .dlg-bar button { min-width:96px; min-height:42px; }
+  /* commandes : « Plus d'actions » */
+  details.more { width:100%; }
+  details.more > summary { display:inline-flex; align-items:center; gap:6px; cursor:pointer; list-style:none; background:#fff; border:1px solid #cbd5e1; color:var(--nuit); border-radius:8px; padding:7px 12px; font-weight:700; font-size:13px; min-height:36px; }
+  details.more > summary::-webkit-details-marker { display:none; }
+  details.more > summary::after { content:"▾"; }
+  details.more[open] > summary::after { content:"▴"; }
+  .more-menu { display:flex; flex-direction:column; align-items:stretch; gap:4px; margin-top:6px; padding:6px; border:1px solid var(--ligne); border-radius:10px; background:#fafbfc; max-width:260px; }
+  .more-menu button { text-align:left; }
+  .more-menu hr { border:0; border-top:1px solid var(--ligne); margin:6px 0; width:100%; }
+  /* formulaires repliés */
+  .fold { position:relative; }
+  .fold.folded { display:none; }
+  .foldbar { margin:0 0 14px; }
+  .foldbar button { min-height:42px; padding:10px 16px; font-size:15px; }
+  .fclose { position:absolute; top:12px; right:12px; }
+  /* interrupteur */
+  .swt { position:relative; width:52px; height:30px; padding:0; border-radius:99px; background:#cbd5e1; transition:background .15s; }
+  .swt .knob { position:absolute; top:3px; left:3px; width:24px; height:24px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.3); transition:left .15s; }
+  .swt.on { background:var(--vert); } .swt.on .knob { left:25px; }
+  /* tableau de bord : stock bas en liste */
+  .lowl { margin:4px 0 0; padding-left:18px; } .lowl li { padding:1px 0; border:0; display:list-item; }
+  /* messages : aucune conversation ouverte */
+  .mempty { color:var(--gris); text-align:center; padding:40px 16px; }
+  #mThread:not(.hidden) ~ #mEmpty { display:none; }
+  #mbar { display:none; }
+  @media (max-width:900px) { .mempty { display:none; } }
+  @media (prefers-reduced-motion: reduce) { .swt, .swt .knob { transition:none; } }
+  /* mobile : barre en bas + menu complet par-dessus */
+  @media (max-width:820px) {
+    nav { display:none; }
+    body.menu-open nav { display:block; position:fixed; inset:0 0 64px 0; z-index:60; overflow-y:auto; padding:14px 14px 24px; }
+    body.menu-open nav button { width:100%; padding:11px 12px; min-height:44px; }
+    body.menu-open nav .bottom { margin-top:16px; border-top:1px solid rgba(255,255,255,.15); padding-top:10px; }
+    #mbar { display:flex; position:fixed; left:0; right:0; bottom:0; height:64px; z-index:61; background:#fff; border-top:1px solid var(--ligne); box-shadow:0 -4px 16px rgba(15,42,107,.08); padding-bottom:env(safe-area-inset-bottom); }
+    #mbar button { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; background:transparent; color:var(--gris); border-radius:0; font-size:11.5px; font-weight:700; padding:6px 2px; position:relative; min-height:0; }
+    #mbar button svg { width:22px; height:22px; }
+    #mbar button.on { color:var(--bleu); }
+    #mbar .mdot { position:absolute; top:8px; left:calc(50% + 8px); width:9px; height:9px; border-radius:50%; background:#dc2626; }
+    #mbar .mdot.hidden { display:none; }
+    main { padding:12px 12px 84px; }
+    .to-top { bottom:80px; right:14px; }
+    #toast { bottom:76px; }
+    button { min-height:44px; }
+    details.more > summary { min-height:44px; }
+    .fclose { position:static; float:right; margin:0 0 8px 8px; }
+  }
+  /* mobile : tableaux en cartes */
+  @media (max-width:640px) {
+    main table { min-width:0; }
+    main thead { display:none; }
+    main table, main tbody, main tr, main td { display:block; width:100%; }
+    main tbody tr { border:1px solid var(--ligne); border-radius:12px; padding:10px 12px; margin-bottom:10px; background:#fff; }
+    main td { border:0; padding:4px 0; }
+    main td[data-l]::before { content:attr(data-l); display:block; font-size:12px; color:var(--gris); font-weight:700; margin-bottom:1px; }
+    main td:empty { display:none; }
+    .box { padding:12px; }
+    .more-menu { max-width:none; }
+  }
 </style>
 <link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="64x64" href="/img/profil-64.png"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
 </head>
@@ -177,26 +264,30 @@
 <div id="app" class="layout hidden">
   <nav>
     <a class="logo" href="/" target="_blank" rel="noopener"><span class="a">licence</span><span class="b">off</span><span class="c">.com</span></a>
-    <button data-tab="dash" class="on">📊 Tableau de bord <span id="badgeTodo" class="badge hidden" title="Actions à faire"></span></button>
-    <button data-tab="orders">🧾 Commandes <span id="badgePending" class="badge hidden"></span></button>
-    <button data-tab="products">📦 Produits</button>
-    <button data-tab="keys">🔑 Stock</button>
-    <button data-tab="blog">📝 Blog</button>
-    <button data-tab="pages">📄 Pages & blog</button>
-    <button data-tab="emails">✉️ Emails</button>
-    <button data-tab="send">📤 Envoi manuel</button>
-    <button data-tab="quotes">📄 Devis</button>
-    <button data-tab="parrains">🤝 Parrains <span id="badgePay" class="badge hidden"></span></button>
-    <button data-tab="messages">📥 Messages <span id="badgeMsg" class="badge hidden"></span></button>
-    <button data-tab="clients">👥 Clients</button>
-    <button data-tab="reviews">⭐ Avis <span id="badgeRev" class="badge hidden"></span></button>
-    <button data-tab="promos">🏷️ Promos</button>
-    <button data-tab="faq">❓ FAQ</button>
-    <button data-tab="links">🔗 Liens</button>
-    <button data-tab="logs">📜 Journal <span id="badgeLog" class="badge hidden" title="Erreurs non lues" style="background:var(--rouge)"></span></button>
-    <button data-tab="payments">💳 Paiements</button>
-    <button data-tab="settings">⚙️ Réglages</button>
-    <div class="bottom"><button id="btnLogout">↩ Déconnexion</button></div>
+    <div class="ngroup">Ventes</div>
+    <button data-tab="dash" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3h7v7H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 14h7v7H3z"/></svg><span class="nl">Tableau de bord <span id="badgeTodo" class="badge hidden" title="Actions à faire"></span></span></button>
+    <button data-tab="orders"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2h12v20l-3-2-3 2-3-2-3 2zM9 7h6M9 11h6M9 15h4"/></svg><span class="nl">Commandes <span id="badgePending" class="badge hidden"></span></span></button>
+    <button data-tab="send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/></svg><span class="nl">Envoi manuel</span></button>
+    <button data-tab="quotes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6v20h12V6zM14 2v4h4M8 13h8M8 17h6"/></svg><span class="nl">Devis</span></button>
+    <button data-tab="messages"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2M5.5 5h13L22 12v7H2v-7z"/></svg><span class="nl">Messages <span id="badgeMsg" class="badge hidden"></span></span></button>
+    <button data-tab="clients"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></svg><span class="nl">Clients</span></button>
+    <div class="ngroup">Catalogue</div>
+    <button data-tab="products"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8 12 3 3 8v8l9 5 9-5zM3 8l9 5 9-5M12 13v8"/></svg><span class="nl">Produits</span></button>
+    <button data-tab="keys"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.5 21a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9zM10.7 13.3 21 3M17 7l3 3M14.5 9.5l2 2"/></svg><span class="nl">Stock</span></button>
+    <button data-tab="promos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8zM7.5 7.5h.01"/></svg><span class="nl">Promos</span></button>
+    <button data-tab="reviews"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2l3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1z"/></svg><span class="nl">Avis <span id="badgeRev" class="badge hidden"></span></span></button>
+    <button data-tab="links"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg><span class="nl">Liens</span></button>
+    <div class="ngroup">Contenu</div>
+    <button data-tab="pages"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4h7a3 3 0 0 1 3 3v14a2 2 0 0 0-2-2H2zM22 4h-7a3 3 0 0 0-3 3v14a2 2 0 0 1 2-2h8z"/></svg><span class="nl">Pages &amp; blog</span></button>
+    <button data-tab="faq"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"/></svg><span class="nl">FAQ</span></button>
+    <button data-tab="emails"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18v14H3zM3 6l9 7 9-7"/></svg><span class="nl">Emails</span></button>
+    <div class="ngroup">Partenaires</div>
+    <button data-tab="parrains"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM6 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 22a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg><span class="nl">Parrains <span id="badgePay" class="badge hidden"></span></span></button>
+    <div class="ngroup">Système</div>
+    <button data-tab="payments"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5h20v14H2zM2 10h20"/></svg><span class="nl">Paiements</span></button>
+    <button data-tab="logs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg><span class="nl">Journal <span id="badgeLog" class="badge hidden" title="Erreurs non lues" style="background:var(--rouge)"></span></span></button>
+    <button data-tab="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg><span class="nl">Réglages</span></button>
+    <div class="bottom"><button id="btnLogout"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5V3h4M16 17l5-5-5-5M21 12H9"/></svg><span class="nl">Déconnexion</span></button></div>
   </nav>
 
   <main>
@@ -413,7 +504,10 @@
 
     <!-- ===== Blog ===== -->
     <section id="tab-blog" class="hidden">
-      <h1>Blog</h1>
+      <h1>Pages &amp; blog</h1>
+      <div class="subnav" id="bSub" role="tablist" aria-label="Sections de la page">
+        <button data-s="apercu">📊 Vue d'ensemble</button><button data-s="redaction" class="on">✍️ Écrire et gérer les articles</button><button data-s="articles">📈 Stats des articles</button><button data-s="rubriques">🗂️ Rubriques</button><button data-s="pages">📄 Pages libres</button>
+      </div>
       <div class="box">
         <h2 id="bTitleH">Nouvel article</h2>
         <input type="hidden" id="bId">
@@ -459,7 +553,7 @@
     <section id="tab-pages" class="hidden">
       <h1>Pages & blog</h1>
       <div class="subnav" id="cSub" role="tablist" aria-label="Sections de la page">
-        <button data-s="apercu" class="on">📊 Vue d'ensemble</button><button data-s="articles">📈 Articles en détail</button><button data-s="rubriques">🗂️ Rubriques</button><button data-s="pages">📄 Pages libres</button>
+        <button data-s="apercu" class="on">📊 Vue d'ensemble</button><button data-s="redaction">✍️ Écrire et gérer les articles</button><button data-s="articles">📈 Stats des articles</button><button data-s="rubriques">🗂️ Rubriques</button><button data-s="pages">📄 Pages libres</button>
       </div>
       <div class="bar" style="justify-content:space-between">
         <div class="seg" id="cPeriod"><button data-d="7">7 jours</button><button data-d="30" class="on">30 jours</button><button data-d="90">3 mois</button><button data-d="365">1 an</button></div>
@@ -641,18 +735,18 @@
       <div id="payList"></div>
       <div class="box">
         <h2 id="rFormTitle">Nouveau parrain</h2>
-        <input type="hidden" id="rId">
+        <input type="hidden" id="paId">
         <div class="grid">
-          <div><label>Nom</label><input id="rName" placeholder="ex : Amadou Ba"></div>
+          <div><label>Nom</label><input id="paName" placeholder="ex : Amadou Ba"></div>
           <div><label>Email (pour se connecter)</label><input id="rEmail" type="email"></div>
           <div><label>Téléphone</label><input id="rPhone"></div>
           <div><label>Versements sur</label><input id="rPay" placeholder="ex : Wave 77 123 45 67"></div>
           <div><label>Statut</label><select id="rStatus"><option value="active">Actif</option><option value="suspended">Suspendu</option></select></div>
           <div><label>Note (pour vous)</label><input id="rNote"></div>
         </div>
-        <div class="bar" style="margin-top:10px"><button id="rSave" class="green">Enregistrer</button><button id="rReset" class="grey">Nouveau</button><span class="small">À la création, un premier lien est créé avec la remise par défaut (Réglages).</span></div>
+        <div class="bar" style="margin-top:10px"><button id="paSave" class="green">Enregistrer</button><button id="paReset" class="grey">Nouveau</button><span class="small">À la création, un premier lien est créé avec la remise par défaut (Réglages).</span></div>
       </div>
-      <div class="box"><div class="tablewrap"><table><thead><tr><th>Parrain</th><th>Liens / codes</th><th>Ventes</th><th>Gains</th><th>Solde</th><th></th></tr></thead><tbody id="rRows"></tbody></table></div></div>
+      <div class="box"><div class="tablewrap"><table><thead><tr><th>Parrain</th><th>Liens / codes</th><th>Ventes</th><th>Gains</th><th>Solde</th><th></th></tr></thead><tbody id="paRows"></tbody></table></div></div>
     </section>
 
     <section id="tab-messages" class="hidden">
@@ -664,7 +758,7 @@
         <button id="mRefresh" class="grey">🔄 Actualiser</button>
         <button id="mNew" class="org">✏️ Écrire à un client</button>
       </div>
-      <div class="inbox"><div id="mList" class="box"></div><div id="mThread" class="box hidden"></div></div>
+      <div class="inbox"><div id="mList" class="box"></div><div id="mThread" class="box hidden"></div><div id="mEmpty" class="box mempty">Choisissez une conversation à gauche pour la lire et répondre.</div></div>
     </section>
 
     <section id="tab-clients" class="hidden">
@@ -886,7 +980,125 @@ async function api(payload) {
   if (d.error) throw new Error(d.error);
   return d;
 }
-function toast(t) { const e = $("toast"); e.textContent = t; e.classList.remove("hidden"); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.add("hidden"), 4500); }
+function toast(t) {
+  const e = $("toast"), bad = /^(Erreur|⛔)|impossible|refus|invalide|manquant|insuffisant|échou/i.test(String(t));
+  e.replaceChildren(el("span", t)); e.classList.toggle("bad", bad); e.setAttribute("role", bad ? "alert" : "status");
+  const x = el("button", "✕", "tx"); x.setAttribute("aria-label", "Fermer le message"); x.addEventListener("click", () => e.classList.add("hidden")); e.append(x);
+  e.classList.remove("hidden"); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.add("hidden"), bad ? 9000 : 4500);
+}
+// ---------- confort de l'interface (audit admin du 26/11/2026) ----------
+// Fenêtres dans la page à la place des « OK / Annuler » du navigateur (même usage : await uiConfirm / await uiPrompt).
+function uiDialog(msg, opt) {
+  opt = opt || {};
+  return new Promise((done) => {
+    const prev = document.activeElement;
+    const wrap = el("div", null, "dlg-wrap"), box = el("div", null, "dlg");
+    box.setAttribute("role", "dialog"); box.setAttribute("aria-modal", "true");
+    const m = el("div", msg, "dlg-msg"); m.id = "dlgMsg"; box.setAttribute("aria-labelledby", "dlgMsg"); box.append(m);
+    let inp = null; const err = el("div", "", "dlg-err");
+    if (opt.input) {
+      const long = /Information|Motif|Légende|Copiez/.test(msg) || String(opt.value || "").length > 70;
+      inp = el(long ? "textarea" : "input"); inp.className = "full"; inp.value = opt.value == null ? "" : String(opt.value);
+      if (long) inp.rows = 3;
+      else if (/email/i.test(msg)) inp.type = "email";
+      else if (/https|lien/i.test(msg)) inp.type = "url";
+      else if (/Combien|en %/.test(msg)) inp.inputMode = "numeric";
+      box.append(inp, err);
+    }
+    const bar = el("div", null, "dlg-bar");
+    const okNames = /OK =/.test(msg) ? ["OK", "Annuler"] : inp ? ["Valider", "Annuler"] : ["Oui", "Non"];
+    const no = el("button", okNames[1], "grey"), ok = el("button", okNames[0], opt.danger ? "red" : "green");
+    bar.append(no, ok); box.append(bar); wrap.append(box); document.body.append(wrap);
+    const close = (v) => { wrap.remove(); removeEventListener("keydown", key, true); try { prev && prev.focus && prev.focus(); } catch (_) {} done(v); };
+    const valid = () => {
+      if (!inp) return true; const v = inp.value.trim(); err.textContent = "";
+      if (inp.type === "email" && v && !/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(v)) { err.textContent = "Adresse email invalide."; return false; }
+      if (inp.type === "url" && v && !/^https:\/\/\S+$/i.test(v)) { err.textContent = "Le lien doit commencer par https://"; return false; }
+      return true;
+    };
+    ok.addEventListener("click", () => { if (valid()) close(inp ? inp.value : true); else inp.focus(); });
+    no.addEventListener("click", () => close(inp ? null : false));
+    wrap.addEventListener("mousedown", (e) => { if (e.target === wrap) close(inp ? null : false); });
+    const key = (e) => {
+      if (e.key === "Escape") { e.preventDefault(); close(inp ? null : false); }
+      else if (e.key === "Enter" && document.activeElement !== no && (!inp || inp.tagName === "INPUT")) { e.preventDefault(); ok.click(); }
+      else if (e.key === "Tab") { const f = [inp, no, ok].filter(Boolean), i = f.indexOf(document.activeElement); e.preventDefault(); f[(i + (e.shiftKey ? f.length - 1 : 1)) % f.length].focus(); }
+    };
+    addEventListener("keydown", key, true);
+    setTimeout(() => { (inp || ok).focus(); if (inp && inp.select) inp.select(); }, 0);
+  });
+}
+function uiConfirm(msg) { return uiDialog(msg, { danger: /^(Annuler la commande|Supprimer|Effacer|Désactiver|Libérer TOUTES)/.test(String(msg)) }); }
+function uiPrompt(msg, value) { return uiDialog(msg, { input: true, value }); }
+
+// Commandes : les actions principales restent visibles, les autres vont dans « Plus d'actions ».
+function splitActs(acts) {
+  const extra = [...acts.children].filter((b) => b.tagName === "BUTTON" && (b.classList.contains("grey") || b.classList.contains("red")) && !b.classList.contains("keep"));
+  if (extra.length < 2) return;
+  const d = el("details", null, "more"), menu = el("div", null, "more-menu");
+  d.append(el("summary", "Plus d'actions (" + extra.length + ")"), menu);
+  for (const b of extra) { if (b.classList.contains("red")) menu.append(el("hr")); menu.append(b); }
+  acts.append(d);
+}
+document.addEventListener("click", (e) => { for (const d of document.querySelectorAll("details.more[open]")) if (!d.contains(e.target)) d.open = false; });
+
+// Formulaires « Nouveau… » repliés : la liste est visible tout de suite, le formulaire s'ouvre sur demande ou pour modifier.
+var FORMS = {
+  products: ["pForm", "+ Nouveau produit", "pReset"], keys: ["kProd", "+ Ajouter des clés au stock"], blog: ["bId", "+ Nouvel article", "bReset"],
+  emails: ["tFormTitle", "+ Nouveau modèle", "tReset"], promos: ["prTitle", "+ Nouvelle promo", "prReset"], faq: ["fId", "+ Nouvelle question", "fReset"],
+  quotes: ["qTitle", "+ Nouveau devis", "qReset"], parrains: ["rFormTitle", "+ Nouveau parrain", "paReset"],
+};
+function openForm(t, isNew) {
+  const f = FORMS[t]; if (!f || !f.box) return;
+  if (isNew && f[2] && $(f[2])) $(f[2]).click();
+  f.box.classList.remove("folded"); f.bar.classList.add("hidden");
+  if (isNew) { f.box.scrollIntoView({ behavior: "smooth", block: "start" }); const i = f.box.querySelector("input:not([type=hidden]):not([type=checkbox]), select, textarea"); if (i) setTimeout(() => i.focus(), 250); }
+}
+for (const [t, f] of Object.entries(FORMS)) {
+  const anchor = $(f[0]); if (!anchor) continue;
+  const box = anchor.classList.contains("box") ? anchor : anchor.closest(".box"); if (!box) continue;
+  const bar = el("div", null, "foldbar"), go = el("button", f[1], "green");
+  go.addEventListener("click", () => openForm(t, true)); bar.append(go); box.before(bar);
+  const x = el("button", "✕ Fermer", "grey fclose"); x.title = "Replier le formulaire";
+  x.addEventListener("click", () => { box.classList.add("folded"); bar.classList.remove("hidden"); });
+  box.prepend(x); box.classList.add("fold", "folded");
+  f.box = box; f.bar = bar;
+}
+
+// Réglages : interrupteur au lieu d'un bouton rouge « Désactiver »
+function setSwitch(b, on, label) {
+  b.className = "swt" + (on ? " on" : ""); b.setAttribute("role", "switch"); b.setAttribute("aria-checked", String(on));
+  b.setAttribute("aria-label", label); b.title = on ? "Allumé : cliquer pour éteindre" : "Éteint : cliquer pour allumer";
+  b.replaceChildren(el("span", null, "knob"));
+}
+
+// Mobile : barre en bas avec les 4 onglets les plus utilisés + « Menu » (le menu complet s'ouvre par-dessus)
+(() => {
+  const I = (d) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="' + d + '"/></svg>';
+  const bar = el("div"); bar.id = "mbar"; bar.setAttribute("aria-label", "Raccourcis");
+  for (const t of ["orders", "send", "messages", "clients"]) {
+    const src = document.querySelector('nav [data-tab="' + t + '"]'); if (!src) continue;
+    const b = el("button"); b.dataset.tab = t; b.innerHTML = src.querySelector("svg").outerHTML;
+    b.append(el("span", src.querySelector(".nl").firstChild.textContent.trim()));
+    if (t === "messages") { const dot = el("i", null, "mdot hidden"); b.append(dot); new MutationObserver(() => dot.classList.toggle("hidden", $("badgeMsg").classList.contains("hidden"))).observe($("badgeMsg"), { attributes: true }); }
+    b.addEventListener("click", () => openTab(t)); bar.append(b);
+  }
+  const m = el("button"); m.innerHTML = I("M3 6h18M3 12h18M3 18h18"); m.append(el("span", "Menu")); m.setAttribute("aria-expanded", "false");
+  m.addEventListener("click", () => { const o = document.body.classList.toggle("menu-open"); m.setAttribute("aria-expanded", String(o)); });
+  bar.append(m); $("app").append(bar);
+})();
+
+// Mobile : les tableaux deviennent des cartes (chaque case reçoit le titre de sa colonne)
+function labelTables() {
+  for (const t of document.querySelectorAll("main table")) {
+    const hs = [...t.querySelectorAll("thead th")].map((h) => h.textContent.trim()); if (!hs.length) continue;
+    for (const r of t.tBodies[0] ? t.tBodies[0].rows : []) {
+      if (r.dataset.l === "1") continue; r.dataset.l = "1";
+      [...r.cells].forEach((c, i) => { if (c.colSpan === 1 && hs[i]) c.dataset.l = hs[i]; });
+    }
+  }
+}
+let ltT = 0; new MutationObserver(() => { if (!ltT) ltT = requestAnimationFrame(() => { ltT = 0; labelTables(); }); }).observe(document.querySelector("main"), { childList: true, subtree: true });
 const CHANNEL = {
   facebook_ads: "📣 Pub Facebook / Instagram", google_ads: "📣 Pub Google Ads", facebook: "Facebook / Instagram (publication)",
   google: "Recherche Google", whatsapp: "Lien WhatsApp", direct: "Direct (adresse tapée, favori)", autre: "Autre site",
@@ -902,7 +1114,7 @@ function btn(label, cls, fn) { const b = el("button", label, cls); b.addEventLis
 const fcfa = (n) => Number(n || 0).toLocaleString("fr-FR") + " F";
 const dt = (iso) => iso ? new Date(iso).toLocaleString("fr-FR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "—";
 const mask = (k) => { if (showKeys || !k) return k; const a = String(k).match(/^(Identifiant : .+?) \| Mot de passe : /); return a ? a[1] + " | Mot de passe : ••••••" : k.length < 12 ? k : k.slice(0, 5) + "•••••" + k.slice(-4); };
-async function copy(text, okMsg) { try { await navigator.clipboard.writeText(text); toast(okMsg || "Copié ✔"); } catch (_) { prompt("Copiez :", text); } }
+async function copy(text, okMsg) { try { await navigator.clipboard.writeText(text); toast(okMsg || "Copié ✔"); } catch (_) { await uiPrompt("Copiez :", text); } }
 function waNumber(p) { let d = String(p || "").replace(/\D/g, ""); if (d.length === 9 && d[0] === "7") d = "221" + d; return d; }
 function linkState(l) { if (l.status !== "active") return l.status; if (l.download_count >= l.max_downloads) return "used"; if (new Date(l.expires_at) < new Date()) return "expired"; return "active"; }
 const run = (payload, okMsg, reload) => async () => {
@@ -982,7 +1194,9 @@ addEventListener("pagehide", () => ss.set("lo_scroll", String(Math.round(scrollY
 function openTab(t, keepDetail) {
   if (!keepDetail) { ss.set("lo_detail", ""); ss.set("lo_scroll", ""); }
   ss.set("lo_tab", t); try { history.replaceState(null, "", "#" + t); } catch (_) {}
-  document.querySelectorAll("nav [data-tab]").forEach((b) => b.classList.toggle("on", b.dataset.tab === t));
+  const navT = t === "blog" ? "pages" : t;
+  document.querySelectorAll("nav [data-tab], #mbar [data-tab]").forEach((b) => b.classList.toggle("on", b.dataset.tab === navT));
+  document.body.classList.remove("menu-open"); $("toast").classList.add("hidden");
   document.querySelectorAll("main > section").forEach((s) => s.classList.toggle("hidden", s.id !== "tab-" + t));
   return loaders[t]().catch((e) => toast(errMsg(e)));
 }
@@ -1035,7 +1249,7 @@ async function loadDash() {
   $("dashTop").replaceChildren(...(top.length ? top.map(([n, v]) => tr(td(n), td(v.q + " vendu(s)"), td(fcfa(v.ca)))) : [tr(td("Pas encore de ventes"))]));
   loadOrigin().catch(() => {});
   $("dashStock").replaceChildren(...(low.length ? low.map((x) => tr(td(x.name), td(el("span", x.available === 0 ? "Rupture" : x.available + " restant(s)", "low")),
-    td(btn("Ajouter", "grey", async () => { await openTab("keys"); $("kProd").value = x.id; kAcctUi(); $("kText").focus(); })))) : [tr(td("Tout va bien ✔"))]));
+    td(btn("Ajouter", "grey", async () => { await openTab("keys"); openForm("keys"); $("kProd").value = x.id; kAcctUi(); $("kText").focus(); })))) : [tr(td("Tout va bien ✔"))]));
   $("dashOrders").replaceChildren(...d.orders.slice(0, 8).map((o) => tr(td(dt(o.created_at)), td(o.ref), td(o.customer_name), td(tag(o.status)), td(fcfa(o.amount_fcfa)))));
 }
 // ---------- origine des ventes : camembert + tableau ----------
@@ -1099,7 +1313,11 @@ function renderTodo(list) {
   $("todoBox").style.borderColor = urgent ? "" : "#86efac";
   $("todoList").replaceChildren(...(list.length ? list.map((x) => {
     const li = el("li", null, x.kind === "messages" ? "msg" : "");
-    li.append(el("span", x.level === "urgent" ? "🔴" : "🔵"), el("span", x.text, "t"), btn("Voir", "grey", () => openTab(x.tab)));
+    // stock bas : une ligne par produit au lieu d'une longue phrase
+    const lowItems = x.kind === "low_stock" ? String(x.text).replace(/^Stock bas : /, "").split(/(?<=\(\d+(?: en stock)?\)), /) : null;
+    let body = el("span", x.text, "t");
+    if (lowItems && lowItems.length > 1) { body = el("div", null, "t"); body.append(el("b", "Stock bas (" + lowItems.length + " produits)"), el("ul", null, "lowl")); for (const it of lowItems) body.lastChild.append(el("li", it)); }
+    li.append(el("span", x.level === "urgent" ? "🔴" : "🔵"), body, btn(x.kind === "low_stock" ? "Ajouter des clés" : "Voir", "grey", async () => { await openTab(x.tab); if (x.kind === "low_stock") openForm("keys"); }));
     return li;
   }) : [el("li", "Rien à faire, tout est en ordre ✔", "ok")]));
 }
@@ -1189,8 +1407,8 @@ async function openMessages(email) { await openTab("messages"); await openThread
 $("mBox").addEventListener("change", () => loadMessages().catch((e) => toast(errMsg(e))));
 $("mRefresh").addEventListener("click", () => { loadMessages().then(() => toast("Liste à jour ✔")).catch((e) => toast(errMsg(e))); refreshTodo(); });
 let mqT; $("mQ").addEventListener("input", () => { clearTimeout(mqT); mqT = setTimeout(() => loadMessages().catch((e) => toast(errMsg(e))), 300); });
-$("mNew").addEventListener("click", () => {
-  const e = (prompt("Email du client :") || "").trim().toLowerCase();
+$("mNew").addEventListener("click", async () => {
+  const e = (await uiPrompt("Email du client :") || "").trim().toLowerCase();
   if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(e)) { if (e) toast("Adresse email invalide."); return; }
   openThread(e, { focus: true }).catch((x) => toast(errMsg(x)));
 });
@@ -1272,12 +1490,12 @@ autoFillClient("mEmail", "mName", "mPhone");
 autoFillClient("nEmail", "nName", "nPhone");
 
 async function renewLink(o, i, reload) {
-  if (!confirm("Renouveler le lien de téléchargement de « " + i.product_name + " » pour " + o.customer_name + " ?\n\nLe client garde le même lien que dans son email : il marchera de nouveau une fois. Aucune nouvelle commande n'est créée.")) return;
+  if (!await uiConfirm("Renouveler le lien de téléchargement de « " + i.product_name + " » pour " + o.customer_name + " ?\n\nLe client garde le même lien que dans son email : il marchera de nouveau une fois. Aucune nouvelle commande n'est créée.")) return;
   try { await api({ action: "item_new_link", id: i.id }); } catch (e) { toast(errMsg(e)); return; }
   toast("Lien renouvelé ✔");
   const page = ORDER_PAGE + "?o=" + o.public_token;
   const msg = "Bonjour " + (o.customer_name || "") + ", votre lien de téléchargement (commande " + o.ref + ") marche de nouveau. Ouvrez-le ici : " + page + "\nSi le téléchargement est bloqué, essayez avec un autre navigateur ou une autre connexion (wifi / 4G).";
-  if (o.phone && confirm("Lien renouvelé ✔\n\nPrévenir le client sur WhatsApp ?")) window.open("https://wa.me/" + waNumber(o.phone) + "?text=" + encodeURIComponent(msg), "_blank", "noopener");
+  if (o.phone && await uiConfirm("Lien renouvelé ✔\n\nPrévenir le client sur WhatsApp ?")) window.open("https://wa.me/" + waNumber(o.phone) + "?text=" + encodeURIComponent(msg), "_blank", "noopener");
   else if (!o.phone) copy(msg, "Lien renouvelé ✔ · message pour le client copié");
   reload();
 }
@@ -1288,7 +1506,7 @@ $("oReviewAll").addEventListener("click", async () => {
   try {
     const p = await api({ action: "review_request_bulk", dry: true });
     if (!p.count) { toast("Aucun client à relancer : tous ont déjà donné leur avis ou reçu la demande."); return; }
-    if (!confirm(p.count + " client(s) livré(s) n'ont pas encore donné d'avis.\nEnvoyer la demande d'avis à " + p.batch + " d'entre eux maintenant ?" + (p.count > p.batch ? "\n(Recliquez ensuite pour les suivants.)" : "") + "\n\nChaque client ne reçoit cette demande groupée qu'une seule fois.")) return;
+    if (!await uiConfirm(p.count + " client(s) livré(s) n'ont pas encore donné d'avis.\nEnvoyer la demande d'avis à " + p.batch + " d'entre eux maintenant ?" + (p.count > p.batch ? "\n(Recliquez ensuite pour les suivants.)" : "") + "\n\nChaque client ne reçoit cette demande groupée qu'une seule fois.")) return;
     $("oReviewAll").disabled = true; toast("Envoi en cours…");
     const r = await api({ action: "review_request_bulk" });
     toast("⭐ " + r.sent + " demande(s) envoyée(s)" + (r.failed ? ", " + r.failed + " échec(s) (voir Journal)" : "") + (r.remaining ? ", " + r.remaining + " restante(s)" : ""));
@@ -1379,7 +1597,7 @@ async function resellerPdf(o) {
       const doc = buildInstructionsPdf(J, item);
       const fname = "instructions-" + item.product_name.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 50) + ".pdf";
       doc.save(fname);
-      if (confirm("PDF « " + fname + " » téléchargé ✔ (sans prix ni n° de commande).\n\nL'envoyer aussi en pièce jointe au revendeur (" + d.email + ") ?")) {
+      if (await uiConfirm("PDF « " + fname + " » téléchargé ✔ (sans prix ni n° de commande).\n\nL'envoyer aussi en pièce jointe au revendeur (" + d.email + ") ?")) {
         const pdf = doc.output("datauristring").split(",")[1];
         await api({ action: "order_instructions_send", id: o.id, pdf, filename: fname, product: item.product_name });
         toast("PDF envoyé à " + d.email + " ✔");
@@ -1391,10 +1609,10 @@ async function resellerPdf(o) {
 async function cancelOrder(o, items, reload) {
   const paid = o.status !== "pending";
   const nKeys = items.reduce((n, i) => n + (i.license_keys || []).length, 0);
-  if (!confirm("Annuler la commande " + o.ref + " (" + fcfa(o.amount_fcfa) + ", " + o.customer_name + ") ?\n\n"
+  if (!await uiConfirm("Annuler la commande " + o.ref + " (" + fcfa(o.amount_fcfa) + ", " + o.customer_name + ") ?\n\n"
     + (paid ? "Elle ne comptera plus dans les ventes, les statistiques ni le gain du parrain. La facture reste numérotée et affichera « ANNULÉE ».\n" : "")
     + "Les liens de téléchargement encore valables seront désactivés.\n\nAttention : les emails déjà envoyés au client ne peuvent pas être repris.")) return;
-  const restock = nKeys > 0 && confirm(nKeys + " clé(s) ont déjà été envoyée(s) pour cette commande.\n\nOK = les remettre dans le stock (seulement si le client ne les a pas utilisées)\nAnnuler = les laisser comme « envoyées »");
+  const restock = nKeys > 0 && await uiConfirm(nKeys + " clé(s) ont déjà été envoyée(s) pour cette commande.\n\nOK = les remettre dans le stock (seulement si le client ne les a pas utilisées)\nAnnuler = les laisser comme « envoyées »");
   try {
     const r = await api({ action: "order_cancel", id: o.id, restock });
     toast("Commande annulée" + (r.restocked ? " · " + r.restocked + " clé(s) remise(s) en stock" : "") + " ✔");
@@ -1434,7 +1652,7 @@ async function loadOrders() {
         const have = (i.license_keys || []).filter((k) => k.product_id === c.component_id).length;
         if (have >= i.quantity * c.qty) acts.append(el("span", "✔ Clé « " + nm + " » libérée", "small"));
         else acts.append(btn("🔑 Libérer la clé « " + nm + " »", "green", async () => {
-          if (!confirm("Libérer la clé « " + nm + " » pour " + (o.customer_name || o.email) + " ?\nLe client la reçoit par email et la voit sur sa page de commande. Les autres clés du pack restent cachées.")) return;
+          if (!await uiConfirm("Libérer la clé « " + nm + " » pour " + (o.customer_name || o.email) + " ?\nLe client la reçoit par email et la voit sur sa page de commande. Les autres clés du pack restent cachées.")) return;
           await run({ action: "item_release_component", id: i.id, component_id: c.component_id }, "Clé « " + nm + " » libérée ✔", reload)();
         }));
       }
@@ -1443,11 +1661,11 @@ async function loadOrders() {
       if (exP && exP.manual_key && i.status === "awaiting_install") box.append(el("br"), el("span", "🔑 Clé à envoyer par vous (le client attend)", "small"));
       if (i.manual_link_url) box.append(el("br"), el("span", "📎 Lien envoyé" + (i.manual_link_sent_at ? " le " + dt(i.manual_link_sent_at) : ""), "small"));
       if (exP && exP.manual_link && !["pending", "cancelled"].includes(o.status) && i.status !== "cancelled") acts.append(btn(i.manual_link_url ? "📎 Renvoyer un lien" : "📎 Envoyer le lien du logiciel", i.manual_link_url ? "grey" : "green", async () => {
-        const url = prompt("Lien de téléchargement de « " + i.product_name + " » pour " + (o.customer_name || o.email) + " (https://…).\nLe client le reçoit par email et le voit sur sa page de commande.", i.manual_link_url || "");
+        const url = await uiPrompt("Lien de téléchargement de « " + i.product_name + " » pour " + (o.customer_name || o.email) + " (https://…).\nLe client le reçoit par email et le voit sur sa page de commande.", i.manual_link_url || "");
         if (!url) return;
         await run({ action: "item_send_link", id: i.id, url: url.trim() }, "Lien envoyé au client ✔", reload)();
       }));
-      if (i.status === "awaiting_install") acts.append(btn(packOpen ? "🔑 Libérer toutes les clés du pack" : "🔑 Envoyer la clé maintenant", packOpen ? "grey" : "green", async () => { if (confirm(packOpen ? "Libérer TOUTES les clés du pack maintenant ?" : "Envoyer la clé sans attendre que le client confirme l'installation ?")) await run({ action: "item_send_key_now", id: i.id }, "Clé envoyée ✔", reload)(); }));
+      if (i.status === "awaiting_install") acts.append(btn(packOpen ? "🔑 Libérer toutes les clés du pack" : "🔑 Envoyer la clé maintenant", packOpen ? "grey" : "green", async () => { if (await uiConfirm(packOpen ? "Libérer TOUTES les clés du pack maintenant ?" : "Envoyer la clé sans attendre que le client confirme l'installation ?")) await run({ action: "item_send_key_now", id: i.id }, "Clé envoyée ✔", reload)(); }));
       if (i.status === "to_process" && i.delivery_type === "manual") acts.append(btn("✔ Marquer fait", "green", run({ action: "item_complete", id: i.id }, "Article marqué livré ✔", reload)));
       if (o.status !== "cancelled" && ["delivered", "awaiting_install"].includes(i.status) && ["key_file", "file"].includes(i.delivery_type) && (i.downloads || []).length)
         acts.append(btn("🔄 Renouveler le lien", "org", () => renewLink(o, i, reload)));
@@ -1457,7 +1675,7 @@ async function loadOrders() {
     const acts = el("div", null, "acts");
     if (o.status === "pending") {
       acts.append(btn(o.key_locked ? "🔓 Débloquer la clé (paiement reçu)" : "✔ Payé : livrer la commande", "green", async () => {
-        if (!confirm("Avez-vous bien reçu " + fcfa(o.amount_fcfa) + " de " + o.customer_name + " ?" + (o.key_locked ? "\nLa clé sera envoyée par email au client et affichée sur sa page." : ""))) return;
+        if (!await uiConfirm("Avez-vous bien reçu " + fcfa(o.amount_fcfa) + " de " + o.customer_name + " ?" + (o.key_locked ? "\nLa clé sera envoyée par email au client et affichée sur sa page." : ""))) return;
         await run({ action: "order_validate", id: o.id }, "Paiement validé, commande livrée ✔", reload)();
       }));
     }
@@ -1469,12 +1687,12 @@ async function loadOrders() {
       const lab = { paid: "📦 Payée · à expédier sous 48 h ouvrées", shipping: "🚚 Expédition en cours" + (o.ship_started_at ? " depuis le " + dt(o.ship_started_at) : ""), done: "✅ Livrée" + (o.ship_done_at ? " le " + dt(o.ship_done_at) : "") }[stage];
       cItems.append(el("div", lab + (o.ship_note && stage === "shipping" ? " · ℹ️ " + o.ship_note : ""), "small"));
       if (stage === "paid") acts.append(btn("🚚 Expédition en cours", "green", async () => {
-        const note = prompt("Expédition en cours : le client reçoit un email.\n\nInformation à lui donner (facultatif) : nom et numéro du livreur, compagnie de bus, heure prévue…", "");
+        const note = await uiPrompt("Expédition en cours : le client reçoit un email.\n\nInformation à lui donner (facultatif) : nom et numéro du livreur, compagnie de bus, heure prévue…", "");
         if (note === null) return;
         await run({ action: "ship_start", id: o.id, note }, "Expédition en cours ✔ Email envoyé au client", reload)();
       }));
       if (stage === "shipping") acts.append(btn("✅ Livrée", "green", async () => {
-        if (!confirm("Confirmer que " + (o.customer_name || o.email) + " a bien reçu sa commande ?\nLe client reçoit un email de confirmation avec une demande d'avis.")) return;
+        if (!await uiConfirm("Confirmer que " + (o.customer_name || o.email) + " a bien reçu sa commande ?\nLe client reçoit un email de confirmation avec une demande d'avis.")) return;
         await run({ action: "ship_done", id: o.id }, "Commande livrée ✔ Email + demande d'avis envoyés", reload)();
       }));
       if (stage === "paid" && !o.ship_paid_mail_at) acts.append(btn("✉ Envoyer « commande payée »", "grey", run({ action: "ship_email", id: o.id, stage: "paid" }, "Email envoyé ✔", reload)));
@@ -1483,15 +1701,15 @@ async function loadOrders() {
     if (o.status === "paid") acts.append(btn("Réessayer la livraison", "grey", run({ action: "order_validate", id: o.id }, "Commande livrée ✔", reload)));
     if (["delivered", "processing", "paid"].includes(o.status)) {
       acts.append(btn("Copier le message client", "org", () => copy(clientMessage(o), "Message copié ✔")));
-      if (o.phone) acts.append(btn("WhatsApp", "grey", () => window.open("https://wa.me/" + waNumber(o.phone) + "?text=" + encodeURIComponent(clientMessage(o)), "_blank", "noopener")));
+      if (o.phone) acts.append(btn("WhatsApp", "grey keep", () => window.open("https://wa.me/" + waNumber(o.phone) + "?text=" + encodeURIComponent(clientMessage(o)), "_blank", "noopener")));
     }
     if (["delivered", "processing", "paid", "installing"].includes(o.status) && !items.every((i) => i.delivery_type === "physical")) acts.append(btn(o.status === "installing" ? "✉ Renvoyer l'email d'installation" : o.emailed_at ? "✉ Renvoyer l'email" : "✉ Envoyer l'email", "grey", async () => {
-      if (confirm((o.status === "installing" ? "Renvoyer l'email d'installation à " : "Envoyer l'email de livraison à ") + o.email + " ?")) await run({ action: "order_email", id: o.id }, "Email envoyé ✔", reload)();
+      if (await uiConfirm((o.status === "installing" ? "Renvoyer l'email d'installation à " : "Envoyer l'email de livraison à ") + o.email + " ?")) await run({ action: "order_email", id: o.id }, "Email envoyé ✔", reload)();
     }));
     // plus d'email séparé de demande d'avis : le client est invité sur sa page de commande (sous sa clé), et l'email « Livrée » des produits physiques le demande déjà
     if (items.some((i) => (i.license_keys || []).length)) acts.append(btn("📄 PDF revendeur", "grey", () => resellerPdf(o)));
     else if (o.status === "pending" && items.some((i) => STOCK_TYPES.includes(i.delivery_type))) acts.append(btn("📄 PDF revendeur", "grey", async () => {
-      if (!confirm("Avez-vous bien reçu " + fcfa(o.amount_fcfa) + " de " + (o.customer_name || o.email) + " ?\n\nLe compte (ou la clé) sera pris dans le stock et la commande passera « livrée », SANS email au client.\nEnsuite le PDF d'instructions se télécharge.")) return;
+      if (!await uiConfirm("Avez-vous bien reçu " + fcfa(o.amount_fcfa) + " de " + (o.customer_name || o.email) + " ?\n\nLe compte (ou la clé) sera pris dans le stock et la commande passera « livrée », SANS email au client.\nEnsuite le PDF d'instructions se télécharge.")) return;
       try {
         const r = await api({ action: "order_validate", id: o.id, silent: true });
         if (r.result && r.result.ok === false && r.result.reason) toast("Livraison : " + r.result.reason);
@@ -1502,15 +1720,16 @@ async function loadOrders() {
     acts.append(btn("Page client", "grey", () => copy(ORDER_PAGE + "?o=" + o.public_token, "Lien de la page client copié ✔")));
     if (o.invoice_no) acts.append(btn("🧾 Facture", "grey", () => window.open(SITE + "/facture?o=" + encodeURIComponent(o.public_token), "_blank", "noopener")));
     if (o.invoice_no && o.status !== "cancelled") acts.append(btn("✉ Envoyer la facture", "grey", async () => {
-      if (confirm("Envoyer la facture " + o.invoice_no + " à " + o.email + " ?")) await run({ action: "order_invoice_send", id: o.id }, "Facture envoyée à " + o.email + " ✔", reload)();
+      if (await uiConfirm("Envoyer la facture " + o.invoice_no + " à " + o.email + " ?")) await run({ action: "order_invoice_send", id: o.id }, "Facture envoyée à " + o.email + " ✔", reload)();
     }));
     acts.append(btn("✏️ Client", "grey", async () => {
-      const name = prompt("Nom du client (affiché sur la facture) :", o.customer_name || ""); if (name === null) return;
-      const company = prompt("Société (facultatif) :", o.billing_company || ""); if (company === null) return;
-      const address = prompt("Adresse (facultatif) :", o.billing_address || ""); if (address === null) return;
+      const name = await uiPrompt("Nom du client (affiché sur la facture) :", o.customer_name || ""); if (name === null) return;
+      const company = await uiPrompt("Société (facultatif) :", o.billing_company || ""); if (company === null) return;
+      const address = await uiPrompt("Adresse (facultatif) :", o.billing_address || ""); if (address === null) return;
       await run({ action: "order_update_client", id: o.id, name, company, address }, "Client mis à jour ✔", reload)();
     }));
     if (o.status !== "cancelled") acts.append(btn("✖ Annuler la commande", "red", () => cancelOrder(o, items, reload)));
+    splitActs(acts);
     tb.append(tr(
       td(el("strong", o.ref), el("br"), el("span", dt(o.created_at), "small"), el("br"), el("span", o.source === "admin" ? "vente manuelle" : "site", "small"), el("br"), el("span", "Origine : " + chLabel(o.channel) + (o.campaign ? " · " + o.campaign : ""), "small"), o.invoice_no ? el("br") : null, o.invoice_no ? el("span", "Facture " + o.invoice_no, "small") : null),
       td(el("strong", o.customer_name), el("br"), el("span", o.email, "small"), el("br"), el("span", o.phone || "", "small"),
@@ -1550,7 +1769,7 @@ $("oNewBtn").addEventListener("click", () => { $("oNew").classList.toggle("hidde
 $("nAddLine").addEventListener("click", addSaleLine);
 $("nCancel").addEventListener("click", () => $("oNew").classList.add("hidden"));
 $("nSave").addEventListener("click", async () => {
-  if ($("nDeliver").value === "yes" && !confirm("Vous avez bien reçu le paiement ?\nLa commande sera livrée tout de suite : le client recevra ses clés.")) return;
+  if ($("nDeliver").value === "yes" && !await uiConfirm("Vous avez bien reçu le paiement ?\nLa commande sera livrée tout de suite : le client recevra ses clés.")) return;
   try {
     const items = saleLines();
     const d = await api({ action: "order_create", items, name: $("nName").value, email: $("nEmail").value, phone: $("nPhone").value,
@@ -1751,7 +1970,7 @@ async function loadProducts() {
         : btn("✅ Publier", "green", async () => { await api({ action: "product_status", id: p.id, active: true }); toast("Produit publié ✔ : visible sur le site"); await loadProducts(); }),
       // brouillon : suppression définitive (refusée si le produit a déjà été vendu : on garde l'historique)
       p.active ? null : " ", p.active ? null : btn("🗑 Supprimer", "red", async () => {
-        if (!confirm("Supprimer définitivement « " + p.name + " » ?\nSes clés encore en stock seront supprimées aussi. Cette action est irréversible.")) return;
+        if (!await uiConfirm("Supprimer définitivement « " + p.name + " » ?\nSes clés encore en stock seront supprimées aussi. Cette action est irréversible.")) return;
         try { const d = await api({ action: "product_delete", id: p.id }); toast("Produit supprimé ✔" + (d.keys ? " (" + d.keys + " clé(s) du stock supprimée(s))" : "")); if ($("pId").value === p.id) resetProduct(); await loadProducts(); }
         catch (e) { toast(errMsg(e)); }
       })))));
@@ -1771,7 +1990,7 @@ function editProduct(p) {
   syncType(); loadFiles(ext ? "" : p.installer_path || "").catch(() => {});
   $("pAuto").checked = p.auto_deliver !== false; $("pActive").value = p.active ? "1" : "0"; $("pFeatured").checked = p.featured;
   $("pLow").value = p.low_stock_threshold; $("pSort").value = p.sort || 0; $("pTpl").value = p.email_template_id || ""; $("pTwo").checked = !!p.two_step; $("pInstTpl").value = p.install_template_id || ""; twoVis(); $("pManKey").checked = !!p.manual_key; $("pManLink").checked = !!p.manual_link;
-  $("pForm").scrollIntoView({ behavior: "smooth" });
+  openForm("products"); $("pForm").scrollIntoView({ behavior: "smooth" });
 }
 function resetProduct() {
   $("pFormTitle").textContent = "Nouveau produit";
@@ -1819,7 +2038,7 @@ function renderCategories() {
   $("cRows").replaceChildren(...catTree().map((c) => tr(td(c.parent_id ? el("span", "↳ " + c.name) : el("strong", c.name)), td(el("span", c.slug, "small mono")), td(tag(c.active ? "visible" : "hidden")),
     td(el("span", products.filter((p) => p.category_id === c.id).length + " produit(s)", "small")),
     td(btn("Modifier", "grey", () => { $("cId").value = c.id; $("cName").value = c.name; $("cSort").value = c.sort; $("cActive").checked = c.active; $("cParent").value = c.parent_id || ""; $("cDesc").value = c.description || ""; $("cName").focus(); }),
-      " ", btn("Supprimer", "red", async () => { if (confirm("Supprimer la catégorie « " + c.name + " » ? Ses produits resteront, sans catégorie, et ses sous-catégories deviendront des catégories principales.")) { await api({ action: "category_delete", id: c.id }); await loadProducts(); } })))));
+      " ", btn("Supprimer", "red", async () => { if (await uiConfirm("Supprimer la catégorie « " + c.name + " » ? Ses produits resteront, sans catégorie, et ses sous-catégories deviendront des catégories principales.")) { await api({ action: "category_delete", id: c.id }); await loadProducts(); } })))));
 }
 const resetCat = () => { $("cId").value = ""; $("cName").value = ""; $("cSort").value = ""; $("cActive").checked = true; $("cParent").value = ""; $("cDesc").value = ""; };
 $("cReset").addEventListener("click", resetCat);
@@ -1850,7 +2069,7 @@ async function loadKeys() {
     const acts = el("div", null, "acts");
     if (k.status === "available" && !k.source_key_id) acts.append(btn("Type de clé…", "grey", async () => {
       const cur = !k.reusable ? "1" : k.max_uses ? String(k.max_uses) : "0";
-      const v = prompt("Combien d'appareils cette clé peut-elle activer ?\n1 = usage unique · 5, 10… = multi-postes · 0 = sans limite", cur);
+      const v = await uiPrompt("Combien d'appareils cette clé peut-elle activer ?\n1 = usage unique · 5, 10… = multi-postes · 0 = sans limite", cur);
       if (v === null) return;
       const n = Math.floor(Number(v));
       if (!(n >= 0)) return toast("Nombre invalide");
@@ -1858,7 +2077,7 @@ async function loadKeys() {
     }));
     if (k.status === "available") acts.append(btn("Désactiver", "grey", run({ action: "key_set_status", id: k.id, status: "disabled" }, "Désactivée", reload)));
     if (k.status === "disabled") acts.append(btn("Réactiver", "green", run({ action: "key_set_status", id: k.id, status: "available" }, "Réactivée", reload)));
-    if (k.status !== "sent") acts.append(btn("Supprimer", "red", async () => { if (confirm("Supprimer du stock ?")) await run({ action: "key_delete", id: k.id }, "Supprimée", reload)(); }));
+    if (k.status !== "sent") acts.append(btn("Supprimer", "red", async () => { if (await uiConfirm("Supprimer du stock ?")) await run({ action: "key_delete", id: k.id }, "Supprimée", reload)(); }));
     const who = k.order_items?.orders ? k.order_items.orders.ref + " · " + k.order_items.orders.customer_name : "—";
     return tr(td(el("span", mask(k.key_value), "mono")), td(names[k.product_id] || ""), td(k.reusable && k.max_uses && k.status === "sent" && !k.source_key_id ? el("span", "épuisée", "tag") : tag(k.status),
       k.source_key_id ? el("span", " copie d'une clé multi-postes / réutilisable", "small")
@@ -1932,7 +2151,7 @@ function qEdit(q) {
   $("qId").value = q.id; $("qTitle").textContent = "Modifier le devis " + q.quote_no;
   $("qName").value = q.customer_name || ""; $("qCompany").value = q.company || ""; $("qEmail").value = q.email || ""; $("qPhone").value = q.phone || "";
   $("qAddress").value = q.address || ""; $("qNotes").value = q.notes || ""; $("qValid").value = q.valid_until || "";
-  $("qLines").replaceChildren(...(q.items || []).map(qLine)); qTotal(); window.scrollTo({ top: 0, behavior: "smooth" });
+  $("qLines").replaceChildren(...(q.items || []).map(qLine)); qTotal(); openForm("quotes"); window.scrollTo({ top: 0, behavior: "smooth" });
 }
 async function loadQuotes() {
   await loadRefs();
@@ -1945,15 +2164,15 @@ async function loadQuotes() {
     acts.append(btn("👁 Voir / PDF", "grey", () => window.open(url, "_blank", "noopener")));
     if (q.status !== "converted") {
       acts.append(btn("Modifier", "grey", () => qEdit(q)));
-      if (q.email) acts.append(btn("✉ Envoyer au client", "org", async () => { if (confirm("Envoyer le devis " + q.quote_no + " à " + q.email + " ?")) await run({ action: "quote_send", id: q.id }, "Devis envoyé ✔", reload)(); }));
+      if (q.email) acts.append(btn("✉ Envoyer au client", "org", async () => { if (await uiConfirm("Envoyer le devis " + q.quote_no + " à " + q.email + " ?")) await run({ action: "quote_send", id: q.id }, "Devis envoyé ✔", reload)(); }));
       if (q.status !== "cancelled") acts.append(btn("✅ Convertir en commande", "green", async () => {
         if (!q.email) return toast("Ajoutez l'email du client au devis d'abord.");
-        if (!confirm("Le client a payé " + fcfa(q.total_fcfa) + " ?\nLe devis " + q.quote_no + " devient une commande payée, avec sa facture.")) return;
-        const deliver = confirm("Livrer tout de suite ? (clés du stock + email au client)\nOK = oui · Annuler = je livrerai plus tard depuis Commandes");
+        if (!await uiConfirm("Le client a payé " + fcfa(q.total_fcfa) + " ?\nLe devis " + q.quote_no + " devient une commande payée, avec sa facture.")) return;
+        const deliver = await uiConfirm("Livrer tout de suite ? (clés du stock + email au client)\nOK = oui · Annuler = je livrerai plus tard depuis Commandes");
         const d = await api({ action: "quote_convert", id: q.id, deliver, channel: "autre_manuel", payment_method: "autre" });
         toast("Commande " + (d.order?.ref || "") + " créée" + (d.order?.invoice_no ? " · facture " + d.order.invoice_no : "") + " ✔"); await reload();
       }));
-      if (q.status !== "cancelled") acts.append(btn("Annuler", "red", async () => { if (confirm("Annuler le devis " + q.quote_no + " ?")) await run({ action: "quote_status", id: q.id, status: "cancelled" }, "Devis annulé", reload)(); }));
+      if (q.status !== "cancelled") acts.append(btn("Annuler", "red", async () => { if (await uiConfirm("Annuler le devis " + q.quote_no + " ?")) await run({ action: "quote_status", id: q.id, status: "cancelled" }, "Devis annulé", reload)(); }));
     }
     const [lab, cls] = QST[q.status] || [q.status, ""];
     return tr(td(el("strong", q.quote_no), el("br"), el("span", dt(q.created_at), "small")),
@@ -2009,9 +2228,9 @@ function renderBlogTable(rows, fb_ready) {
     td(dt(p.published_at || p.created_at)),
     td(btn("Modifier", "grey", () => editPost(p)), " ",
       p.published ? btn("Voir", "grey", () => window.open(SITE + "/blog/" + encodeURIComponent(p.slug), "_blank", "noopener")) : null, " ",
-      p.published && fb_ready && !p.fb_post_id ? btn("📣 Publier sur Facebook", "org", async () => { if (!confirm("Publier « " + p.title + " » sur votre page Facebook ?")) return; try { await api({ action: "post_facebook", id: p.id }); toast("Publié sur Facebook ✔"); loadBlog(); } catch (e) { toast(errMsg(e)); } }) : null,
+      p.published && fb_ready && !p.fb_post_id ? btn("📣 Publier sur Facebook", "org", async () => { if (!await uiConfirm("Publier « " + p.title + " » sur votre page Facebook ?")) return; try { await api({ action: "post_facebook", id: p.id }); toast("Publié sur Facebook ✔"); loadBlog(); } catch (e) { toast(errMsg(e)); } }) : null,
       p.published && !fb_ready ? btn("Partager", "grey", () => window.open("https://www.facebook.com/sharer/sharer.php?u=" + encodeURIComponent(SITE + "/blog/" + p.slug), "_blank", "noopener,width=640,height=560")) : null, " ",
-      btn("Supprimer", "red", async () => { if (confirm("Supprimer l'article « " + p.title + " » ?")) { await api({ action: "post_delete", id: p.id }); toast("Article supprimé"); await loadBlog(); } })))));
+      btn("Supprimer", "red", async () => { if (await uiConfirm("Supprimer l'article « " + p.title + " » ?")) { await api({ action: "post_delete", id: p.id }); toast("Article supprimé"); await loadBlog(); } })))));
   if (!rows.length) $("bRows").append(tr(td("Aucun article pour le moment.")));
 }
 $("bSort").addEventListener("change", () => renderBlogRows(loadBlog.fb));
@@ -2020,7 +2239,7 @@ function editPost(p) {
   remember("post", p.id);
   $("bTitleH").textContent = "Modifier : " + p.title; $("bId").value = p.id; $("bTitle").value = p.title; $("bExcerpt").value = p.excerpt || ""; exCount();
   $("bContent").value = p.content || ""; $("bImg").value = p.cover_url || ""; $("bVid").value = p.cover_video || ""; $("bImgPrev").src = p.cover_url || ""; $("bImgPrev").classList.toggle("hidden", !p.cover_url);
-  $("bPub").checked = p.published; $("bRub").value = p.rubrique_id || ""; $("bWa").checked = p.show_whatsapp === true; window.scrollTo(0, 0);
+  $("bPub").checked = p.published; $("bRub").value = p.rubrique_id || ""; $("bWa").checked = p.show_whatsapp === true; openForm("blog"); window.scrollTo(0, 0);
 }
 function resetPost() { $("bPreview").classList.add("hidden"); $("bContent").classList.remove("hidden"); $("bPrevBtn").textContent = "👁 Aperçu"; $("bEdMsg").textContent = ""; $("bTitleH").textContent = "Nouvel article"; for (const id of ["bId", "bTitle", "bExcerpt", "bContent", "bImg", "bVid"]) $(id).value = ""; $("bImgPrev").classList.add("hidden"); $("bPub").checked = false; $("bRub").value = ""; $("bWa").checked = false; $("bImgMsg").textContent = ""; exCount(); }
 function exCount() { const n = $("bExcerpt").value.trim().length;
@@ -2053,7 +2272,7 @@ async function edUpload(files) {
     try {
       const { url, public_url } = await api({ action: "image_upload_url", filename: f.name || "image.png" });
       await putFile(url, f, (p) => ($("bEdMsg").textContent = "Envoi de l'image… " + p + " %"));
-      const alt = (prompt("Légende de l'image (facultatif, aide aussi Google) :", "") || "").replace(/[\[\]]/g, "");
+      const alt = (await uiPrompt("Légende de l'image (facultatif, aide aussi Google) :", "") || "").replace(/[\[\]]/g, "");
       edBlock("![" + alt + "](" + public_url + ")");
       $("bEdMsg").textContent = "Image ajoutée ✔";
       if (!$("bImg").value) { $("bImg").value = public_url; $("bImgPrev").src = public_url; $("bImgPrev").classList.remove("hidden"); $("bImgMsg").textContent = "Utilisée aussi comme couverture (modifiable)"; }
@@ -2061,7 +2280,7 @@ async function edUpload(files) {
   }
   if (!$("bPreview").classList.contains("hidden")) renderPreview();
 }
-$("bTools").addEventListener("click", (e) => {
+$("bTools").addEventListener("click", async (e) => {
   const k = e.target.closest("[data-md]")?.dataset.md; if (!k) return;
   if (k === "h2") edLines("## ", "Titre de la partie");
   else if (k === "h3") edLines("### ", "Sous-titre");
@@ -2073,10 +2292,10 @@ $("bTools").addEventListener("click", (e) => {
   else if (k === "hr") edBlock("---");
   else if (k === "img") $("bInlineFile").click();
   else if (k === "link") {
-    const u = prompt("Adresse du lien (ex. https://www.licenceoff.com/produit/...) :", "https://"); if (!u || u === "https://") return;
+    const u = await uiPrompt("Adresse du lien (ex. https://www.licenceoff.com/produit/...) :", "https://"); if (!u || u === "https://") return;
     edWrap("[", "](" + u.trim() + ")", "texte du lien");
   } else if (k === "yt") {
-    const u = prompt("Lien de la vidéo YouTube :", ""); if (u && /youtu/.test(u)) edBlock(u.trim());
+    const u = await uiPrompt("Lien de la vidéo YouTube :", ""); if (u && /youtu/.test(u)) edBlock(u.trim());
   }
 });
 $("bInlineFile").addEventListener("change", (e) => { edUpload(e.target.files); e.target.value = ""; });
@@ -2122,7 +2341,7 @@ $("bImgFile").addEventListener("change", () => uploadImage($("bImgFile"), $("bIm
 $("bExcerpt").addEventListener("input", exCount); exCount();
 $("bPublish").addEventListener("click", () => { $("bPub").checked = true; $("bSave").click(); });
 $("bSave").addEventListener("click", async () => {
-  if (!$("bRub").value && !confirm("Cet article n'a pas de rubrique : il n'apparaîtra dans aucun onglet du blog (seulement dans « Tous »). Continuer quand même ?")) return;
+  if (!$("bRub").value && !await uiConfirm("Cet article n'a pas de rubrique : il n'apparaîtra dans aucun onglet du blog (seulement dans « Tous »). Continuer quand même ?")) return;
   try { const d = await api({ action: "post_save", id: $("bId").value || undefined, title: $("bTitle").value, excerpt: $("bExcerpt").value, content: $("bContent").value, cover_url: $("bImg").value, cover_video: $("bVid").value, rubrique_id: $("bRub").value, show_whatsapp: $("bWa").checked, published: $("bPub").checked, facebook: $("bFb").checked });
     toast(($("bPub").checked ? "Article publié ✔" : "Brouillon enregistré ✔") + (d.facebook ? (d.facebook.ok ? " · publié sur Facebook ✔" : " · Facebook : " + (ERR[d.facebook.reason] || d.facebook.reason)) : ""));
     resetPost(); await loadBlog(); }
@@ -2139,7 +2358,7 @@ async function loadPages() {
     td([p.in_menu ? "menu" : "", p.in_footer ? "pied de page" : ""].filter(Boolean).join(" + ") || "lien seulement"), td(el("strong", String(pv[p.id] ?? 0))),
     td(btn("Modifier", "grey", () => editPage(p)), " ",
       p.published ? btn("Voir", "grey", () => window.open(SITE + "/page/" + encodeURIComponent(p.slug), "_blank", "noopener")) : null, " ",
-      btn("Supprimer", "red", async () => { if (confirm("Supprimer la page « " + p.title + " » ?")) { await api({ action: "page_delete", id: p.id }); toast("Page supprimée"); await loadPages(); } })))));
+      btn("Supprimer", "red", async () => { if (await uiConfirm("Supprimer la page « " + p.title + " » ?")) { await api({ action: "page_delete", id: p.id }); toast("Page supprimée"); await loadPages(); } })))));
   if (!rows.length) $("gRows").append(tr(td("Aucune page pour le moment.")));
 }
 function editPage(p) {
@@ -2241,7 +2460,7 @@ function renderContent(st, cats) {
   $("rRows").replaceChildren(...(RUBS.length ? rubTree().map(([r, d]) => tr(td(d ? "   › " : "", el("strong", r.name), r.active ? null : el("span", " (cachée)", "small"), el("br"), el("span", "/blog/rubrique/" + r.slug, "small mono")),
     td(String(rv[r.id]?.posts ?? 0)), td(String(rv[r.id]?.pages ?? 0)), td(String(rv[r.id]?.views ?? 0)),
     td(btn("Modifier", "grey", () => editRub(r)), " ", btn("Voir", "grey", () => window.open(SITE + "/blog/rubrique/" + encodeURIComponent(r.slug), "_blank", "noopener")), " ",
-      btn("Supprimer", "red", async () => { if (!confirm("Supprimer la rubrique « " + r.name + " » ? Ses articles et pages restent en ligne, simplement sans rubrique.")) return; await api({ action: "rubrique_delete", id: r.id }); toast("Rubrique supprimée"); resetRub(); await loadPages(); })))) : [tr(td("Aucune rubrique."))]));
+      btn("Supprimer", "red", async () => { if (!await uiConfirm("Supprimer la rubrique « " + r.name + " » ? Ses articles et pages restent en ligne, simplement sans rubrique.")) return; await api({ action: "rubrique_delete", id: r.id }); toast("Rubrique supprimée"); resetRub(); await loadPages(); })))) : [tr(td("Aucune rubrique."))]));
 }
 function fillRubParent() {
   const id = $("rId").value, v = $("rParent").value;
@@ -2271,10 +2490,11 @@ function showSub(k) {
   $("cPeriod").classList.toggle("hidden", k === "pages");
   ss.set("lo_csub", k);
 }
-document.querySelectorAll("#cSub button").forEach((b) => b.addEventListener("click", () => { showSub(b.dataset.s); window.scrollTo({ top: 0 }); }));
-if (ss.get("lo_csub")) showSub(ss.get("lo_csub"));
+document.querySelectorAll("#cSub button").forEach((b) => b.addEventListener("click", () => { if (b.dataset.s === "redaction") { openTab("blog"); return; } showSub(b.dataset.s); window.scrollTo({ top: 0 }); }));
+document.querySelectorAll("#bSub button").forEach((b) => b.addEventListener("click", async () => { if (b.dataset.s === "redaction") return; await openTab("pages"); showSub(b.dataset.s); window.scrollTo({ top: 0 }); }));
+if (ss.get("lo_csub") && ss.get("lo_csub") !== "redaction") showSub(ss.get("lo_csub"));
 $("cNewPage").addEventListener("click", () => { showSub("pages"); resetPage(); $("gBox").scrollIntoView({ behavior: "smooth" }); $("gTitle").focus(); });
-$("cNewPost").addEventListener("click", async () => { await openTab("blog"); resetPost(); $("bTitle").focus(); });
+$("cNewPost").addEventListener("click", async () => { await openTab("blog"); resetPost(); openForm("blog"); $("bTitle").focus(); });
 $("cNewRub").addEventListener("click", () => { showSub("rubriques"); resetRub(); $("rubBox").scrollIntoView({ behavior: "smooth" }); $("rName").focus(); });
 
 // ---------- modèles d'email ----------
@@ -2290,13 +2510,13 @@ async function loadTemplates() {
     return tr(td(el("strong", t.name), t.is_default ? el("span", " (par défaut)", "small") : null), td(el("span", inst ? "Installation" : "Clé / livraison", "small")), td(el("span", t.subject, "small")),
       td(el("span", used.length ? used.join(", ") : "—", "small")),
       td(btn("Modifier", "grey", () => editTemplate(t)), " ", t.is_default ? null : btn("Supprimer", "red", async () => {
-        if (confirm("Supprimer le modèle « " + t.name + " » ? Ses produits recevront le modèle par défaut.")) { await api({ action: "template_delete", id: t.id }); toast("Modèle supprimé"); await loadTemplates(); } })));
+        if (await uiConfirm("Supprimer le modèle « " + t.name + " » ? Ses produits recevront le modèle par défaut.")) { await api({ action: "template_delete", id: t.id }); toast("Modèle supprimé"); await loadTemplates(); } })));
   }));
 }
 function editTemplate(t) {
   remember("tpl", t.id);
   $("tFormTitle").textContent = "Modifier : " + t.name; $("tId").value = t.id; $("tName").value = t.name; $("tSubject").value = t.subject; $("tBody").value = t.body; $("tDefault").checked = t.is_default; $("tKind").value = t.kind || "key";
-  $("tPrevBox").classList.add("hidden"); window.scrollTo(0, 0);
+  $("tPrevBox").classList.add("hidden"); openForm("emails"); window.scrollTo(0, 0);
 }
 const resetTpl = () => { $("tFormTitle").textContent = "Nouveau modèle"; for (const id of ["tId", "tName", "tSubject", "tBody"]) $(id).value = ""; $("tDefault").checked = false; $("tKind").value = "key"; $("tPrevBox").classList.add("hidden"); };
 $("tReset").addEventListener("click", resetTpl);
@@ -2337,7 +2557,7 @@ $("mSend").addEventListener("click", async () => {
   const p = products.find((x) => x.id === $("mProd").value);
   if (!$("mEmail").value.trim()) return $("mEmail").focus();
   const amt = mAmountInfo();
-  if (!confirm(($("mPaid").value !== "yes" ? "🔒 Réserver (clé verrouillée) " : "Envoyer ") + $("mQty").value + " × " + (p ? p.name : "") + " à " + $("mEmail").value + " ?\n" + ($("mPaid").value !== "yes" ? "En attente de paiement : " : "Vente enregistrée : ") + fcfa(amt))) return;
+  if (!await uiConfirm(($("mPaid").value !== "yes" ? "🔒 Réserver (clé verrouillée) " : "Envoyer ") + $("mQty").value + " × " + (p ? p.name : "") + " à " + $("mEmail").value + " ?\n" + ($("mPaid").value !== "yes" ? "En attente de paiement : " : "Vente enregistrée : ") + fcfa(amt))) return;
   const b = $("mSend"); b.disabled = true;
   try {
     const d = await api({ action: "manual_send", product_id: $("mProd").value, qty: Number($("mQty").value) || 1, email: $("mEmail").value, name: $("mName").value,
@@ -2378,8 +2598,8 @@ $("sSend").addEventListener("click", async () => {
 async function loadFaq() {
   const { rows } = await api({ action: "faqs_list" });
   $("fRows").replaceChildren(...rows.map((f) => tr(td(el("strong", f.question), el("br"), el("span", f.answer.slice(0, 140) + (f.answer.length > 140 ? "…" : ""), "small")), td(tag(f.active ? "visible" : "hidden")),
-    td(btn("Modifier", "grey", () => { $("fId").value = f.id; $("fQ").value = f.question; $("fA").value = f.answer; $("fSort").value = f.sort; $("fActive").checked = f.active; window.scrollTo(0, 0); }), " ",
-      btn("Supprimer", "red", async () => { if (confirm("Supprimer cette question ?")) { await api({ action: "faq_delete", id: f.id }); await loadFaq(); } })))));
+    td(btn("Modifier", "grey", () => { $("fId").value = f.id; $("fQ").value = f.question; $("fA").value = f.answer; $("fSort").value = f.sort; $("fActive").checked = f.active; openForm("faq"); window.scrollTo(0, 0); }), " ",
+      btn("Supprimer", "red", async () => { if (await uiConfirm("Supprimer cette question ?")) { await api({ action: "faq_delete", id: f.id }); await loadFaq(); } })))));
 }
 const resetFaq = () => { for (const id of ["fId", "fQ", "fA", "fSort"]) $(id).value = ""; $("fActive").checked = true; };
 $("fReset").addEventListener("click", resetFaq);
@@ -2456,11 +2676,11 @@ async function loadPromos() {
       td(btn("Modifier", "grey", () => {
         $("prId").value = p.id; $("prName").value = p.name; $("prKind").value = p.kind; $("prValue").value = p.value; $("prScope").value = p.scope;
         $("prStart").value = toLocalInput(p.starts_at); $("prEnd").value = toLocalInput(p.ends_at); $("prActive").checked = p.active;
-        promoSel = new Set(p.scope === "categories" ? p.category_ids : p.product_ids); $("prTitle").textContent = "Modifier : " + p.name; renderPromoPick(); window.scrollTo(0, 0);
+        promoSel = new Set(p.scope === "categories" ? p.category_ids : p.product_ids); $("prTitle").textContent = "Modifier : " + p.name; renderPromoPick(); openForm("promos"); window.scrollTo(0, 0);
       }), " ",
         st === "En cours" || st === "À venir" ? btn("Arrêter", "red", save({ active: false }, "Promo arrêtée ✔ (prix normal sur le site d'ici 1 minute)"))
           : btn("Relancer", "green", save({ active: true, starts_at: p.ends_at && p.ends_at <= now ? new Date().toISOString() : p.starts_at, ends_at: p.ends_at && p.ends_at <= now ? null : p.ends_at }, "Promo relancée ✔")), " ",
-        btn("Supprimer", "red", async () => { if (confirm("Supprimer la promo « " + p.name + " » ?")) { await api({ action: "promo_delete", id: p.id }); await loadPromos(); } })));
+        btn("Supprimer", "red", async () => { if (await uiConfirm("Supprimer la promo « " + p.name + " » ?")) { await api({ action: "promo_delete", id: p.id }); await loadPromos(); } })));
   }));
   if (!rows.length) $("prRows").replaceChildren(tr(td(el("span", "Aucune promo pour l'instant.", "small"))));
 }
@@ -2499,7 +2719,7 @@ async function loadSettings() {
   settings = (await api({ action: "settings_get" })).settings;
   const on = settings.auto_delivery !== false;
   const t = $("autoTag"); t.textContent = on ? "Activée" : "Désactivée"; t.className = "tag s-" + (on ? "on" : "off");
-  const b = $("autoToggle"); b.textContent = on ? "Désactiver" : "Activer"; b.className = on ? "red" : "green";
+  setSwitch($("autoToggle"), on, "Livraison automatique");
   $("sThreshold").value = settings.payout_threshold ?? 10000; $("sDiscount").value = settings.default_discount_pct ?? 10; $("sAdminEmail").value = settings.admin_email || "";
   $("sPixel").value = settings.meta_pixel_id || ""; $("sGadsId").value = settings.google_ads_id || ""; $("sGadsLabel").value = settings.google_ads_purchase_label || "";
   $("sInvName").value = settings.invoice_legal_name || ""; $("sInvAddr").value = settings.invoice_address || ""; $("sInvPhone").value = settings.invoice_phone || "";
@@ -2507,7 +2727,7 @@ async function loadSettings() {
   $("sShipHome").value = settings.shipping_home_fcfa ?? 1500; $("sShipBus").value = settings.shipping_bus_fcfa ?? 1000;
   const rep = settings.weekly_report !== false;
   const rt = $("repTag"); rt.textContent = rep ? "Activé" : "Désactivé"; rt.className = "tag s-" + (rep ? "on" : "off");
-  const rb = $("repToggle"); rb.textContent = rep ? "Désactiver" : "Activer"; rb.className = rep ? "red" : "green";
+  setSwitch($("repToggle"), rep, "Rapport du lundi");
 }
 $("repToggle").addEventListener("click", async () => {
   try { await api({ action: "settings_set", key: "weekly_report", value: settings.weekly_report === false }); await loadSettings(); toast("Rapport du lundi " + (settings.weekly_report !== false ? "activé" : "désactivé") + " ✔"); } catch (e) { toast(errMsg(e)); }
@@ -2517,7 +2737,7 @@ $("repNow").addEventListener("click", async () => {
   try { await api({ action: "report_send" }); toast("Rapport envoyé à " + (settings.admin_email || "votre email") + " ✔"); } catch (e) { toast(errMsg(e)); } finally { b.disabled = false; }
 });
 $("sSaveInv").addEventListener("click", async () => {
-  if ($("sInvVat").checked && settings.invoice_vat_enabled !== true && !confirm("Activer la TVA 18 % sur les prochaines factures ? (les factures déjà créées ne changent pas)")) return;
+  if ($("sInvVat").checked && settings.invoice_vat_enabled !== true && !await uiConfirm("Activer la TVA 18 % sur les prochaines factures ? (les factures déjà créées ne changent pas)")) return;
   try {
     for (const [k, id] of [["invoice_legal_name", "sInvName"], ["invoice_address", "sInvAddr"], ["invoice_phone", "sInvPhone"], ["invoice_email", "sInvEmail"], ["invoice_ninea", "sInvNinea"], ["invoice_rc", "sInvRc"]])
       await api({ action: "settings_set", key: k, value: $(id).value.trim() });
@@ -2552,7 +2772,7 @@ $("sSavePar").addEventListener("click", async () => {
 });
 $("autoToggle").addEventListener("click", async () => {
   const on = settings.auto_delivery !== false;
-  if (on && !confirm("Désactiver la livraison automatique ? Les commandes payées attendront votre validation.")) return;
+  if (on && !await uiConfirm("Désactiver la livraison automatique ? Les commandes payées attendront votre validation.")) return;
   try { await api({ action: "settings_set", key: "auto_delivery", value: !on }); toast(on ? "Livraison automatique désactivée" : "Livraison automatique activée ✔"); await loadSettings(); }
   catch (e) { toast(errMsg(e)); }
 });
@@ -2566,25 +2786,25 @@ async function loadParrains() {
   $("badgePay").classList.toggle("hidden", !open.length); $("badgePay").textContent = open.length;
   $("payList").replaceChildren(...open.map((p) => { const b = el("div", null, "box"); b.style.cssText = "border-color:#86efac;background:#f0fdf4";
     b.append(el("strong", "💸 À verser : " + fcfa(p.amount_fcfa) + " à " + (p.parrains?.name || "?")), el("br"), el("span", "Sur : " + (p.parrains?.payout_info || "non indiqué") + (p.parrains?.phone ? " · " + p.parrains.phone : "") + " · demandé le " + dt(p.created_at), "small"), el("br"),
-      btn("✔ Marquer payé", "green", async () => { const note = prompt("Référence du transfert (facultatif) :", "") ; if (note === null) return; await api({ action: "payout_set", id: p.id, status: "paid", note }); toast("Versement noté ✔"); loadParrains(); }), " ",
-      btn("Annuler", "grey", async () => { if (confirm("Annuler cette demande ? Le montant revient dans le solde du parrain.")) { await api({ action: "payout_set", id: p.id, status: "cancelled" }); loadParrains(); } }));
+      btn("✔ Marquer payé", "green", async () => { const note = await uiPrompt("Référence du transfert (facultatif) :", "") ; if (note === null) return; await api({ action: "payout_set", id: p.id, status: "paid", note }); toast("Versement noté ✔"); loadParrains(); }), " ",
+      btn("Annuler", "grey", async () => { if (await uiConfirm("Annuler cette demande ? Le montant revient dans le solde du parrain.")) { await api({ action: "payout_set", id: p.id, status: "cancelled" }); loadParrains(); } }));
     return b; }));
-  $("rRows").replaceChildren(...parrains.map((r) => tr(
+  $("paRows").replaceChildren(...parrains.map((r) => tr(
     td(el("strong", r.name), r.status === "suspended" ? el("span", " (suspendu)", "small") : null, el("br"), el("span", r.email, "small"), el("br"), el("span", r.payout_info || "", "small")),
     td(...r.codes.map((c) => { const box = el("div", null, "small"); box.append(el("span", c.code, "mono"), " −" + Number(c.discount_pct) + " % · " + c.clicks + " visite(s)" + (c.active ? "" : " · désactivé") + " ");
-      box.append(btn("Modifier", "grey", async () => { const v = prompt("Remise client en % pour " + c.code + " (0 à 90) :", String(Number(c.discount_pct))); if (v === null) return; await api({ action: "referral_code_admin", id: c.id, discount_pct: v, active: c.active }); loadParrains(); }));
+      box.append(btn("Modifier", "grey", async () => { const v = await uiPrompt("Remise client en % pour " + c.code + " (0 à 90) :", String(Number(c.discount_pct))); if (v === null) return; await api({ action: "referral_code_admin", id: c.id, discount_pct: v, active: c.active }); loadParrains(); }));
       box.append(" ", btn(c.active ? "Désactiver" : "Activer", "grey", async () => { await api({ action: "referral_code_admin", id: c.id, discount_pct: c.discount_pct, active: !c.active }); loadParrains(); }));
       return box; })),
     td(String(r.sales), el("br"), el("span", fcfa(r.revenue), "small")),
     td(el("strong", fcfa(r.earned)), el("br"), el("span", "versé " + fcfa(r.paid), "small")),
     td(fcfa(Math.max(0, r.balance)), r.to_pay ? el("div", "à verser " + fcfa(r.to_pay), "small") : null),
-    td(btn("Modifier", "grey", () => { $("rFormTitle").textContent = "Modifier : " + r.name; $("rId").value = r.id; $("rName").value = r.name; $("rEmail").value = r.email; $("rPhone").value = r.phone || ""; $("rPay").value = r.payout_info || ""; $("rStatus").value = r.status; $("rNote").value = r.note || ""; window.scrollTo(0, 0); })))));
-  if (!parrains.length) $("rRows").append(tr(td("Aucun parrain pour l'instant.")));
+    td(btn("Modifier", "grey", () => { openForm("parrains"); $("rFormTitle").textContent = "Modifier : " + r.name; $("paId").value = r.id; $("paName").value = r.name; $("rEmail").value = r.email; $("rPhone").value = r.phone || ""; $("rPay").value = r.payout_info || ""; $("rStatus").value = r.status; $("rNote").value = r.note || ""; window.scrollTo(0, 0); })))));
+  if (!parrains.length) $("paRows").append(tr(td("Aucun parrain pour l'instant.")));
 }
-const resetPar = () => { $("rFormTitle").textContent = "Nouveau parrain"; for (const id of ["rId", "rName", "rEmail", "rPhone", "rPay", "rNote"]) $(id).value = ""; $("rStatus").value = "active"; };
-$("rReset").addEventListener("click", resetPar);
-$("rSave").addEventListener("click", async () => {
-  try { await api({ action: "parrain_save", id: $("rId").value || undefined, name: $("rName").value, email: $("rEmail").value, phone: $("rPhone").value, payout_info: $("rPay").value, status: $("rStatus").value, note: $("rNote").value });
+const resetPar = () => { $("rFormTitle").textContent = "Nouveau parrain"; for (const id of ["paId", "paName", "rEmail", "rPhone", "rPay", "rNote"]) $(id).value = ""; $("rStatus").value = "active"; };
+$("paReset").addEventListener("click", resetPar);
+$("paSave").addEventListener("click", async () => {
+  try { await api({ action: "parrain_save", id: $("paId").value || undefined, name: $("paName").value, email: $("rEmail").value, phone: $("rPhone").value, payout_info: $("rPay").value, status: $("rStatus").value, note: $("rNote").value });
     toast("Parrain enregistré ✔"); resetPar(); loadParrains(); } catch (e) { toast(errMsg(e)); }
 });
 
@@ -2620,7 +2840,7 @@ function renderReviews() {
     if (r.status !== "approved") b.append(btn("✅ Publier", "green", set("approved")), " ");
     if (r.status !== "hidden") b.append(btn("🙈 Masquer", "grey", set("hidden")), " ");
     b.append(btn("💬 Enregistrer la réponse", "grey", set(r.status)), " ",
-      btn("Supprimer", "red", async () => { if (confirm("Supprimer définitivement cet avis ?")) { await api({ action: "review_delete", id: r.id }); loadReviews(); } }));
+      btn("Supprimer", "red", async () => { if (await uiConfirm("Supprimer définitivement cet avis ?")) { await api({ action: "review_delete", id: r.id }); loadReviews(); } }));
     return b;
   }));
   if (!list.length) $("rvList").append(el("p", "Aucun avis ici.", "small"));
@@ -2662,12 +2882,12 @@ async function loyaltyManage(email) {
   try {
     const h = await api({ action: "loyalty_history", email });
     const last = h.rows.slice(0, 8).map((r) => "  " + dt(r.created_at) + "  " + (r.points > 0 ? "+" : "") + r.points + "  " + (r.note || "")).join("\n");
-    const v = prompt("🎁 " + email + "\nSolde : " + h.balance + " points (= " + fcfa(h.balance * 10) + ")\n" + (last ? "\nDerniers mouvements :\n" + last + "\n" : "") +
+    const v = await uiPrompt("🎁 " + email + "\nSolde : " + h.balance + " points (= " + fcfa(h.balance * 10) + ")\n" + (last ? "\nDerniers mouvements :\n" + last + "\n" : "") +
       "\nAjouter ou retirer des points ? Tapez par exemple 100 ou -50 (laisser vide pour annuler) :", "");
     if (v == null || !v.trim()) return;
     const n = Math.trunc(Number(v.replace(/\s/g, "")));
     if (!n) return toast("Nombre de points invalide.");
-    const note = prompt("Motif (visible par le client dans son compte) :", n > 0 ? "Geste commercial" : "Correction");
+    const note = await uiPrompt("Motif (visible par le client dans son compte) :", n > 0 ? "Geste commercial" : "Correction");
     if (note == null) return;
     const r = await api({ action: "loyalty_adjust", email, points: n, note });
     toast("✔ " + (n > 0 ? "+" : "") + n + " points. Nouveau solde : " + r.balance + " points");
@@ -2732,7 +2952,7 @@ function renderPayments(st) {
     const on = st.mode === o.id;
     const row = el("label", null, "check"); row.style.cssText = "display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid #eef1f6;" + (o.ok || on ? "" : "opacity:.55");
     const r = el("input"); r.type = "radio"; r.name = "payMode"; r.checked = on; r.disabled = !o.ok && !on;
-    r.addEventListener("change", async () => { if (!confirm("Passer le site en mode « " + o.name + " » ?")) { r.checked = false; loadPayments(); return; }
+    r.addEventListener("change", async () => { if (!await uiConfirm("Passer le site en mode « " + o.name + " » ?")) { r.checked = false; loadPayments(); return; }
       try { renderPayments(await api({ action: "pay_mode", mode: o.id })); toast("Mode de paiement : " + o.name + " ✔"); } catch (e) { toast(errMsg(e)); loadPayments(); } });
     const t = el("div"); t.append(el("b", o.name + (on ? "  · actif" : "")), el("div", o.desc, "small"));
     row.append(r, t); modes.append(row);
@@ -2748,7 +2968,7 @@ function renderPayments(st) {
       const i = el("input"); i.type = "password"; i.autocomplete = "new-password"; i.spellcheck = false; i.style.flex = "1"; i.style.minWidth = "220px";
       i.placeholder = f.set ? (f.readable ? "clé enregistrée ✓ (laisser vide pour la garder)" : "⚠️ à ressaisir") : "coller la clé ici";
       inputs[f.key] = i; line.append(i);
-      if (f.set) line.append(btn("Effacer", "grey", async () => { if (!confirm("Effacer cette clé ?")) return; renderPayments(await api({ action: "pay_clear", provider: p.id, field: f.key })); toast("Clé effacée"); }));
+      if (f.set) line.append(btn("Effacer", "grey", async () => { if (!await uiConfirm("Effacer cette clé ?")) return; renderPayments(await api({ action: "pay_clear", provider: p.id, field: f.key })); toast("Clé effacée"); }));
       card.append(lab, line);
     }
     const live = el("input"); live.type = "checkbox"; live.checked = p.live;
