@@ -18,8 +18,9 @@
 <meta name="description" content="Achetez vos licences Windows, Microsoft Office et logiciels authentiques. Livraison rapide par email, paiement Wave ou Orange Money.">
 <link rel="canonical" href="https://www.licenceoff.com/">
 <meta property="og:title" content="licenceoff.com — Licences & solutions numériques au Sénégal">
-<link rel="stylesheet" href="/shop.css?v=31">
+<link rel="stylesheet" href="/shop.css?v=32">
 <link rel="stylesheet" href="/hero.css?v=2">
+<link rel="stylesheet" href="/services.css?v=1">
 <link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="64x64" href="/img/profil-64.png"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
 </head>
 <body>
@@ -68,6 +69,13 @@
     </div>
   </section>
 
+  <section class="block" id="svBlock" hidden>
+    <div class="wrap">
+      <div class="sec-title"><h2>Nos services sur devis</h2><a href="/services">Tous les services →</a></div>
+      <div id="svList" class="sv-grid"></div>
+    </div>
+  </section>
+
   <section class="block" id="blogBlock" hidden>
     <div class="wrap">
       <div class="sec-title"><h2>Derniers articles</h2><a href="/blog">Tout le blog →</a></div>
@@ -76,7 +84,7 @@
   </section>
 </main>
 
-<script src="/shop.js?v=31"></script>
+<script src="/shop.js?v=32"></script>
 <script>
 LO.page("home");
 const { el, $ } = LO;
@@ -105,6 +113,14 @@ LO.boutique({ action: "posts", limit: 3 }).then((d) => {
   if (!d.posts?.length) return;
   $("#blogBlock").hidden = false;
   $("#posts").replaceChildren(...d.posts.map(postCard));
+}).catch(() => {});
+
+LO.boutique({ action: "services" }).then((d) => {
+  if (!d.services?.length) return;
+  $("#svBlock").hidden = false;
+  $("#svList").replaceChildren(...d.services.map((s, i) => el("a", { class: "sv-card", href: LO.url.service(s.slug) },
+    el("span", { class: "sv-ico" + (i % 2 ? " b" : "") }, LO.serviceIcon(s.icon)), el("h3", { text: s.title }), el("p", { text: s.short || "" }),
+    el("span", { class: "go" }, "Demander un devis gratuit", LO.icon(LO.ICONS.arrow, 18)))));
 }).catch(() => {});
 
 function postCard(p) {

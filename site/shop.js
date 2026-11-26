@@ -32,6 +32,7 @@ const LO = (() => {
     product: (slug) => "/produit/" + enc(slug),
     post: (slug) => "/blog/" + enc(slug),
     page: (slug) => "/page/" + enc(slug),
+    services: "/services", service: (slug) => "/services/" + enc(slug),
     search: (q) => "/boutique?q=" + enc(q),
   };
   // le mot après /produit/, /categorie/ ou /blog/ (sinon l'ancien paramètre ?p= ?c= ?a=)
@@ -123,12 +124,21 @@ const LO = (() => {
     user: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/>',
     heart: '<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/>',
     wa: '<path d="M21 11.5a8.4 8.4 0 0 1-12.6 7.3L3 20l1.3-5A8.4 8.4 0 1 1 21 11.5z"/>',
+    chart: '<path d="M3 3v18h18"/><path d="m7 14 4-4 3 3 5-6"/><path d="M15 7h4v4"/>',
+    megaphone: '<path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/>',
+    code: '<path d="m16 18 6-6-6-6M8 6l-6 6 6 6"/>',
+    shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
+    check: '<path d="M20 6 9 17l-5-5"/>',
+    arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+    award: '<circle cx="12" cy="8" r="6"/><path d="M8.2 13.4 7 22l5-3 5 3-1.2-8.6"/>',
   };
+  const serviceIcon = (name, size = 26) => icon(ICONS[name] && ["chart", "megaphone", "code", "shield"].includes(name) ? ICONS[name] : ICONS.chart, size);
   function header(active) {
     const top = el("div", { class: "top", text: "Licences & solutions numériques • Livraison rapide • Wave, Orange Money" });
     const nav = el("nav", { class: "main" },
       el("a", { href: url.home, class: active === "home" ? "on" : null, text: "Accueil" }),
       el("a", { href: url.shop, class: active === "shop" ? "on" : null, text: "Boutique" }),
+      el("a", { href: url.services, class: active === "services" ? "on" : null, text: "Services" }),
       el("a", { href: url.blog, class: active === "blog" ? "on" : null, text: "Blog" }),
       el("a", { href: url.faq, class: active === "faq" ? "on" : null, text: "FAQ" }),
       el("span", { id: "navPages", style: "display:contents" }),
@@ -161,7 +171,7 @@ const LO = (() => {
             el("div", { class: "socials" },
               el("a", { class: "so fb", href: FACEBOOK_PAGE, target: "_blank", rel: "noopener", "aria-label": "Notre page Facebook", title: "Suivez-nous sur Facebook" }, brand(BRANDS.fb, 20, "#fff")),
               el("a", { class: "so wa", href: "https://wa.me/" + WHATSAPP_NUMBER, target: "_blank", rel: "noopener", "aria-label": "WhatsApp", title: "Écrivez-nous sur WhatsApp" }, brand(BRANDS.wa, 20, "#fff")))),
-          el("div", {}, el("b", { text: "Boutique" }), el("a", { href: url.shop, text: "Tous les produits" }), el("a", { href: url.cart, text: "Mon panier" }), el("a", { href: url.blog, text: "Blog" }), el("a", { href: url.faq, text: "Questions fréquentes" }), el("a", { href: url.privacy, text: "Confidentialité et cookies" }),
+          el("div", {}, el("b", { text: "Boutique" }), el("a", { href: url.shop, text: "Tous les produits" }), el("a", { href: url.cart, text: "Mon panier" }), el("a", { href: url.services, text: "Services sur devis" }), el("a", { href: url.blog, text: "Blog" }), el("a", { href: url.faq, text: "Questions fréquentes" }), el("a", { href: url.privacy, text: "Confidentialité et cookies" }),
             el("a", { href: "#", text: "Gérer les cookies", onclick: (e) => { e.preventDefault(); cookieBar(true); } })),
           el("div", { id: "footPages", class: "hidden" }, el("b", { text: "Infos" })),
           el("div", {}, el("b", { text: "Aide" }), el("a", { href: "https://wa.me/" + WHATSAPP_NUMBER, target: "_blank", rel: "noopener", text: "WhatsApp : +" + WHATSAPP_NUMBER }),
@@ -433,5 +443,5 @@ const LO = (() => {
     physical: "Produit physique : nous vous contactons sur WhatsApp pour la livraison",
   };
 
-  return { waFloat, source, classifySource, px, acct, setAcct, visitorId, track, icon, ICONS, refCode, setRef, cookieBar, url, slugFromPath, seo, jsonLd, crumbs, mainCats, SITE, $, el, fcfa, api, boutique, cart, saveCart, addToCart, cartCount, page, toast, productCard, initials, shareBar, FACEBOOK_PAGE, richText, ytId, ytThumb, ytEmbed, DELIVERY_TEXT };
+  return { waFloat, source, classifySource, px, acct, setAcct, visitorId, track, icon, ICONS, refCode, setRef, cookieBar, url, slugFromPath, seo, jsonLd, crumbs, mainCats, SITE, $, el, fcfa, api, boutique, cart, saveCart, addToCart, cartCount, page, toast, productCard, initials, shareBar, FACEBOOK_PAGE, richText, ytId, ytThumb, ytEmbed, DELIVERY_TEXT, serviceIcon };
 })();

@@ -9,3 +9,4 @@
 /blog/rubrique/:slug /blog      200
 /blog/:slug          /article   200
 /page/:slug          /page      200
+/services/:slug      /service   200

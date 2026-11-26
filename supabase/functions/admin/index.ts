@@ -813,6 +813,8 @@ async function buildNotifications(): Promise<Notif[]> {
   const { data: unread } = await db.from("inbox_messages").select("customer_email").eq("direction", "in").eq("status", "new").limit(1000);
   const who = new Set((unread ?? []).map((m) => m.customer_email));
   if (who.size) n.push({ kind: "messages", level: "urgent", count: who.size, tab: "messages", text: who.size + " client(s) vous ont écrit : message(s) non lu(s)" });
+  const { count: svNew } = await db.from("service_requests").select("id", { count: "exact", head: true }).eq("status", "new");
+  if (svNew) n.push({ kind: "services", level: "urgent", count: svNew, tab: "services", text: svNew + " demande(s) de devis pour vos services : préparez le devis" });
   if (revs) n.push({ kind: "reviews", level: "info", count: revs, tab: "reviews", text: revs + " avis client(s) à valider" });
   if (errs) n.push({ kind: "errors", level: "urgent", count: errs, tab: "logs", text: errs + " erreur(s) non lue(s) dans le journal" });
   if (!(Deno.env.get("PAYDUNYA_MASTER_KEY") ?? "").trim()) n.push({ kind: "paydunya", level: "info", count: 1, tab: "settings",
@@ -1911,10 +1913,13 @@ Deno.serve(async (req) => {
           if (!cur) return json({ error: "devis_introuvable" }, 404);
           if (cur.status === "converted") return json({ error: "devis_deja_converti" }, 400);
         }
+        const reqId = str(body.request_id, 40);
         const { data, error } = id
           ? await db.from("quotes").update(row).eq("id", id).select().single()
-          : await db.from("quotes").insert(row).select().single();
+          : await db.from("quotes").insert((reqId ? { ...row, request_id: reqId } : row) as typeof row).select().single();
         if (error) return json({ error: error.message }, 500);
+        // devis préparé depuis une demande de service : la demande passe « Devis préparé »
+        if (!id && reqId) await db.from("service_requests").update({ quote_id: data.id, status: "quoted", updated_at: new Date().toISOString() }).eq("id", reqId).in("status", ["new", "talking", "quoted"]);
         return json({ row: data });
       }
       case "quote_status": {
@@ -1955,10 +1960,78 @@ ${q.valid_until ? `<p style="margin:0 0 12px">Ce devis est valable jusqu'au ${es
         });
         if (c instanceof Response) return c;
         await db.from("quotes").update({ status: "converted", order_id: c.o.id, updated_at: new Date().toISOString() }).eq("id", q.id);
+        if (q.request_id) await db.from("service_requests").update({ status: "won", updated_at: new Date().toISOString() }).eq("id", q.request_id);
         // livrer tout de suite (clés du stock, liens) ou laisser la commande à valider
         const result = body.deliver === true ? await deliver(c.o.id, true, body.send_email !== false) : null;
         const { data: o2 } = await db.from("orders").select("ref, invoice_no, public_token, status").eq("id", c.o.id).maybeSingle();
         return json({ order: o2, result });
+      }
+
+      // ================= Services sur devis (pages + demandes du questionnaire) =================
+      case "services_list": {
+        const [{ data, error }, { data: reqs }] = await Promise.all([
+          db.from("services").select("*, products(name)").order("sort").order("title"),
+          db.from("service_requests").select("service_id, status").limit(5000),
+        ]);
+        if (error) return json({ error: error.message }, 500);
+        const cnt: Record<string, { all: number; open: number }> = {};
+        for (const r of reqs ?? []) { const c = cnt[r.service_id as string] ??= { all: 0, open: 0 }; c.all++; if (["new", "talking"].includes(r.status)) c.open++; }
+        return json({ rows: (data ?? []).map((x) => ({ ...x, requests: cnt[x.id]?.all ?? 0, open: cnt[x.id]?.open ?? 0 })) });
+      }
+      case "service_save": {
+        const title = str(body.title, 120);
+        if (title.length < 2) return json({ error: "titre_obligatoire" }, 400);
+        const slug = (str(body.slug, 80) || title).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
+        if (!slug) return json({ error: "titre_obligatoire" }, 400);
+        const httpsOrNull = (v: unknown) => { const u = str(v, 500); return /^https:\/\/\S+$/i.test(u) ? u : null; };
+        if (str(body.cert_url, 500) && !httpsOrNull(body.cert_url)) return json({ error: "lien_invalide" }, 400);
+        // questionnaire : 20 questions au plus, 12 choix au plus par question
+        // deno-lint-ignore no-explicit-any
+        const questions = (Array.isArray(body.questions) ? body.questions : []).slice(0, 20).map((q: any) => {
+          const type = ["text", "long", "one", "many"].includes(q?.type) ? q.type : "text";
+          const options = ["one", "many"].includes(type) ? (Array.isArray(q.options) ? q.options : []).map((o: unknown) => str(o, 100)).filter(Boolean).slice(0, 12) : [];
+          return { label: str(q?.label, 200), type: options.length || !["one", "many"].includes(type) ? type : "text", options, required: q?.required === true };
+        }).filter((q: { label: string }) => q.label);
+        const row = {
+          title, slug, short: str(body.short, 300) || null, content: str(body.content, 20000) || null,
+          icon: ["chart", "megaphone", "code", "shield"].includes(body.icon) ? body.icon : "chart",
+          image_url: httpsOrNull(body.image_url), cert_title: str(body.cert_title, 150) || null, cert_issuer: str(body.cert_issuer, 150) || null,
+          cert_image_url: httpsOrNull(body.cert_image_url), cert_url: httpsOrNull(body.cert_url), questions,
+          published: body.published === true, sort: clamp(Math.floor(Number(body.sort) || 0), 0, 999),
+          seo_title: str(body.seo_title, 120) || null, seo_description: str(body.seo_description, 320) || null,
+          updated_at: new Date().toISOString(),
+        };
+        const id = str(body.id, 40);
+        // produit caché pour les lignes de devis (créé une fois, jamais publié)
+        let product_id: string | null = null;
+        if (id) { const { data: cur } = await db.from("services").select("product_id").eq("id", id).maybeSingle(); product_id = cur?.product_id ?? null; }
+        if (!product_id) {
+          const pslug = ("prestation-" + slug).slice(0, 80);
+          const { data: ex } = await db.from("products").select("id").eq("slug", pslug).maybeSingle();
+          product_id = ex?.id ?? (await db.from("products").insert({ name: "Prestation — " + title, slug: pslug, price_fcfa: 0, delivery_type: "manual", active: false,
+            description: "Produit interne pour les devis du service " + title + " (ne pas publier)." }).select("id").single()).data?.id ?? null;
+        }
+        const { data, error } = id
+          ? await db.from("services").update({ ...row, product_id }).eq("id", id).select().single()
+          : await db.from("services").insert({ ...row, product_id }).select().single();
+        if (error) return json({ error: String(error.message).includes("duplicate") ? "adresse_deja_utilisee" : error.message }, error.message.includes("duplicate") ? 400 : 500);
+        return json({ row: data });
+      }
+      case "service_requests_list": {
+        const { data, error } = await db.from("service_requests").select("*, quotes(quote_no, status, total_fcfa, public_token)").order("created_at", { ascending: false }).limit(500);
+        if (error) return json({ error: error.message }, 500);
+        return json({ rows: data ?? [] });
+      }
+      case "service_request_update": {
+        const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+        if (body.status !== undefined) {
+          if (!["new", "talking", "quoted", "won", "lost"].includes(body.status)) return json({ error: "statut_invalide" }, 400);
+          patch.status = body.status;
+        }
+        if (body.admin_note !== undefined) patch.admin_note = str(body.admin_note, 2000) || null;
+        const { error } = await db.from("service_requests").update(patch).eq("id", str(body.id, 40));
+        if (error) return json({ error: error.message }, 500);
+        return json({ ok: true });
       }
 
       // ================= FAQ =================

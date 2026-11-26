@@ -269,6 +269,7 @@
     <button data-tab="orders"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2h12v20l-3-2-3 2-3-2-3 2zM9 7h6M9 11h6M9 15h4"/></svg><span class="nl">Commandes <span id="badgePending" class="badge hidden"></span></span></button>
     <button data-tab="send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4z"/></svg><span class="nl">Envoi manuel</span></button>
     <button data-tab="quotes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6v20h12V6zM14 2v4h4M8 13h8M8 17h6"/></svg><span class="nl">Devis</span></button>
+    <button data-tab="services"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7h18v13H3zM8 7V4h8v3M3 13h18"/></svg><span class="nl">Services <span id="badgeSv" class="badge hidden"></span></span></button>
     <button data-tab="messages"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2M5.5 5h13L22 12v7H2v-7z"/></svg><span class="nl">Messages <span id="badgeMsg" class="badge hidden"></span></span></button>
     <button data-tab="clients"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/></svg><span class="nl">Clients</span></button>
     <div class="ngroup">Catalogue</div>
@@ -668,7 +669,7 @@
       <p class="small">Préparez un devis avec vos prix, envoyez-le par email (le client l'ouvre et le télécharge en PDF), puis, quand il a payé, cliquez « Convertir en commande » : la commande et sa facture sont créées.</p>
       <div class="box">
         <h2 id="qTitle">Nouveau devis</h2>
-        <input type="hidden" id="qId">
+        <input type="hidden" id="qId"><input type="hidden" id="qReq"><div id="qReqInfo" class="small hidden" style="background:#eef3fc;border-radius:10px;padding:8px 12px;margin-bottom:8px"></div>
         <div class="grid">
           <div><label>Nom du client</label><input id="qName" placeholder="Prénom Nom"></div>
           <div><label>Société (facultatif)</label><input id="qCompany" placeholder="ex. Optic Services SARL"></div>
@@ -685,6 +686,53 @@
       </div>
       <div class="box">
         <table><thead><tr><th>Devis</th><th>Client</th><th>Total</th><th>Statut</th><th></th></tr></thead><tbody id="qRows"></tbody></table>
+      </div>
+    </section>
+
+    <section id="tab-services" class="hidden">
+      <h1>Services sur devis</h1>
+      <p class="small">Les clients remplissent le questionnaire sur www.licenceoff.com/services. Chaque demande arrive ici (et par email d'alerte). Cliquez « Préparer le devis » : le devis est pré-rempli, vous mettez le prix et vous l'envoyez par email.</p>
+      <div class="subnav" id="svSub" role="tablist" aria-label="Sections des services">
+        <button data-s="req" class="on">📥 Demandes de devis</button><button data-s="edit">🛠️ Mes services (pages)</button>
+      </div>
+      <div class="sub" data-sub="req">
+        <div class="bar"><div class="seg" id="svFilter"><button data-f="open" class="on">À traiter</button><button data-f="quoted">Devis préparé</button><button data-f="done">Gagnées / perdues</button><button data-f="all">Toutes</button></div></div>
+        <div class="box"><div class="tablewrap"><table><thead><tr><th>Demande</th><th>Client</th><th>Besoin</th><th>Statut</th><th></th></tr></thead><tbody id="svRows"></tbody></table></div></div>
+      </div>
+      <div class="sub hidden" data-sub="edit">
+        <div class="box" id="seBox">
+          <h2 id="seTitleH">Nouveau service</h2>
+          <input type="hidden" id="seId">
+          <div class="grid">
+            <div><label for="seTitle">Nom du service</label><input id="seTitle" placeholder="ex : Analyse de données"></div>
+            <div><label for="seSlug">Adresse (vide = d'après le nom)</label><input id="seSlug" placeholder="ex : analyse-de-donnees"></div>
+            <div><label for="seIcon">Icône</label><select id="seIcon"><option value="chart">📈 Graphique (données)</option><option value="megaphone">📣 Mégaphone (publicité)</option><option value="code">💻 Code (site web)</option><option value="shield">🛡️ Bouclier (sécurité)</option></select></div>
+            <div><label for="seSort">Ordre</label><input id="seSort" type="number" min="0" value="0"></div>
+          </div>
+          <label for="seShort">Résumé (carte de la page Services, 1 à 2 phrases)</label><textarea id="seShort" rows="2" maxlength="300"></textarea>
+          <label for="seContent">Texte de la page</label>
+          <textarea id="seContent" style="min-height:240px" placeholder="Écrivez normalement. Astuces :&#10;## Un titre de partie&#10;- un point de liste&#10;**texte en gras**"></textarea>
+          <h3 style="margin:16px 0 4px">🎓 Certificat</h3>
+          <div class="grid">
+            <div><label for="seCertT">Nom du certificat</label><input id="seCertT" placeholder="ex : Certificat professionnel Google Ads"></div>
+            <div><label for="seCertI">Délivré par</label><input id="seCertI" placeholder="ex : Google, sur Coursera"></div>
+            <div><label for="seCertU">Lien de vérification (facultatif)</label><input id="seCertU" type="url" placeholder="https://www.coursera.org/account/accomplishments/..."></div>
+          </div>
+          <label>Photo du certificat</label>
+          <div class="bar" style="margin:0"><img id="seCertPrev" class="preview hidden" alt=""><input id="seCertFile" type="file" accept="image/*"><input type="hidden" id="seCertImg"><span id="seCertMsg" class="small"></span></div>
+          <h3 style="margin:16px 0 4px">📝 Questionnaire</h3>
+          <p class="small" style="margin:0 0 6px">Une question par ligne. <b>*</b> au début = obligatoire. Pour des choix : <b>[un]</b> (un seul choix) ou <b>[plusieurs]</b>, puis les choix séparés par <b> / </b>. <b>[long]</b> = grande case de texte. Le nom, l'entreprise, l'email, le WhatsApp, le délai et la description du besoin sont toujours demandés, inutile de les ajouter.<br>Exemple : <code>* Votre objectif [un] Plus d'appels / Plus de ventes / Autre</code></p>
+          <textarea id="seQs" rows="8" style="font-family:ui-monospace,Consolas,monospace;font-size:13px"></textarea>
+          <div id="seQsPrev" class="small" style="margin-top:6px"></div>
+          <div class="grid" style="margin-top:8px">
+            <div><label for="sePub">Statut</label><select id="sePub"><option value="1">✅ Publié</option><option value="0">📝 Brouillon (caché)</option></select></div>
+          </div>
+          <details class="box" style="margin:10px 0 0;padding:12px"><summary style="cursor:pointer;font-weight:700">🔎 Référencement Google (facultatif)</summary>
+            <label for="seSeoT">Titre pour Google</label><input id="seSeoT" maxlength="120">
+            <label for="seSeoD">Description pour Google</label><textarea id="seSeoD" rows="2" maxlength="320"></textarea></details>
+          <div class="bar" style="margin-top:12px"><button id="seSave" class="green">Enregistrer le service</button><button id="seReset" class="grey">Nouveau service</button><span id="seMsg" class="small"></span></div>
+        </div>
+        <div class="box"><table class="small"><thead><tr><th>Service</th><th>Adresse</th><th>Statut</th><th>Demandes</th><th></th></tr></thead><tbody id="seRows"></tbody></table></div>
       </div>
     </section>
 
@@ -1047,7 +1095,7 @@ document.addEventListener("click", (e) => { for (const d of document.querySelect
 var FORMS = {
   products: ["pForm", "+ Nouveau produit", "pReset"], keys: ["kProd", "+ Ajouter des clés au stock"], blog: ["bId", "+ Nouvel article", "bReset"],
   emails: ["tFormTitle", "+ Nouveau modèle", "tReset"], promos: ["prTitle", "+ Nouvelle promo", "prReset"], faq: ["fId", "+ Nouvelle question", "fReset"],
-  quotes: ["qTitle", "+ Nouveau devis", "qReset"], parrains: ["rFormTitle", "+ Nouveau parrain", "paReset"],
+  quotes: ["qTitle", "+ Nouveau devis", "qReset"], services: ["seTitleH", "+ Nouveau service", "seReset"], parrains: ["rFormTitle", "+ Nouveau parrain", "paReset"],
 };
 function openForm(t, isNew) {
   const f = FORMS[t]; if (!f || !f.box) return;
@@ -1185,7 +1233,7 @@ async function uploadImage(input, hidden, preview, msg, opt = {}) {
 }
 
 // ---------- navigation ----------
-const loaders = { dash: loadDash, orders: loadOrders, products: loadProducts, keys: loadKeys, blog: loadBlog, pages: loadPages, emails: loadTemplates, send: loadSend, quotes: loadQuotes, parrains: loadParrains, clients: loadClients, messages: loadMessages, reviews: loadReviews, faq: loadFaq, promos: loadPromos, links: loadLinks, logs: loadLogs, payments: loadPayments, settings: loadSettings };
+const loaders = { dash: loadDash, orders: loadOrders, products: loadProducts, keys: loadKeys, blog: loadBlog, pages: loadPages, emails: loadTemplates, send: loadSend, quotes: loadQuotes, services: loadServices, parrains: loadParrains, clients: loadClients, messages: loadMessages, reviews: loadReviews, faq: loadFaq, promos: loadPromos, links: loadLinks, logs: loadLogs, payments: loadPayments, settings: loadSettings };
 document.querySelectorAll("nav [data-tab]").forEach((b) => b.addEventListener("click", () => openTab(b.dataset.tab)));
 // Se souvenir de l'endroit où l'on est (onglet dans l'adresse #onglet, fiche ouverte et défilement dans l'onglet du navigateur),
 // pour revenir au même endroit après une actualisation.
@@ -1309,6 +1357,8 @@ function renderTodo(list) {
   const msg = list.find((x) => x.kind === "messages");
   $("badgeMsg").textContent = msg ? msg.count : ""; $("badgeMsg").classList.toggle("hidden", !msg);
   document.querySelector('nav [data-tab="messages"]').classList.toggle("has-msg", !!msg);
+  const sv = list.find((x) => x.kind === "services");
+  $("badgeSv").textContent = sv ? sv.count : ""; $("badgeSv").classList.toggle("hidden", !sv);
   const err = list.find((x) => x.kind === "errors");
   $("badgeLog").textContent = err ? err.count : ""; $("badgeLog").classList.toggle("hidden", !err);
   $("todoBox").style.borderColor = urgent ? "" : "#86efac";
@@ -2131,13 +2181,17 @@ function qLine(l = {}) {
   if (l.product_id) sel.value = l.product_id;
   const qty = el("input"); qty.type = "number"; qty.min = "1"; qty.value = l.qty || 1; qty.style.width = "80px"; qty.title = "Quantité";
   const up = el("input"); up.type = "number"; up.min = "0"; up.style.width = "140px"; up.title = "Prix unitaire (FCFA)";
-  const ph = () => { const p = products.find((x) => x.id === sel.value); up.placeholder = p ? p.price_fcfa + " (prix site)" : ""; };
+  const ph = () => { const p = products.find((x) => x.id === sel.value); up.placeholder = p ? (p.price_fcfa ? p.price_fcfa + " (prix site)" : "Prix en FCFA") : ""; };
   if (l.unit_price != null) up.value = l.unit_price;
   ph();
   const del = btn("✕", "grey", () => { row.remove(); qTotal(); });
+  // libellé imprimé sur le devis (ex. « Tableau de bord des ventes, mise en place ») ; vide = nom du produit
+  const lab = el("input"); lab.className = "grow"; lab.placeholder = "Libellé sur le devis (facultatif)"; lab.maxLength = 150; lab.title = "Texte de la ligne sur le devis";
+  const pn = () => products.find((x) => x.id === sel.value)?.name;
+  if (l.name && l.name !== pn()) lab.value = l.name;
   for (const x of [sel, qty, up]) { x.addEventListener("input", qTotal); x.addEventListener("change", () => { ph(); qTotal(); }); }
-  row.append(sel, qty, up, del);
-  row._get = () => ({ product_id: sel.value, qty: Number(qty.value) || 1, unit_price: up.value === "" ? (products.find((x) => x.id === sel.value)?.price_fcfa ?? 0) : Number(up.value) });
+  row.append(sel, lab, qty, up, del);
+  row._get = () => ({ product_id: sel.value, name: lab.value.trim() || undefined, qty: Number(qty.value) || 1, unit_price: up.value === "" ? (products.find((x) => x.id === sel.value)?.price_fcfa ?? 0) : Number(up.value) });
   return row;
 }
 function qItems() { return [...$("qLines").children].map((r) => r._get()); }
@@ -2145,6 +2199,7 @@ function qTotal() { $("qTotal").textContent = "Total : " + fcfa(qItems().reduce(
 function qReset() {
   $("qId").value = ""; $("qTitle").textContent = "Nouveau devis";
   for (const id of ["qName", "qCompany", "qEmail", "qPhone", "qAddress", "qNotes"]) $(id).value = "";
+  $("qReq").value = ""; $("qReqInfo").classList.add("hidden");
   const d = new Date(Date.now() + 30 * 86400000); $("qValid").value = d.toISOString().slice(0, 10);
   $("qLines").replaceChildren(qLine()); qTotal(); $("qMsg").textContent = "";
 }
@@ -2187,11 +2242,136 @@ $("qReset").addEventListener("click", qReset);
 $("qSave").addEventListener("click", async () => {
   const b = $("qSave"); b.disabled = true;
   try {
-    const d = await api({ action: "quote_save", id: $("qId").value || undefined, customer_name: $("qName").value, company: $("qCompany").value, email: $("qEmail").value,
+    const d = await api({ action: "quote_save", id: $("qId").value || undefined, request_id: $("qId").value ? undefined : ($("qReq").value || undefined), customer_name: $("qName").value, company: $("qCompany").value, email: $("qEmail").value,
       phone: $("qPhone").value, address: $("qAddress").value, valid_until: $("qValid").value, notes: $("qNotes").value, items: qItems() });
     toast("Devis " + d.row.quote_no + " enregistré ✔"); qReset(); await loadQuotes();
   } catch (e) { $("qMsg").textContent = errMsg(e); } finally { b.disabled = false; }
 });
+
+// ---------- services sur devis ----------
+const SVST = { new: ["Nouvelle", "s-pending"], talking: ["En discussion", "s-paid"], quoted: ["Devis préparé", "s-processing"], won: ["Gagnée ✔", "s-delivered"], lost: ["Perdue", "s-cancelled"] };
+let SERVICES = [], svFilter = "open", svSubNow = "req";
+function svSub(k) {
+  svSubNow = k;
+  document.querySelectorAll("#svSub button").forEach((b) => b.classList.toggle("on", b.dataset.s === k));
+  document.querySelectorAll("#tab-services .sub").forEach((d) => d.classList.toggle("hidden", d.dataset.sub !== k));
+}
+document.querySelectorAll("#svSub button").forEach((b) => b.addEventListener("click", () => { svSub(b.dataset.s); window.scrollTo({ top: 0 }); }));
+document.querySelectorAll("#svFilter button").forEach((b) => b.addEventListener("click", () => {
+  svFilter = b.dataset.f; document.querySelectorAll("#svFilter button").forEach((x) => x.classList.toggle("on", x === b)); loadSvRequests().catch((e) => toast(errMsg(e)));
+}));
+async function loadServices() {
+  await loadRefs();
+  SERVICES = (await api({ action: "services_list" })).rows || [];
+  renderServices(); await loadSvRequests();
+}
+async function loadSvRequests() {
+  const { rows } = await api({ action: "service_requests_list" });
+  const keep = { open: ["new", "talking"], quoted: ["quoted"], done: ["won", "lost"] }[svFilter];
+  const list = keep ? rows.filter((r) => keep.includes(r.status)) : rows;
+  const counts = { open: rows.filter((r) => ["new", "talking"].includes(r.status)).length };
+  document.querySelector('#svFilter [data-f="open"]').textContent = "À traiter" + (counts.open ? " (" + counts.open + ")" : "");
+  const reload = () => { loadSvRequests(); refreshTodo(); };
+  $("svRows").replaceChildren(...list.map((r) => {
+    const acts = el("div", null, "acts");
+    if (r.quotes) acts.append(btn("👁 Devis " + r.quotes.quote_no, "grey", () => window.open(SITE + "/facture?d=" + r.quotes.public_token, "_blank", "noopener")));
+    else acts.append(btn("📝 Préparer le devis", "green", () => svQuote(r)));
+    if (r.phone) acts.append(btn("WhatsApp", "grey", () => window.open("https://wa.me/" + waNumber(r.phone) + "?text=" + encodeURIComponent("Bonjour " + r.name.split(" ")[0] + ", c'est licenceoff.com au sujet de votre demande de devis " + r.ref + " (" + r.service_title + ")."), "_blank", "noopener")));
+    acts.append(btn("✉ Écrire", "grey", () => openMessages(r.email)));
+    const st = document.createElement("select"); st.title = "Changer le statut";
+    for (const [k, [lab]] of Object.entries(SVST)) st.append(new Option(lab, k));
+    st.value = r.status;
+    st.addEventListener("change", () => run({ action: "service_request_update", id: r.id, status: st.value }, "Statut changé ✔", reload)());
+    const [lab, cls] = SVST[r.status] || [r.status, ""];
+    const det = el("details"); det.append(el("summary", "Voir les réponses"));
+    const dl = el("div", null, "small"); dl.style.margin = "6px 0";
+    for (const a of [...(r.answers || []), ...(r.deadline ? [{ q: "Délai souhaité", a: r.deadline }] : [])]) { const p = el("div"); p.append(el("b", a.q + " : "), document.createTextNode(a.a)); dl.append(p); }
+    const msg = el("div", r.message || "", "small"); msg.style.cssText = "white-space:pre-wrap;background:#f6f8fc;border-radius:8px;padding:8px;margin-top:6px";
+    const note = el("textarea"); note.rows = 2; note.className = "full"; note.placeholder = "Note pour vous (pas vue par le client)"; note.value = r.admin_note || ""; note.style.marginTop = "6px";
+    note.addEventListener("change", () => run({ action: "service_request_update", id: r.id, admin_note: note.value }, "Note enregistrée ✔")());
+    det.append(dl, msg, note);
+    return tr(td(el("strong", r.ref), el("br"), el("span", dt(r.created_at), "small")),
+      td(r.company ? el("strong", r.company) : null, r.company ? el("br") : null, r.name, el("br"), el("span", r.email, "small"), r.phone ? el("br") : null, r.phone ? el("span", r.phone, "small") : null),
+      td(el("strong", r.service_title), det),
+      td(el("span", lab, "tag " + cls), el("br"), st),
+      td(acts));
+  }));
+  if (!list.length) $("svRows").append(tr(td(svFilter === "open" ? "Aucune demande à traiter pour l'instant." : "Aucune demande.")));
+  labelTables();
+}
+// « Préparer le devis » : ouvre l'onglet Devis, pré-rempli avec le client et la prestation du service
+async function svQuote(r) {
+  const sv = SERVICES.find((x) => x.id === r.service_id);
+  await openTab("quotes");
+  qReset();
+  $("qReq").value = r.id;
+  $("qName").value = r.name || ""; $("qCompany").value = r.company || ""; $("qEmail").value = r.email || ""; $("qPhone").value = r.phone || "";
+  $("qNotes").value = "Prestation sur devis : " + r.service_title + ". Le travail commence après votre accord et le paiement d'un acompte (Wave ou Orange Money).";
+  if (sv && sv.product_id) $("qLines").replaceChildren(qLine({ product_id: sv.product_id, name: r.service_title, qty: 1, unit_price: "" }));
+  qTotal();
+  $("qReqInfo").textContent = "Devis pour la demande " + r.ref + " (" + r.service_title + "). Mettez le prix de chaque ligne, ajoutez des lignes si besoin, enregistrez puis cliquez « ✉ Envoyer au client ».";
+  $("qReqInfo").classList.remove("hidden");
+  openForm("quotes"); window.scrollTo({ top: 0, behavior: "smooth" });
+}
+// questionnaire : texte simple ⇄ liste de questions
+function qsToText(qs) {
+  return (qs || []).map((q) => (q.required ? "* " : "") + q.label + (q.type === "one" ? " [un] " + q.options.join(" / ") : q.type === "many" ? " [plusieurs] " + q.options.join(" / ") : q.type === "long" ? " [long]" : "")).join("\n");
+}
+function textToQs(t) {
+  return String(t || "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((l) => {
+    const required = l.startsWith("*"); if (required) l = l.replace(/^\*\s*/, "");
+    const m = l.match(/^(.*?)\s*\[(un|plusieurs|long)\]\s*(.*)$/i);
+    if (!m) return { label: l, type: "text", options: [], required };
+    const kind = m[2].toLowerCase();
+    if (kind === "long") return { label: m[1], type: "long", options: [], required };
+    return { label: m[1], type: kind === "un" ? "one" : "many", options: m[3].split("/").map((o) => o.trim()).filter(Boolean), required };
+  });
+}
+function qsPreview() {
+  const qs = textToQs($("seQs").value);
+  const T = { text: "texte court", long: "texte long", one: "un choix", many: "plusieurs choix" };
+  $("seQsPrev").replaceChildren(...qs.map((q, i) => el("div", (i + 1) + ". " + q.label + " — " + T[q.type] + (q.options.length ? " (" + q.options.length + " choix)" : "") + (q.required ? " — obligatoire" : ""))));
+  if ((qs.some((q) => ["one", "many"].includes(q.type) && q.options.length < 2))) $("seQsPrev").append(el("div", "⚠️ Une question à choix a moins de 2 choix : séparez-les par « / ».", "low"));
+}
+$("seQs").addEventListener("input", qsPreview);
+function seReset() {
+  $("seId").value = ""; $("seTitleH").textContent = "Nouveau service";
+  for (const id of ["seTitle", "seSlug", "seShort", "seContent", "seCertT", "seCertI", "seCertU", "seCertImg", "seQs", "seSeoT", "seSeoD"]) $(id).value = "";
+  $("seIcon").value = "chart"; $("seSort").value = "0"; $("sePub").value = "0"; $("seCertPrev").classList.add("hidden"); $("seMsg").textContent = ""; $("seCertMsg").textContent = ""; qsPreview();
+}
+function seEdit(x) {
+  $("seId").value = x.id; $("seTitleH").textContent = "Modifier : " + x.title;
+  $("seTitle").value = x.title || ""; $("seSlug").value = x.slug || ""; $("seIcon").value = x.icon || "chart"; $("seSort").value = x.sort || 0;
+  $("seShort").value = x.short || ""; $("seContent").value = x.content || ""; $("seCertT").value = x.cert_title || ""; $("seCertI").value = x.cert_issuer || "";
+  $("seCertU").value = x.cert_url || ""; $("seCertImg").value = x.cert_image_url || ""; $("sePub").value = x.published ? "1" : "0";
+  $("seSeoT").value = x.seo_title || ""; $("seSeoD").value = x.seo_description || ""; $("seQs").value = qsToText(x.questions); qsPreview();
+  if (x.cert_image_url) { $("seCertPrev").src = x.cert_image_url; $("seCertPrev").classList.remove("hidden"); } else $("seCertPrev").classList.add("hidden");
+  $("seMsg").textContent = ""; svSub("edit"); openForm("services"); $("seBox").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+function renderServices() {
+  $("seRows").replaceChildren(...SERVICES.map((x) => {
+    const acts = el("div", null, "acts");
+    acts.append(btn("Modifier", "grey", () => seEdit(x)));
+    if (x.published) acts.append(btn("👁 Voir", "grey", () => window.open(SITE + "/services/" + x.slug, "_blank", "noopener")));
+    return tr(td(el("strong", x.title), el("br"), el("span", x.cert_title ? "🎓 " + x.cert_title + (x.cert_image_url ? "" : " (photo à ajouter)") : "Pas de certificat", "small")),
+      td(el("span", "/services/" + x.slug, "small")), td(el("span", x.published ? "Publié" : "Brouillon", "tag " + (x.published ? "s-on" : "s-draft"))),
+      td(x.requests + (x.open ? " (" + x.open + " à traiter)" : "")), td(acts));
+  }));
+  if (!SERVICES.length) $("seRows").append(tr(td("Aucun service. Lancez d'abord le fichier SQL 64-services.sql.")));
+}
+$("seCertFile").addEventListener("change", () => uploadImage($("seCertFile"), $("seCertImg"), $("seCertPrev"), $("seCertMsg"), { max: 1800 }));
+$("seReset").addEventListener("click", seReset);
+$("seSave").addEventListener("click", async () => {
+  const b = $("seSave"); b.disabled = true; $("seMsg").textContent = "";
+  try {
+    const d = await api({ action: "service_save", id: $("seId").value || undefined, title: $("seTitle").value, slug: $("seSlug").value, icon: $("seIcon").value, sort: $("seSort").value,
+      short: $("seShort").value, content: $("seContent").value, cert_title: $("seCertT").value, cert_issuer: $("seCertI").value, cert_url: $("seCertU").value.trim(),
+      cert_image_url: $("seCertImg").value, questions: textToQs($("seQs").value), published: $("sePub").value === "1", seo_title: $("seSeoT").value, seo_description: $("seSeoD").value });
+    toast("Service « " + d.row.title + " » enregistré ✔ (visible sur le site sous 1 minute)");
+    SERVICES = (await api({ action: "services_list" })).rows || []; renderServices(); seEdit(SERVICES.find((x) => x.id === d.row.id) || d.row);
+  } catch (e) { $("seMsg").textContent = errMsg(e); } finally { b.disabled = false; }
+});
+seReset();
 
 // ---------- blog ----------
 // ---------- rubriques (partagées par le blog et les pages) ----------

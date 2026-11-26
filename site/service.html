@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Service sur devis — licenceoff.com</title>
+<meta name="theme-color" content="#1E4FB8">
+<meta property="og:image" content="https://www.licenceoff.com/img/partage.jpg">
+<link rel="stylesheet" href="/shop.css?v=32">
+<link rel="stylesheet" href="/services.css?v=1">
+<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="64x64" href="/img/profil-64.png"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+</head>
+<body>
+<main id="view">
+  <section class="sv-hero"><div class="wrap"><div class="skeleton" style="min-height:160px;opacity:.25"></div></div></section>
+</main>
+<script src="/shop.js?v=32"></script>
+<script>
+// page d'un service (www.licenceoff.com/services/<adresse>) : texte, certificat, questionnaire de devis
+LO.page("services");
+const { el, $ } = LO;
+const slug = LO.slugFromPath("services", "s");
+const DEADLINES = ["Dès que possible", "Dans le mois", "Dans 1 à 3 mois", "Pas pressé"];
+
+function notFound() {
+  document.title = "Service introuvable — licenceoff.com";
+  $("#view").replaceChildren(el("section", { class: "block" }, el("div", { class: "wrap" },
+    LO.crumbs([["Accueil", LO.url.home], ["Services", LO.url.services], ["Service introuvable"]]),
+    el("h1", { text: "Service introuvable" }), el("p", { text: "Ce service n'existe plus ou a changé d'adresse." }),
+    el("a", { class: "btn", href: LO.url.services, text: "Voir tous nos services" }))));
+}
+
+// un champ de formulaire avec son étiquette et sa ligne d'erreur
+function field(id, label, input, required) {
+  input.id = id; input.classList.add("field");
+  const err = el("div", { class: "err", id: id + "-err", "aria-live": "polite" });
+  input.setAttribute("aria-describedby", id + "-err");
+  if (required) input.required = true;
+  return el("div", { "data-f": id }, el("label", { for: id }, label, required ? el("span", { class: "req", "aria-hidden": "true", text: " *" }) : null), input, err);
+}
+// une question du questionnaire (texte, texte long, un choix, plusieurs choix)
+function question(q, i) {
+  const id = "q" + i;
+  if (q.type === "one" || q.type === "many") {
+    const box = el("div", { class: "opts", role: q.type === "one" ? "radiogroup" : "group", "aria-labelledby": id + "-l", "aria-describedby": id + "-err" });
+    q.options.forEach((o) => box.append(el("label", {}, el("input", { type: q.type === "one" ? "radio" : "checkbox", name: id, value: o }), o)));
+    return el("div", { class: "q", "data-f": id },
+      el("span", { class: "ql", id: id + "-l" }, q.label, q.required ? el("span", { class: "req", "aria-hidden": "true", text: " *" }) : null, q.type === "many" ? el("span", { class: "note", text: " (plusieurs choix possibles)" }) : null),
+      box, el("div", { class: "err", id: id + "-err", "aria-live": "polite" }));
+  }
+  const inp = q.type === "long" ? el("textarea", { rows: "4" }) : el("input", { type: "text", maxlength: "300" });
+  const f = field(id, q.label, inp, q.required); f.classList.add("q"); return f;
+}
+function answerOf(q, i) {
+  const f = document.querySelector('[data-f="q' + i + '"]');
+  if (q.type === "one") { const c = f.querySelector("input:checked"); return c ? c.value : ""; }
+  if (q.type === "many") return [...f.querySelectorAll("input:checked")].map((x) => x.value);
+  return f.querySelector(".field").value.trim();
+}
+function showErrors(fields) {
+  document.querySelectorAll(".sv-form .err").forEach((e) => (e.textContent = ""));
+  document.querySelectorAll('.sv-form [aria-invalid="true"]').forEach((e) => e.removeAttribute("aria-invalid"));
+  let first = null;
+  for (const [k, msg] of Object.entries(fields || {})) {
+    const f = document.querySelector('[data-f="' + k + '"]'); if (!f) continue;
+    const e = f.querySelector(".err"); if (e) e.textContent = msg;
+    const target = f.querySelector(".field, .opts"); if (target) target.setAttribute("aria-invalid", "true");
+    if (!first) first = f;
+  }
+  if (first) { first.scrollIntoView({ behavior: "smooth", block: "center" }); const i = first.querySelector("input, textarea, select"); if (i) setTimeout(() => i.focus({ preventScroll: true }), 300); }
+}
+
+function form(s) {
+  const qs = s.questions || [];
+  const name = field("name", "Prénom et nom", el("input", { type: "text", autocomplete: "name", maxlength: "100" }), true);
+  const company = field("company", "Entreprise (facultatif)", el("input", { type: "text", autocomplete: "organization", maxlength: "120" }));
+  const email = field("email", "Email (pour recevoir le devis)", el("input", { type: "email", autocomplete: "email", inputmode: "email", maxlength: "200" }), true);
+  const phone = field("phone", "Numéro WhatsApp", el("input", { type: "tel", autocomplete: "tel", inputmode: "tel", placeholder: "77 123 45 67", maxlength: "30" }), true);
+  const dl = el("select"); dl.append(new Option("— Choisir —", "")); DEADLINES.forEach((d) => dl.append(new Option(d, d)));
+  const deadline = field("deadline", "Pour quand ?", dl);
+  const message = field("message", "Décrivez votre activité et votre besoin", el("textarea", { rows: "5", maxlength: "3000", placeholder: "Ex. : je vends des vêtements à Dakar et je veux savoir quels produits rapportent le plus." }), true);
+  const consent = el("input", { type: "checkbox", id: "consent", "aria-describedby": "consent-err" });
+  const consentRow = el("div", { "data-f": "consent" }, el("label", { class: "consent" }, consent,
+    el("span", {}, "J'accepte d'être contacté par email ou WhatsApp au sujet de ma demande. ", el("a", { href: LO.url.privacy, target: "_blank", text: "Confidentialité" }))),
+    el("div", { class: "err", id: "consent-err", "aria-live": "polite" }));
+  const hp = el("input", { type: "text", name: "website", class: "hp", tabindex: "-1", autocomplete: "off", "aria-hidden": "true" });
+  const send = el("button", { type: "submit", class: "btn orange block send", text: "Recevoir mon devis gratuit" });
+  const msg = el("div", { class: "msg", role: "alert" });
+  const f = el("form", { class: "sv-form", id: "devis", novalidate: "" },
+    el("h2", { text: "Demander un devis gratuit" }),
+    el("p", { class: "note", text: "Répondez à quelques questions : vous recevez votre devis par email sous 48 heures (jours ouvrés). Les champs marqués * sont obligatoires." }),
+    qs.length ? el("fieldset", {}, el("legend", { text: "Votre projet" }), ...qs.map(question)) : null,
+    el("fieldset", {}, el("legend", { text: "Vos coordonnées" }), el("div", { class: "two" }, name, company, email, phone), deadline, message),
+    consentRow, hp, send, msg,
+    el("p", { class: "hint", text: "Vos réponses servent uniquement à préparer votre devis." }));
+  f.addEventListener("submit", async (e) => {
+    e.preventDefault(); msg.textContent = "";
+    const payload = { action: "service_request", service: s.slug, name: $("#name").value.trim(), company: $("#company").value.trim(), email: $("#email").value.trim(),
+      phone: $("#phone").value.trim(), deadline: dl.value, message: $("#message").value.trim(), consent: consent.checked, website: hp.value, answers: qs.map(answerOf) };
+    // contrôle rapide avant l'envoi (le serveur vérifie tout de nouveau)
+    const errs = {};
+    if (payload.name.length < 2) errs.name = "Indiquez votre nom.";
+    if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(payload.email)) errs.email = "Adresse email invalide.";
+    if (payload.phone.replace(/\D/g, "").length < 8) errs.phone = "Numéro WhatsApp invalide.";
+    if (payload.message.length < 10) errs.message = "Décrivez votre besoin en quelques mots.";
+    qs.forEach((q, i) => { const a = payload.answers[i]; if (q.required && (!a || (Array.isArray(a) && !a.length))) errs["q" + i] = "Réponse obligatoire."; });
+    if (!payload.consent) errs.consent = "Cochez la case pour envoyer votre demande.";
+    showErrors(errs); if (Object.keys(errs).length) return;
+    send.disabled = true; send.textContent = "Envoi en cours…";
+    try {
+      const d = await LO.boutique(payload);
+      if (d.error === "champs_invalides") { showErrors(d.fields); return; }
+      if (d.error === "trop_de_demandes") { msg.textContent = "Trop de demandes envoyées depuis votre connexion. Réessayez dans une heure, ou écrivez-nous sur WhatsApp."; return; }
+      if (!d.ok) throw 0;
+      LO.px("Lead", { content_name: s.title, content_category: "service" });
+      const ok = el("div", { class: "sv-ok", role: "status", tabindex: "-1" },
+        el("div", { class: "check" }, LO.icon(LO.ICONS.check, 32)),
+        el("h2", { text: "Merci, votre demande est envoyée !" }),
+        el("div", { class: "ref", text: "Demande " + d.ref }),
+        el("p", { text: "Vous allez recevoir un email de confirmation à " + payload.email + ". Votre devis gratuit arrive par email sous 48 heures (jours ouvrés)." }),
+        el("p", { text: "Pas d'email ? Regardez dans « Promotions » ou « Spam »." }),
+        el("a", { class: "btn light", href: LO.url.services, text: "Voir nos autres services" }));
+      f.replaceChildren(ok); ok.focus(); f.scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch (_) {
+      msg.textContent = "L'envoi n'a pas marché. Vérifiez votre connexion et réessayez, ou écrivez-nous sur WhatsApp.";
+    } finally { if (send.isConnected) { send.disabled = false; send.textContent = "Recevoir mon devis gratuit"; } }
+  });
+  return f;
+}
+
+function certBlock(s) {
+  if (!s.cert_title && !s.cert_image_url) return null;
+  return el("div", { class: "cert" },
+    el("span", { class: "lab" }, LO.icon(LO.ICONS.award, 14), "Certifié"),
+    el("h3", { text: s.cert_title || "Certificat" }),
+    s.cert_issuer ? el("p", { class: "by", text: s.cert_issuer }) : null,
+    s.cert_image_url ? el("a", { class: "ph", href: s.cert_image_url, target: "_blank", rel: "noopener", "aria-label": "Voir le certificat en grand" },
+      el("img", { src: s.cert_image_url, alt: (s.cert_title || "Certificat") + (s.cert_issuer ? " — " + s.cert_issuer : ""), loading: "lazy" })) : null,
+    s.cert_url ? el("a", { class: "verify", href: s.cert_url, target: "_blank", rel: "noopener" }, "Vérifier le certificat", LO.icon(LO.ICONS.arrow, 16)) : null);
+}
+
+LO.boutique({ action: "service", slug }).then((d) => {
+  const s = d.service; if (!s) return notFound();
+  const path = LO.url.service(s.slug);
+  LO.seo({ title: s.seo_title || s.title + " — licenceoff.com", description: (s.seo_description || s.short || s.title).slice(0, 160), path, image: s.image_url || null });
+  const content = el("div", { class: "content" }); content.append(LO.richText(s.content || ""));
+  const toForm = (e) => { e.preventDefault(); $("#devis").scrollIntoView({ behavior: "smooth", block: "start" }); setTimeout(() => { const i = $("#devis input:not(.hp), #devis textarea"); if (i) i.focus({ preventScroll: true }); }, 400); };
+  const waText = encodeURIComponent("Bonjour, je voudrais des informations sur votre service : " + s.title + ".");
+  $("#view").replaceChildren(
+    el("section", { class: "sv-hero" }, el("div", { class: "wrap" },
+      LO.crumbs([["Accueil", LO.url.home], ["Services", LO.url.services], [s.title]]),
+      el("div", { class: "sv-head" }, el("span", { class: "sv-ico" }, LO.serviceIcon(s.icon)), el("h1", { text: s.title })),
+      s.short ? el("p", { class: "lead", text: s.short }) : null,
+      el("div", { class: "ctas" },
+        el("a", { class: "btn orange", href: "#devis", onclick: toForm, text: "Demander un devis gratuit" }),
+        el("a", { class: "btn ghost", href: "https://wa.me/221777860777?text=" + waText, target: "_blank", rel: "noopener", text: "Poser une question sur WhatsApp" })),
+      el("ul", { class: "sv-points" }, ...["Devis gratuit sous 48 h", "Sans engagement", ...(s.cert_title ? ["Certifié"] : [])].map((t) => el("li", {}, LO.icon(LO.ICONS.check, 18), t))))),
+    el("section", { class: "block" }, el("div", { class: "wrap" },
+      el("div", { class: "sv-body" },
+        el("div", {}, content, el("div", { style: "margin-top:26px" }, form(s))),
+        el("aside", { class: "sv-aside" }, certBlock(s),
+          el("div", { class: "sv-cta" }, el("b", { text: "Un projet en tête ?" }), el("p", { text: "Décrivez-le en 2 minutes, le devis est gratuit." }),
+            el("a", { class: "btn orange block", href: "#devis", onclick: toForm, text: "Demander un devis" })))))),
+    (d.others || []).length ? el("section", { class: "block", style: "padding-top:0" }, el("div", { class: "wrap" },
+      el("div", { class: "sec-title" }, el("h2", { text: "Nos autres services" }), el("a", { href: LO.url.services, text: "Tous les services →" })),
+      el("div", { class: "sv-grid" }, ...d.others.map((o) => el("a", { class: "sv-card", href: LO.url.service(o.slug) },
+        el("span", { class: "sv-ico b" }, LO.serviceIcon(o.icon)), el("h3", { text: o.title }), el("p", { text: o.short || "" }),
+        el("span", { class: "go" }, "Découvrir", LO.icon(LO.ICONS.arrow, 18))))))) : null,
+  );
+  if (location.hash === "#devis") setTimeout(() => $("#devis").scrollIntoView(), 50);
+  LO.jsonLd({ "@context": "https://schema.org", "@type": "Service", name: s.title, serviceType: s.title, description: s.seo_description || s.short || s.title, url: LO.SITE + path,
+    areaServed: { "@type": "Country", name: "Sénégal" }, provider: { "@type": "Organization", name: "licenceoff.com", url: LO.SITE + "/", "@id": LO.SITE + "/#org" } });
+}).catch(notFound);
+</script>
+</body>
+</html>

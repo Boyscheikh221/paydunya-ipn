@@ -762,6 +762,7 @@ async function sitemap() {
     db.from("pages").select("slug, updated_at").eq("published", true),
   ]);
   const { data: rubs } = await db.from("rubriques").select("slug").eq("active", true);
+  const { data: servs } = await db.from("services").select("slug, updated_at").eq("published", true);
   const catById = Object.fromEntries((cats ?? []).map((c) => [c.id, c]));
   const used = new Set((prods ?? []).map((p) => p.category_id));
   for (const id of [...used]) { const par = catById[id as string]?.parent_id; if (par) used.add(par); }
@@ -776,9 +777,100 @@ async function sitemap() {
     ...(posts ?? []).map((p) => `<url><loc>${site}/blog/${x(encodeURIComponent(p.slug))}</loc>${day(p.published_at)}</url>`),
     ...(rubs ?? []).map((r) => `<url><loc>${site}/blog/rubrique/${x(encodeURIComponent(r.slug))}</loc></url>`),
     ...(pages ?? []).map((p) => `<url><loc>${site}/page/${x(encodeURIComponent(p.slug))}</loc>${day(p.updated_at)}</url>`),
+    ...((servs ?? []).length ? [`<url><loc>${site}/services</loc></url>`] : []),
+    ...(servs ?? []).map((p) => `<url><loc>${site}/services/${x(encodeURIComponent(p.slug))}</loc>${day(p.updated_at)}</url>`),
   ];
   return new Response(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join("\n")}\n</urlset>\n`,
     { headers: { ...cors, "Content-Type": "application/xml; charset=utf-8", "Cache-Control": "public, max-age=3600" } });
+}
+
+// ================= Services sur devis : demande envoyée par le questionnaire =================
+const SERVICE_LIST_FIELDS = "id, slug, title, short, icon, image_url, sort";
+const DEADLINES = ["Dès que possible", "Dans le mois", "Dans 1 à 3 mois", "Pas pressé"];
+function newServiceRef(): string { return newRef().replace(/^LO-/, "SV-"); }
+// deno-lint-ignore no-explicit-any
+async function serviceRequest(req: Request, body: any): Promise<Response> {
+  // piège à robots : champ caché que seuls les robots remplissent
+  if (str(body.website, 200)) return json({ ok: true, ref: "SV-0000-OK" });
+  const ip = (req.headers.get("cf-connecting-ip") ?? req.headers.get("x-forwarded-for")?.split(",")[0] ?? "").trim().slice(0, 64) || null;
+  const hourAgo = new Date(Date.now() - 3600_000).toISOString();
+  // anti-abus : 5 demandes par heure et par adresse IP, 40 par heure pour tout le site (protège le quota d'emails)
+  const { count: all } = await db.from("service_requests").select("id", { count: "exact", head: true }).gte("created_at", hourAgo);
+  if ((all ?? 0) >= 40) { await logEvent("warn", "services", "Plus de 40 demandes de devis en une heure : les suivantes sont refusées pour l'instant"); return json({ error: "trop_de_demandes" }, 429); }
+  if (ip) {
+    const { count } = await db.from("service_requests").select("id", { count: "exact", head: true }).eq("ip", ip).gte("created_at", hourAgo);
+    if ((count ?? 0) >= 5) return json({ error: "trop_de_demandes" }, 429);
+  }
+  const { data: sv } = await db.from("services").select("id, slug, title, questions").eq("slug", str(body.service, 80)).eq("published", true).maybeSingle();
+  if (!sv) return json({ error: "service_introuvable" }, 404);
+  const name = str(body.name, 100), email = str(body.email, 200).toLowerCase();
+  const phone = str(body.phone, 30).replace(/[^\d+ ]/g, "").trim();
+  const errors: Record<string, string> = {};
+  if (name.length < 2) errors.name = "Indiquez votre nom.";
+  if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(email)) errors.email = "Adresse email invalide.";
+  if (phone.replace(/\D/g, "").length < 8) errors.phone = "Numéro WhatsApp invalide.";
+  const deadline = DEADLINES.includes(str(body.deadline, 40)) ? str(body.deadline, 40) : null;
+  const message = str(body.message, 3000);
+  if (message.length < 10) errors.message = "Décrivez votre besoin en quelques mots.";
+  // réponses : seulement les questions du service, et seulement les choix proposés
+  // deno-lint-ignore no-explicit-any
+  const qs = (Array.isArray(sv.questions) ? sv.questions : []) as any[];
+  const raw = Array.isArray(body.answers) ? body.answers : [];
+  const answers: { q: string; a: string }[] = [];
+  qs.forEach((q, i) => {
+    const v = raw[i];
+    let a = "";
+    if (q.type === "one") a = (q.options ?? []).includes(String(v ?? "")) ? String(v) : "";
+    else if (q.type === "many") a = (Array.isArray(v) ? v : []).map(String).filter((x: string) => (q.options ?? []).includes(x)).join(", ");
+    else a = str(v, q.type === "long" ? 2000 : 300);
+    if (q.required && !a) errors["q" + i] = "Réponse obligatoire.";
+    if (a) answers.push({ q: String(q.label).slice(0, 200), a });
+  });
+  if (body.consent !== true) errors.consent = "Cochez la case pour envoyer votre demande.";
+  if (Object.keys(errors).length) return json({ error: "champs_invalides", fields: errors }, 400);
+
+  const row = { ref: newServiceRef(), service_id: sv.id, service_title: sv.title, name, company: str(body.company, 120) || null,
+    email, phone: phone || null, deadline, answers, message, ip };
+  const { data: r, error } = await db.from("service_requests").insert(row).select("id, ref").single();
+  if (error) { await logEvent("error", "services", "Demande de devis non enregistrée", { erreur: error.message }); return json({ error: "error" }, 500); }
+  await logEvent("info", "services", "Nouvelle demande de devis " + r.ref + " : " + sv.title + " — " + name + " <" + email + ">");
+  // fiche client (CRM) : créée si l'email est nouveau
+  try {
+    const { data: c } = await db.from("customers").select("id, name, phone").eq("email", email).maybeSingle();
+    if (!c) await db.from("customers").insert({ email, name, phone: phone || null });
+    else if (!c.phone && phone) await db.from("customers").update({ phone }).eq("id", c.id);
+  } catch (_) { /* la fiche client ne bloque jamais la demande */ }
+
+  const { site } = siteCtx();
+  const recapHtml = `<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;font-size:14px">${
+    [["Service", sv.title], ...(row.company ? [["Entreprise", row.company]] : []), ["WhatsApp", phone], ...(deadline ? [["Délai souhaité", deadline]] : []), ...answers.map((x) => [x.q, x.a])]
+      .map(([k, v]) => `<tr><td style="padding:6px 10px 6px 0;color:#5b6b86;vertical-align:top;width:42%">${esc(k)}</td><td style="padding:6px 0;vertical-align:top"><b>${esc(v)}</b></td></tr>`).join("")
+  }</table><div style="white-space:pre-wrap;background:#f6f8fc;border-radius:10px;padding:12px;margin-top:10px;font-size:14px">${esc(message)}</div>`;
+  const recapText = ["Service : " + sv.title, ...(row.company ? ["Entreprise : " + row.company] : []), "WhatsApp : " + phone, ...(deadline ? ["Délai souhaité : " + deadline] : []),
+    ...answers.map((x) => x.q + " : " + x.a), "", message].join("\n");
+  // 1) accusé de réception au client
+  const first = name.split(/\s+/)[0];
+  await resendSend(email, {
+    subject: "Demande de devis reçue : " + sv.title + " — " + r.ref,
+    html: wrapHtml(`<p style="margin:0 0 12px">Bonjour ${esc(first)},</p>
+<p style="margin:0 0 12px">Merci, nous avons bien reçu votre demande de devis <b>${esc(r.ref)}</b> pour le service <b>${esc(sv.title)}</b>.</p>
+<p style="margin:0 0 12px">Nous l'étudions et vous envoyons votre devis gratuit <b>par email sous 48 heures</b> (jours ouvrés). Si une précision est nécessaire, nous vous écrirons sur WhatsApp ou par email.</p>
+<p style="margin:16px 0 6px;font-weight:700">Récapitulatif de votre demande</p>${recapHtml}`),
+    text: "Bonjour " + first + ",\n\nMerci, nous avons bien reçu votre demande de devis " + r.ref + " pour le service " + sv.title + ".\nNous vous envoyons votre devis gratuit par email sous 48 heures (jours ouvrés).\n\nRécapitulatif :\n" + recapText + footerText(),
+    headers: { "X-Entity-Ref-ID": r.ref },
+  }).catch(() => null);
+  // 2) alerte à l'admin (email d'alerte des Réglages) ; « Répondre » dans Gmail écrit directement au client
+  const { data: st } = await db.from("settings").select("value").eq("key", "admin_email").maybeSingle();
+  const to = String(st?.value ?? "").trim();
+  if (to) {
+    await resendSend(to, {
+      subject: "📝 Demande de devis " + sv.title + " — " + name,
+      html: wrapHtml(`<p style="margin:0 0 6px"><b>${esc(name)}</b> &lt;${esc(email)}&gt; · ${esc(r.ref)}</p>${recapHtml}
+<p style="text-align:center;margin:20px 0 0"><a href="${esc(site)}/admin#services" style="display:inline-block;background:${EM.O};color:#fff;font-weight:800;text-decoration:none;padding:12px 20px;border-radius:10px">Préparer le devis dans l'admin</a></p>`),
+      text: "Demande de devis " + r.ref + " de " + name + " <" + email + ">\n\n" + recapText + "\n\nPréparer le devis : " + site + "/admin#services",
+    }, email).catch(() => null);
+  }
+  return json({ ok: true, ref: r.ref });
 }
 
 Deno.serve(async (req) => {
@@ -1017,6 +1109,24 @@ async function handle(req: Request): Promise<Response> {
       if (!data) return json({ error: "not_found" }, 404);
       return json({ page: data });
     }
+    // ---------- Services sur devis (Analyse de données, Google Ads…) ----------
+    case "services": {
+      const { data, error } = await db.from("services").select(SERVICE_LIST_FIELDS).eq("published", true).order("sort").order("title");
+      if (error) return json({ error: "error" }, 500);
+      return json({ services: data ?? [] });
+    }
+    case "service": {
+      // deno-lint-ignore no-explicit-any
+      const { data } = await db.from("services").select(SERVICE_LIST_FIELDS + ", content, cert_title, cert_issuer, cert_image_url, cert_url, questions, seo_title, seo_description, updated_at")
+        .eq("slug", str(body.slug, 80)).eq("published", true).maybeSingle() as { data: any };
+      if (!data) return json({ error: "not_found" }, 404);
+      const { data: others } = await db.from("services").select(SERVICE_LIST_FIELDS).eq("published", true).neq("id", data.id).order("sort").limit(6);
+      // deno-lint-ignore no-explicit-any
+      const { id: _id, ...pub } = data as any;
+      return json({ service: pub, others: others ?? [] });
+    }
+    case "service_request": return serviceRequest(req, body);
+
     case "post": {
       const { data } = await db.from("posts").select("slug, title, excerpt, content, cover_url, cover_video, published_at, updated_at, views, rubrique_id, show_whatsapp")
         .eq("slug", str(body.slug, 120)).eq("published", true).maybeSingle();

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Services sur devis : analyse de données, Google Ads — licenceoff.com</title>
+<meta name="description" content="Analyse de données, tableaux de bord et campagnes Google Ads pour les entreprises au Sénégal. Décrivez votre besoin, recevez un devis gratuit par email.">
+<meta name="theme-color" content="#1E4FB8">
+<link rel="canonical" href="https://www.licenceoff.com/services">
+<meta property="og:title" content="Services sur devis — licenceoff.com">
+<meta property="og:image" content="https://www.licenceoff.com/img/partage.jpg">
+<link rel="stylesheet" href="/shop.css?v=32">
+<link rel="stylesheet" href="/services.css?v=1">
+<link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="64x64" href="/img/profil-64.png"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
+</head>
+<body>
+<main>
+  <section class="sv-hero">
+    <div class="wrap">
+      <div id="crumbs"></div>
+      <h1>Services sur devis</h1>
+      <p class="lead">En plus des licences, nous aidons les entreprises à mieux connaître leurs chiffres et à trouver de nouveaux clients en ligne. Décrivez votre besoin, vous recevez un devis gratuit par email.</p>
+      <ul class="sv-points" id="points"></ul>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="wrap">
+      <div class="sec-title"><h2>Nos services</h2></div>
+      <div id="list" class="sv-grid"><div class="skeleton" style="min-height:200px"></div><div class="skeleton" style="min-height:200px"></div></div>
+    </div>
+  </section>
+
+  <section class="block" style="padding-top:0">
+    <div class="wrap">
+      <div class="sec-title"><h2>Comment ça marche</h2></div>
+      <ol class="sv-steps">
+        <li><b>Vous décrivez votre besoin</b><span>Un court questionnaire sur la page du service, 2 minutes suffisent.</span></li>
+        <li><b>Vous recevez votre devis par email</b><span>Gratuit et sans engagement, adapté à votre projet, sous 48 heures (jours ouvrés).</span></li>
+        <li><b>Nous réalisons le travail</b><span>Après votre accord, avec un suivi clair et des explications sans jargon.</span></li>
+      </ol>
+    </div>
+  </section>
+</main>
+<script src="/shop.js?v=32"></script>
+<script>
+LO.page("services");
+const { el, $ } = LO;
+LO.seo({ path: LO.url.services });
+$("#crumbs").replaceChildren(LO.crumbs([["Accueil", LO.url.home], ["Services"]]));
+$("#points").replaceChildren(...["Devis gratuit", "Sans engagement", "Basé à Dakar"].map((t) => { const s = LO.icon(LO.ICONS.check, 18); return el("li", {}, s, t); }));
+LO.boutique({ action: "services" }).then((d) => {
+  const list = d.services || [];
+  if (!list.length) { $("#list").replaceChildren(el("div", { class: "empty", text: "Nos services arrivent bientôt. Écrivez-nous sur WhatsApp en attendant." })); return; }
+  $("#list").replaceChildren(...list.map((s, i) => el("a", { class: "sv-card", href: LO.url.service(s.slug) },
+    el("span", { class: "sv-ico" + (i % 2 ? " b" : "") }, LO.serviceIcon(s.icon)),
+    el("h3", { text: s.title }), el("p", { text: s.short || "" }),
+    el("span", { class: "go" }, "Voir le service et demander un devis", LO.icon(LO.ICONS.arrow, 18)))));
+  LO.jsonLd({ "@context": "https://schema.org", "@type": "ItemList", itemListElement: list.map((s, i) => ({ "@type": "ListItem", position: i + 1, url: LO.SITE + LO.url.service(s.slug), name: s.title })) });
+}).catch(() => $("#list").replaceChildren(el("div", { class: "empty", text: "Erreur de chargement. Réessayez dans un instant." })));
+</script>
+</body>
+</html>

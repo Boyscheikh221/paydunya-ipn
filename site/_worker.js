@@ -16,6 +16,7 @@ function rewriteTarget(path) {
   if (/^\/blog\/rubrique\/[^/]+\/?$/.test(path)) return "/blog";
   if (/^\/blog\/[^/]+\/?$/.test(path)) return "/article";
   if (/^\/page\/[^/]+\/?$/.test(path)) return "/page";
+  if (/^\/services\/[^/]+\/?$/.test(path)) return "/service";
   return null;
 }
 
@@ -53,13 +54,21 @@ async function previewFor(path) {
     return { type: "article", title: p.title, description: cut(plain(p.excerpt) || plain(p.content) || p.title, 155),
       image: abs(p.cover_url) || ytThumb(p.cover_video), url: SITE + "/blog/" + encodeURIComponent(p.slug) };
   }
+  m = path.match(/^\/services\/([^/]+)\/?$/);
+  if (m) {
+    const slug = decodeURIComponent(m[1]);
+    const d = await api({ action: "service", slug }); const p = d && d.service;
+    if (!p) return null;
+    return { type: "service", title: p.seo_title || p.title, description: cut(plain(p.seo_description || p.short || p.content || p.title), 155),
+      image: abs(p.image_url), url: SITE + "/services/" + encodeURIComponent(p.slug) };
+  }
   return null;
 }
 
 export function injectMeta(html, i) {
   const img = i.image || SITE + "/img/partage.jpg";
   const tags = [
-    `<meta property="og:type" content="${i.type === "article" ? "article" : "product"}">`,
+    `<meta property="og:type" content="${i.type === "article" ? "article" : i.type === "service" ? "website" : "product"}">`,
     `<meta property="og:site_name" content="licenceoff.com">`,
     `<meta property="og:title" content="${esc(i.title)}">`,
     `<meta property="og:description" content="${esc(i.description)}">`,
@@ -73,7 +82,7 @@ export function injectMeta(html, i) {
     .replace(/<meta\s+property="og:[^"]*"[^>]*>\s*/gi, "")
     .replace(/<meta\s+name="(?:description|twitter:[^"]*)"[^>]*>\s*/gi, "")
     .replace(/<link\s+rel="canonical"[^>]*>\s*/gi, "")
-    .replace(/<title>[^<]*<\/title>/i, `<title>${esc(i.title)} — licenceoff.com</title>`)
+    .replace(/<title>[^<]*<\/title>/i, `<title>${esc(/licenceoff\.com$/.test(i.title) ? i.title : i.title + " — licenceoff.com")}</title>`)
     .replace(/<\/head>/i, tags + "\n</head>");
 }
 
