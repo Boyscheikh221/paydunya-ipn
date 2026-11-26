@@ -1025,7 +1025,8 @@ function uiDialog(msg, opt) {
       else if (e.key === "Tab") { const f = [inp, no, ok].filter(Boolean), i = f.indexOf(document.activeElement); e.preventDefault(); f[(i + (e.shiftKey ? f.length - 1 : 1)) % f.length].focus(); }
     };
     addEventListener("keydown", key, true);
-    setTimeout(() => { (inp || ok).focus(); if (inp && inp.select) inp.select(); }, 0);
+    // action dangereuse : le curseur est sur « Non », Entrée ne confirme pas par erreur
+    setTimeout(() => { (inp || (opt.danger ? no : ok)).focus(); if (inp && inp.select) inp.select(); }, 0);
   });
 }
 function uiConfirm(msg) { return uiDialog(msg, { danger: /^(Annuler la commande|Supprimer|Effacer|Désactiver|Libérer TOUTES)/.test(String(msg)) }); }
