@@ -83,6 +83,13 @@ export default {
       const url = new URL(request.url);
       const path = url.pathname;
       if (MOVED[path.replace(/\/$/, "")]) return Response.redirect(url.origin + MOVED[path.replace(/\/$/, "")] + url.search, 301);
+      // favicon.ico : Cloudflare l'envoie sans type ; Google a besoin d'un vrai type d'image pour afficher le logo
+      if (path === "/favicon.ico") {
+        const r = await env.ASSETS.fetch(request);
+        if (!r.ok) return r;
+        const h = new Headers(r.headers); h.set("content-type", "image/x-icon");
+        return new Response(r.body, { status: r.status, headers: h });
+      }
       const target = rewriteTarget(path);
       if (!target) return env.ASSETS.fetch(request);
       const res = await env.ASSETS.fetch(new Request(url.origin + target, request));
