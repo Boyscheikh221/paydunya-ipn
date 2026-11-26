@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Boutique — licenceoff.com</title>
-<meta name="description" content="Tous nos produits : licences Windows, Microsoft Office, logiciels et services informatiques. Livraison immédiate au Sénégal.">
+<meta name="description" content="Tous nos produits : licences Windows, Microsoft Office, logiciels et services informatiques. Livraison rapide au Sénégal.">
 <meta name="theme-color" content="#1E4FB8">
-<link rel="stylesheet" href="/shop.css?v=29">
+<link rel="stylesheet" href="/shop.css?v=30">
 <link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="64x64" href="/img/profil-64.png"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
 <meta property="og:image" content="https://www.licenceoff.com/img/partage.jpg">
 </head>
@@ -20,7 +20,7 @@
     <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
   </div>
 </main>
-<script src="/shop.js?v=29"></script>
+<script src="/shop.js?v=30"></script>
 <script>
 LO.page("shop");
 const { el, $, url } = LO;
@@ -48,7 +48,7 @@ function render(data) {
   const hasProducts = (c) => data.products.some((p) => p.category === c.slug || cats.some((k) => k.parent === c.slug && k.slug === p.category));
   LO.seo({
     title: (cat ? cat.name : "Boutique") + " — licenceoff.com",
-    description: cat ? (cat.description || cat.name + " : achat en ligne, livraison immédiate au Sénégal.") : "Tous nos produits : licences Windows, Microsoft Office, logiciels et solutions PC. Livraison immédiate au Sénégal.",
+    description: cat ? (cat.description || cat.name + " : achat en ligne, livraison rapide au Sénégal.") : "Tous nos produits : licences Windows, Microsoft Office, logiciels et solutions PC. Livraison rapide au Sénégal.",
     path: query ? null : cat ? catUrl(cat) : url.shop,
   });
   $("#crumbs").replaceChildren(LO.crumbs([["Accueil", url.home], ["Boutique", url.shop], ...(parent ? [[parent.name, catUrl(parent)]] : []), ...(cat ? [[cat.name]] : [])].map((x, i, arr) => i === arr.length - 1 ? [x[0]] : x)));
@@ -62,14 +62,16 @@ function render(data) {
     el("div", { class: "chips" }, el("a", { class: "chip" + (cat ? "" : " on"), href: url.shop, text: "Tout" }),
       ...mains.map((c) => el("a", { class: "chip" + (top && top.slug === c.slug ? " on" : ""), href: catUrl(c), text: c.name }))),
     subs.length ? el("div", { class: "chips sub" }, el("a", { class: "chip" + (cat && !parent ? " on" : ""), href: catUrl(top), text: "Tout " + top.name }),
-      ...subs.map((c) => el("a", { class: "chip" + (current === c.slug ? " on" : ""), href: catUrl(c), text: c.name }))) : null);
+      ...subs.map((c) => el("a", { class: "chip" + (current === c.slug ? " on" : ""), href: catUrl(c), text: c.name }))) : "");
   let list = data.products.filter((p) => !cat || inCat.has(p.category));
   if (query) { const q = query.toLowerCase(); list = list.filter((p) => (p.name + " " + p.description).toLowerCase().includes(q)); }
   $("#count").textContent = list.length + " produit" + (list.length > 1 ? "s" : "");
   const grid = $("#grid");
   grid.replaceChildren(...list.map((p) => LO.productCard(p, names[p.category])));
-  if (!list.length) grid.append(el("div", { class: "empty" }, el("p", { text: query ? "Aucun produit ne correspond à votre recherche." : "Aucun produit dans cette catégorie pour le moment." }),
-    el("a", { class: "btn", href: url.shop, text: "Voir tous les produits" })));
+  if (!list.length) grid.append(el("div", { class: "empty" }, el("p", { text: query ? "Aucun produit ne correspond à votre recherche." : "Pas encore de produit en ligne dans cette catégorie. Dites-nous ce qu'il vous faut sur WhatsApp : nous vous répondons rapidement." }),
+    el("div", { style: "display:flex;gap:10px;flex-wrap:wrap;justify-content:center" },
+      el("a", { class: "btn", href: url.shop, text: "Voir tous les produits" }),
+      query ? null : el("a", { class: "btn light", href: "https://wa.me/221777860777?text=" + encodeURIComponent("Bonjour, je cherche : " + (cat ? cat.name : "")), target: "_blank", rel: "noopener", text: "Demander sur WhatsApp" }))));
 }
 
 LO.boutique({ action: "catalog" }).then((d) => { if (d.products) render(d); else throw 0; })

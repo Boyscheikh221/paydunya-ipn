@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>Mon panier — licenceoff.com</title>
-<link rel="stylesheet" href="/shop.css?v=29">
+<link rel="stylesheet" href="/shop.css?v=30">
+<style>.line-warn { color: #b91c1c; font-weight: 700; font-size: 14px; margin-top: 2px; } .line .rm { min-height: 44px; padding: 0 8px; }</style>
 <link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="64x64" href="/img/profil-64.png"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
 <meta property="og:image" content="https://www.licenceoff.com/img/partage.jpg">
 </head>
@@ -15,7 +16,7 @@
   <h1 style="margin:24px 0 0">Mon panier</h1>
   <div id="view"></div>
 </main>
-<script src="/shop.js?v=29"></script>
+<script src="/shop.js?v=30"></script>
 <script>
 LO.page("shop");
 const { el, $, fcfa } = LO;
@@ -55,6 +56,22 @@ async function loadQuote(code) {
   }
   catch (_) { return null; }
 }
+
+// disponibilité réelle : un produit retiré de la boutique ou en rupture ne peut pas être commandé
+let avail = null; // slug -> { in_stock, max }
+async function loadAvail() {
+  const items = LO.cart(); if (!items.length) return;
+  try {
+    const d = await LO.boutique({ action: "catalog" }); if (!d.products) return;
+    avail = Object.fromEntries(d.products.map((p) => [p.slug, { in_stock: p.in_stock, max: p.max_qty, image: p.image_url, name: p.name }]));
+    let ch = false;
+    for (const i of items) { const a = avail[i.slug]; if (!a) continue;
+      if (a.image && i.image !== a.image) { i.image = a.image; ch = true; }
+      if (a.max && i.max !== a.max) { i.max = a.max; if (i.qty > a.max) i.qty = a.max; ch = true; } }
+    if (ch) LO.saveCart(items);
+  } catch (_) {}
+}
+const unavail = (i) => (avail ? (!avail[i.slug] ? "gone" : !avail[i.slug].in_stock ? "out" : "") : "");
 
 // produits physiques : livraison dans Dakar (domicile ou bus) ; hors Dakar, le client nous écrit sur WhatsApp
 let cinfo = { physical: [], shipping: { home: 1500, bus: 1000 } };
@@ -111,8 +128,9 @@ function render() {
       el("p", { text: "Votre panier est vide." }), el("a", { class: "btn", href: LO.url.shop, text: "Découvrir la boutique" })));
     return;
   }
-  const total = items.reduce((s, i) => s + priceOf(i) * i.qty, 0);
-  const listTotal = items.reduce((s, i) => s + i.price * i.qty, 0);
+  const ok = (i) => !unavail(i);
+  const total = items.filter(ok).reduce((s, i) => s + priceOf(i) * i.qty, 0);
+  const listTotal = items.filter(ok).reduce((s, i) => s + i.price * i.qty, 0);
   const lines = items.map((i, idx) => {
     const q = el("input", { type: "number", min: "1", max: String(i.max || 20), value: String(i.qty), "aria-label": "Quantité" });
     const setQ = (n) => { const all = LO.cart(); all[idx].qty = Math.max(1, Math.min(i.max || 20, Math.floor(n) || 1)); LO.saveCart(all); rerender(); };
@@ -121,13 +139,15 @@ function render() {
       el("a", { class: "th", href: LO.url.product(i.slug) }, i.image ? el("img", { src: i.image, alt: "" }) : LO.initials(i.name)),
       el("div", {},
         el("a", { class: "nm", href: LO.url.product(i.slug), style: "color:inherit", text: i.name }),
-        el("div", { class: "note" }, priceOf(i) < i.price ? el("s", { text: fcfa(i.price), style: "margin-right:6px" }) : null, fcfa(priceOf(i)) + " l'unité"),
+        unavail(i) ? el("div", { class: "line-warn", text: unavail(i) === "gone" ? "Ce produit n'est plus vendu. Retirez-le du panier." : "En rupture de stock. Retirez-le ou écrivez-nous sur WhatsApp." })
+          : el("div", { class: "note" }, priceOf(i) < i.price ? el("s", { text: fcfa(i.price), style: "margin-right:6px" }) : null, fcfa(priceOf(i)) + " l'unité"),
         el("div", { style: "display:flex;gap:12px;align-items:center;margin-top:6px" },
           el("div", { class: "qty", style: "transform:scale(.85);transform-origin:left" },
             el("button", { type: "button", text: "−", onclick: () => setQ(i.qty - 1) }), q, el("button", { type: "button", text: "+", onclick: () => setQ(i.qty + 1) })),
           el("button", { class: "rm", text: "Retirer", onclick: () => { const all = LO.cart(); all.splice(idx, 1); LO.saveCart(all); rerender(); } }))),
-      el("strong", { text: fcfa(priceOf(i) * i.qty) }));
+      el("strong", { style: unavail(i) ? "text-decoration:line-through;color:#94a3b8" : "", text: fcfa(priceOf(i) * i.qty) }));
   });
+  const blocked = items.some((i) => unavail(i));
 
   const f = (id, label, type, ac, ph) => [el("label", { for: id, text: label }), el("input", { id, class: "field", type, autocomplete: ac, placeholder: ph })];
   const msg = el("div", { class: "msg" });
@@ -147,9 +167,11 @@ function render() {
     totVal.textContent = fcfa(pay);
     go.textContent = waMode() ? "Commander · " + fcfa(pay) : "Commander et payer " + fcfa(pay);
     go.classList.toggle("hidden", hasPhysical() && ship.method === "out");
+    if (blocked) { go.disabled = true; go.textContent = "Retirez les produits indisponibles"; }
   };
   go.addEventListener("click", async () => {
     msg.textContent = "";
+    if (blocked) return;
     // livraison : nom, adresse et numéro sénégalais obligatoires
     if (hasPhysical()) {
       if (!$("#name") || $("#name").value.trim().length < 2) { msg.textContent = ERR.nom_invalide; return $("#name") && $("#name").focus(); }
@@ -174,7 +196,7 @@ function render() {
         ? "Stock insuffisant pour « " + d.product + " » : il en reste " + d.left + ". Modifiez la quantité."
         : ERR[d.error] || "Erreur, réessayez dans un instant.";
     } catch (_) { msg.textContent = "Erreur de connexion, réessayez."; }
-    go.disabled = false; update();
+    go.disabled = blocked; update();
   });
 
   view.replaceChildren(el("div", { class: "two" },
@@ -240,7 +262,7 @@ function codeBox() {
 }
 render();
 update0();
-async function update0() { await Promise.all([loadCartInfo(), loadQuote(LO.refCode())]); await loadPoints(); render(); }
+async function update0() { await Promise.all([loadCartInfo(), loadQuote(LO.refCode()), loadAvail()]); await loadPoints(); render(); }
 </script>
 </body>
 </html>

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Produit — licenceoff.com</title>
-<link rel="stylesheet" href="/shop.css?v=29">
+<link rel="stylesheet" href="/shop.css?v=30">
 <link rel="icon" href="/favicon.ico" sizes="any"><link rel="icon" type="image/png" sizes="64x64" href="/img/profil-64.png"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
 <meta property="og:image" content="https://www.licenceoff.com/img/partage.jpg">
 </head>
@@ -12,7 +12,7 @@
 <main class="wrap">
   <div id="view"><div class="product"><div class="skeleton"></div><div class="skeleton"></div></div></div>
 </main>
-<script src="/shop.js?v=29"></script>
+<script src="/shop.js?v=30"></script>
 <script>
 LO.page("shop");
 const { el, $, fcfa } = LO;
@@ -75,7 +75,7 @@ function show(p) {
       LO.shareBar(LO.SITE + LO.url.product(p.slug), p.name),
       el("ul", { class: "perks" },
         el("li", { text: LO.DELIVERY_TEXT[p.delivery_type] || "Livraison rapide" }),
-        el("li", { text: "Paiement sécurisé : Wave, Orange Money, carte" }),
+        el("li", { text: "Paiement Wave ou Orange Money" }),
         el("li", { text: "Assistance à l'installation sur WhatsApp" })),
       p.description ? el("div", {}, el("h2", { style: "font-size:18px;margin:26px 0 8px", text: "Description" }), el("div", { class: "desc", text: p.description })) : null,
     )), reviewsEl(p));

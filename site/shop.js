@@ -423,10 +423,10 @@ const LO = (() => {
   function waFloat(show) { document.body.classList.toggle("no-wa", !show); }
   function page(active) { captureSource(); header(active); footer(); waFloat(active !== "blog"); navPages(active); autoCrumbs(); toTop(); hit(); cookieBar(); captureRef(); }
   const DELIVERY_TEXT = {
-    key: "Clé de licence livrée immédiatement après paiement",
-    key_file: "Clé de licence + lien de téléchargement livrés immédiatement",
-    file: "Lien de téléchargement livré immédiatement",
-    stock: "Identifiants livrés immédiatement après paiement",
+    key: "Clé de licence envoyée par email dès le paiement confirmé",
+    key_file: "Lien de téléchargement par email, puis votre clé une fois l'installation terminée",
+    file: "Lien de téléchargement envoyé par email dès le paiement confirmé",
+    stock: "Identifiants envoyés par email dès le paiement confirmé",
     manual: "Service traité par notre équipe après paiement",
     physical: "Produit physique : nous vous contactons sur WhatsApp pour la livraison",
   };
