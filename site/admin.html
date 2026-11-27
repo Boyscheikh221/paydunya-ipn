@@ -118,6 +118,16 @@
   .mconv .mtop { display:flex; justify-content:space-between; gap:8px; }
   .mconv .msub { font-weight:700; margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .mconv .mprev { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ktag { display:inline-block; padding:1px 8px; border-radius:99px; font-size:12px; font-weight:700; white-space:nowrap; border:1px solid transparent; }
+  .k-client { background:#dcfce7; color:#14532d; border-color:#86efac; }
+  .k-ancien { background:#fef3c7; color:#713f12; border-color:#fcd34d; }
+  .k-partenaire { background:#dbeafe; color:#1e3a8a; border-color:#93c5fd; }
+  .k-visiteur { background:#f1f5f9; color:#334155; border-color:#cbd5e1; }
+  .mconv { flex-shrink:0; }
+  .mconv .mtags { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:6px; }
+  .mkind { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:8px 0; padding:8px 10px; background:#f8fafc; border:1px solid var(--ligne); border-radius:10px; }
+  .mkind select { width:auto; }
+  #mPartners textarea { font-family:ui-monospace,Consolas,monospace; font-size:13px; }
   .mhead { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:flex-start; margin-bottom:8px; }
   .mmsgs { display:flex; flex-direction:column; gap:10px; margin:14px 0; max-height:55vh; overflow:auto; }
   .mmsg { max-width:88%; border-radius:12px; padding:10px 12px; border:1px solid var(--ligne); }
@@ -750,14 +760,20 @@
     </section>
 
     <section id="tab-messages" class="hidden">
-      <h1>Messages des clients</h1>
-      <p class="small">Quand un client répond à un email du site, ou écrit à contact@licenceoff.com, son message arrive ici. Vos réponses partent de contact@licenceoff.com et restent dans la conversation.</p>
+      <h1>Messages reçus</h1>
+      <p class="small">Les emails reçus sur contact@, commandes@ et support@licenceoff.com arrivent ici. Chaque expéditeur reçoit une étiquette automatique : <span class="ktag k-client">Client</span> (a déjà commandé ou a un compte), <span class="ktag k-ancien">Ancien client</span> (clients « Avant le site »), <span class="ktag k-partenaire">Partenaire</span> (parrains, Facebook, Google, fournisseurs…) ou <span class="ktag k-visiteur">Visiteur</span>. Vos réponses partent de contact@licenceoff.com.</p>
       <div class="bar" style="flex-wrap:wrap;gap:8px;margin-bottom:12px">
         <select id="mBox"><option value="all">En cours</option><option value="new">Non lus</option><option value="archived">Archivés</option></select>
+        <select id="mType" aria-label="Type d'expéditeur"><option value="">Tous les types</option><option value="client">Clients</option><option value="ancien">Anciens clients</option><option value="partenaire">Partenaires</option><option value="visiteur">Visiteurs</option></select>
         <input id="mQ" type="search" class="grow" placeholder="Rechercher : nom, email, n° de commande">
         <button id="mRefresh" class="grey">🔄 Actualiser</button>
         <button id="mNew" class="org">✏️ Écrire à un client</button>
       </div>
+      <details id="mPartners" class="box" style="margin-bottom:12px"><summary><b>🤝 Domaines partenaires</b> <span class="small" id="mPartnersN"></span></summary>
+        <p class="small">Tout email venant d'un de ces domaines est classé <span class="ktag k-partenaire">Partenaire</span> (les sous-domaines aussi : google.com couvre accounts.google.com). Un domaine par ligne. Les parrains et revendeurs sont classés Partenaire automatiquement, pas besoin de les ajouter ici.</p>
+        <textarea id="mPartnersTxt" rows="6" class="full" placeholder="facebookmail.com&#10;google.com&#10;monfournisseur.com"></textarea>
+        <div class="bar"><button id="mPartnersSave" class="green">Enregistrer les domaines</button></div>
+      </details>
       <div class="inbox"><div id="mList" class="box"></div><div id="mThread" class="box hidden"></div><div id="mEmpty" class="box mempty">Choisissez une conversation à gauche pour la lire et répondre.</div></div>
     </section>
 
@@ -937,6 +953,7 @@ const STOCK_TYPES = ["key", "key_file", "stock"];
 let stock = []; // stock de clés par produit (rempli par le tableau de bord)
 const METHOD = { whatsapp: "💬 WhatsApp", wave: "Wave", orange_money: "Orange Money", free_money: "Free Money", especes: "Espèces", paydunya: "PayDunya", manuel: "Transfert manuel", autre: "Autre" };
 const ERR = {
+  sql_69_manquant: "Il manque le fichier SQL 69 dans Supabase (types des contacts). Lancez-le une fois dans Supabase > SQL Editor.", type_inconnu: "Type de contact inconnu.",
   points_invalides: "Nombre de points invalide (entre -100000 et 100000, sans 0).",
   pack_invalide: "Pack invalide : choisissez des produits livrés avec une clé ou des identifiants (pas un autre pack).", paiement_non_valide: "Validez d'abord le paiement de la commande avant de libérer une clé.", rien_a_expedier: "Aucun produit physique à expédier dans cette commande.", produit_vendu: "Ce produit a déjà été vendu : il ne peut pas être supprimé (l'historique des commandes en a besoin). Laissez-le en brouillon, il reste caché du site.", produit_publie: "Repassez d'abord le produit en brouillon avant de le supprimer.", produit_source: "D'autres produits prennent leurs clés dans le stock de celui-ci : changez-les d'abord.", lien_invalide: "Le lien doit commencer par https://", commande_annulee: "Cette commande est annulée.", pas_de_produit_physique: "Cette commande n'a pas de produit physique.", pas_dans_le_pack: "Ce produit ne fait pas partie du pack.", deja_livre: "Cet article est déjà livré.", stock_source_invalide: "Stock commun impossible : choisissez un produit avec son propre stock de clés (pas un pack, ni un produit qui prend déjà ses clés ailleurs).", pack_sans_stock: "Un pack n'a pas de stock propre : ajoutez les clés dans le stock de chaque produit du pack.",
   rien_a_noter: "Rien à noter : le client a déjà donné son avis sur tous ses produits, ou la commande n'a pas d'adresse email valide.",
@@ -1332,21 +1349,36 @@ setInterval(refreshTodo, 60000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshTodo(); });
 
 // ---------- messages des clients ----------
-let inboxRows = [], curThread = null;
+let inboxRows = [], curThread = null, partnerDomains = null;
+const KIND = { client: "Client", ancien: "Ancien client", partenaire: "Partenaire", visiteur: "Visiteur" };
+const KIND_ICON = { client: "🛒", ancien: "🕰", partenaire: "🤝", visiteur: "👤" };
+function kindLabel(ct) {
+  if (!ct) return KIND.visiteur;
+  if (ct.type === "client") return ct.purchases ? "Client · " + ct.purchases + " achat" + (ct.purchases > 1 ? "s" : "") : ct.orders ? "Client · commande non payée" : ct.account ? "Client · compte, aucun achat" : "Client";
+  if (ct.type === "ancien") return "Ancien client" + (ct.legacy ? " · " + ct.legacy : "");
+  if (ct.type === "partenaire") return "Partenaire" + (ct.parrain ? " · parrain" : ct.domain ? " · " + ct.domain : "");
+  return KIND.visiteur;
+}
+function kindTag(ct) { const t = (ct && ct.type) || "visiteur"; const s = el("span", KIND_ICON[t] + " " + kindLabel(ct), "ktag k-" + t); if (ct && ct.manual) s.title = "Type choisi à la main"; return s; }
+const FREE_MAIL = /^(gmail|googlemail|yahoo|ymail|hotmail|outlook|live|msn|icloud|me|mac|aol|gmx|orange|free|laposte|proton|protonmail|yandex|mail)\./i;
 async function loadMessages() {
-  const d = await api({ action: "inbox_list", box: $("mBox").value, q: $("mQ").value });
+  const d = await api({ action: "inbox_list", box: $("mBox").value, q: $("mQ").value, type: $("mType").value });
   inboxRows = d.rows || [];
+  if (d.counts) for (const o of $("mType").options) { if (o.value) o.textContent = { client: "🛒 Clients", ancien: "🕰 Anciens clients", partenaire: "🤝 Partenaires", visiteur: "👤 Visiteurs" }[o.value] + " (" + (d.counts[o.value] || 0) + ")"; }
+  if (d.partner_domains && (partnerDomains === null || document.activeElement !== $("mPartnersTxt"))) { partnerDomains = d.partner_domains; $("mPartnersTxt").value = partnerDomains.join("\n"); $("mPartnersN").textContent = "(" + partnerDomains.length + ")"; }
   $("mList").replaceChildren(...(inboxRows.length ? inboxRows.map((c) => {
     const b = el("button", null, "mconv" + (c.unread ? " unread" : "") + (curThread === c.email ? " on" : ""));
     const top = el("div", null, "mtop");
     top.append(el("strong", c.name || c.email), el("span", dt(c.last.created_at), "small"));
     b.append(top, el("div", (c.last.direction === "out" ? "Vous : " : "") + (c.last.subject || "Sans objet"), "small msub"),
       el("div", c.last.body_text || "", "small mprev"));
-    if (c.unread) b.append(el("span", c.unread + " nouveau" + (c.unread > 1 ? "x" : ""), "tag s-error"));
-    if (c.order_ref) b.append(el("span", " " + c.order_ref, "small"));
+    const tags = el("div", null, "mtags"); tags.append(kindTag(c.contact));
+    if (c.unread) tags.append(el("span", c.unread + " nouveau" + (c.unread > 1 ? "x" : ""), "tag s-error"));
+    if (c.order_ref) tags.append(el("span", c.order_ref, "small"));
+    b.append(tags);
     b.addEventListener("click", () => openThread(c.email).catch((e) => toast(errMsg(e))));
     return b;
-  }) : [el("p", $("mBox").value === "new" ? "Aucun nouveau message ✔" : "Aucun message pour l'instant. Les réponses de vos clients aux emails du site, et les emails envoyés à contact@licenceoff.com, arrivent ici.", "small")]));
+  }) : [el("p", $("mType").value ? "Aucune conversation de ce type ici." : $("mBox").value === "new" ? "Aucun nouveau message ✔" : "Aucun message pour l'instant. Les réponses de vos clients aux emails du site, et les emails envoyés à contact@licenceoff.com, arrivent ici.", "small")]));
 }
 function splitQuote(t) {
   const i = t.search(/\n\s*(Le .{3,120}a écrit\s*:|On .{3,120}wrote\s*:|-{2,}\s*(Original|Message d'origine)|De\s*:.*\n|From\s*:.*\n|>)/);
@@ -1369,6 +1401,24 @@ async function openThread(email, opts = {}) {
   }
   acts.append(btn("Fermer", "grey", async () => { curThread = null; box.classList.add("hidden"); await loadMessages(); }));
   head.append(who, acts);
+  const ct = d.contact || { type: "visiteur" };
+  const kbar = el("div", null, "mkind");
+  const ksel = el("select"); ksel.setAttribute("aria-label", "Type de ce contact");
+  ksel.append(...[["", "Automatique (" + KIND[ct.auto || "visiteur"] + ")"], ["client", "Client"], ["ancien", "Ancien client"], ["partenaire", "Partenaire"], ["visiteur", "Visiteur"]].map(([v, t]) => { const o = el("option", t); o.value = v; return o; }));
+  ksel.value = ct.manual || "";
+  const setKind = async (kind, msg) => { await api({ action: "inbox_contact_set", email, kind, name }); toast(msg); await openThread(email); };
+  ksel.addEventListener("change", () => setKind(ksel.value, ksel.value ? "Contact classé « " + KIND[ksel.value] + " » ✔" : "Type automatique rétabli ✔").catch((e) => { toast(errMsg(e)); ksel.value = ct.manual || ""; }));
+  kbar.append(el("span", "Type :", "small"), kindTag(ct), ksel);
+  if (ct.manual) kbar.append(el("span", "choisi à la main", "small"));
+  if (ct.type === "visiteur") kbar.append(btn("➕ Ajouter à mes clients", "green", () => setKind("client", "Ajouté à vos clients ✔ (visible dans l'onglet Clients)")));
+  const dom = (email.split("@")[1] || "").toLowerCase();
+  if (ct.type === "visiteur" && dom && !FREE_MAIL.test(dom) && partnerDomains && !partnerDomains.includes(dom)) {
+    kbar.append(btn("🤝 Classer tout @" + dom + " en partenaire", "grey", async () => {
+      const r = await api({ action: "inbox_partners_set", domains: [...partnerDomains, dom] });
+      partnerDomains = r.domains; $("mPartnersTxt").value = partnerDomains.join("\n"); $("mPartnersN").textContent = "(" + partnerDomains.length + ")";
+      toast("@" + dom + " ajouté aux domaines partenaires ✔"); await openThread(email);
+    }));
+  }
   const ords = el("div", null, "small");
   ords.append(el("b", "Commandes : "), d.orders.length ? "" : "aucune avec cet email");
   for (const o of d.orders.slice(0, 6)) {
@@ -1398,7 +1448,7 @@ async function openThread(email, opts = {}) {
   });
   form.append(subj, ta, el("div", null, "bar"));
   form.lastChild.append(send);
-  box.replaceChildren(head, ords, list, form);
+  box.replaceChildren(head, kbar, ords, list, form);
   list.scrollTop = list.scrollHeight;
   if (opts.focus) ta.focus();
   if (window.innerWidth < 900) box.scrollIntoView({ behavior: "smooth" });
@@ -1406,6 +1456,14 @@ async function openThread(email, opts = {}) {
 }
 async function openMessages(email) { await openTab("messages"); await openThread(email, { focus: true }); }
 $("mBox").addEventListener("change", () => loadMessages().catch((e) => toast(errMsg(e))));
+$("mType").addEventListener("change", () => loadMessages().catch((e) => toast(errMsg(e))));
+$("mPartnersSave").addEventListener("click", async () => {
+  try {
+    const r = await api({ action: "inbox_partners_set", domains: $("mPartnersTxt").value });
+    partnerDomains = r.domains; $("mPartnersTxt").value = partnerDomains.join("\n"); $("mPartnersN").textContent = "(" + partnerDomains.length + ")";
+    toast(partnerDomains.length + " domaine(s) partenaire(s) enregistré(s) ✔"); await loadMessages(); refreshTodo();
+  } catch (e) { toast(errMsg(e)); }
+});
 $("mRefresh").addEventListener("click", () => { loadMessages().then(() => toast("Liste à jour ✔")).catch((e) => toast(errMsg(e))); refreshTodo(); });
 let mqT; $("mQ").addEventListener("input", () => { clearTimeout(mqT); mqT = setTimeout(() => loadMessages().catch((e) => toast(errMsg(e))), 300); });
 $("mNew").addEventListener("click", async () => {
@@ -1415,7 +1473,7 @@ $("mNew").addEventListener("click", async () => {
 });
 
 // ---------- journal ----------
-const SRC = { messages: "Message client", paiement: "Paiement", email: "Email", livraison: "Livraison", telechargement: "Téléchargement", connexion: "Connexion", boutique: "Boutique", parrainage: "Parrainage", rapport: "Rapport", admin: "Admin" };
+const SRC = { messages: "Messages", paiement: "Paiement", email: "Email", livraison: "Livraison", telechargement: "Téléchargement", connexion: "Connexion", boutique: "Boutique", parrainage: "Parrainage", rapport: "Rapport", admin: "Admin" };
 const LVL = { error: "Erreur", warn: "Attention", info: "Info" };
 let logRows = [];
 async function loadLogs(more) {
@@ -2882,7 +2940,7 @@ function renderClients() {
         el("div", "Du " + (l.first || "—") + " au " + (l.last || "—") + " · payé : " + (l.paid || "?") + " (déduit) · email : " + (l.email_valid || "?"), "small"),
         l.notes ? el("div", "Note : " + l.notes, "small") : null);
     }
-    return tr(td(el("strong", c.name || "—"), c.account ? el("span", " 👤", "small") : null, c.legacy ? el("span", " 🕰 Avant le site", "small") : null, c.marketing ? el("span", " ✅ offres", "small") : null, el("br"), el("span", c.email, "small"), el("br"), el("span", c.phone || "", "small")), td(det, acc, leg), td(el("strong", fcfa(c.spent)), el("br"), el("span", c.paid_orders + " payée(s)", "small")),
+    return tr(td(el("strong", c.name || "—"), c.account ? el("span", " 👤", "small") : null, c.legacy ? el("span", " 🕰 Avant le site", "small") : null, c.from_inbox ? el("span", " 📥 ajouté depuis Messages", "small") : null, c.marketing ? el("span", " ✅ offres", "small") : null, el("br"), el("span", c.email, "small"), el("br"), el("span", c.phone || "", "small")), td(det, acc, leg), td(el("strong", fcfa(c.spent)), el("br"), el("span", c.paid_orders + " payée(s)", "small")),
       td(el("strong", String(c.points || 0)), el("br"), btn("🎁 Gérer", "grey", () => loyaltyManage(c.email))),
       td(el("span", dt(c.first) + " / " + dt(c.last), "small")), td((c.codes || []).join(", ") || "—"), td(el("span", c.ip || "—", "small mono")),
       td(btn(c.messages ? "✉️ " + c.messages + " message(s)" : "✉️ Écrire", "grey", () => openMessages(c.email))));
