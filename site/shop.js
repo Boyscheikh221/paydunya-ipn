@@ -282,10 +282,15 @@ const LO = (() => {
       }
       list = null;
       if (!line) continue;
-      const img = line.match(/^!\[([^\]]*)\]\(([^\s)]+)\)$/);
+      // ![description](adresse#1200x800 "légende") : description = texte alternatif, légende facultative,
+      // dimensions notées par l'admin pour réserver la place (la page ne saute pas pendant le chargement)
+      const img = line.match(/^!\[([^\]]*)\]\(([^\s)"]+)(?:\s+"([^"]*)")?\)$/);
       if (img && okUrl(img[2])) {
-        const fig = el("figure", { class: "img" }, el("img", { src: img[2], alt: img[1] || "", loading: "lazy" }));
-        if (img[1]) fig.append(el("figcaption", { text: img[1] }));
+        const dim = img[2].match(/#(\d+)x(\d+)$/);
+        const fig = el("figure", { class: "img" }, el("img", { src: img[2].replace(/#.*$/, ""), alt: img[1] || "", loading: "lazy", decoding: "async",
+          ...(dim ? { width: dim[1], height: dim[2] } : {}) }));
+        const cap = img[3] != null ? img[3] : dim ? "" : img[1]; // anciens articles : la description servait de légende
+        if (cap) fig.append(el("figcaption", { text: cap }));
         frag.append(fig); continue;
       }
       const v = yt(line);

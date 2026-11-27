@@ -578,6 +578,8 @@
         <input type="hidden" id="bId">
         <div class="grid" style="grid-template-columns:2fr 1fr"><div><label>Titre</label><input id="bTitle"></div>
           <div><label>Rubrique</label><select id="bRub"></select></div></div>
+        <label>🔗 Adresse de l'article : www.licenceoff.com/blog/<b id="bSlugShow">…</b> (courte, sans accents ; ne la changez plus une fois l'article publié)</label>
+        <input id="bSlug" maxlength="80" placeholder="Laisser vide = faite à partir du titre (ex. activer-office-2024)">
         <label>✍️ Extrait : 1 phrase qui donne envie de lire. Affiché sur Google, sur Facebook et dans la liste du blog</label>
         <input id="bExcerpt" maxlength="160" placeholder="Ex. : Activez Windows 11 Pro en 5 minutes avec une clé authentique, sans formatage."><div class="small" id="bExCount"></div>
         <label>🖼️ Image principale (à la une) : affichée en haut de l'article, dans la liste du blog et sur Facebook</label>
@@ -2428,11 +2430,11 @@ $("bSort").addEventListener("change", () => renderBlogRows(loadBlog.fb));
 $("bFilter").addEventListener("change", () => renderBlogRows(loadBlog.fb));
 function editPost(p) {
   remember("post", p.id);
-  $("bTitleH").textContent = "Modifier : " + p.title; $("bId").value = p.id; $("bTitle").value = p.title; $("bExcerpt").value = p.excerpt || ""; exCount();
+  $("bTitleH").textContent = "Modifier : " + p.title; $("bId").value = p.id; $("bTitle").value = p.title; $("bSlug").value = p.slug || ""; slugShow(); $("bExcerpt").value = p.excerpt || ""; exCount();
   $("bContent").value = p.content || ""; $("bImg").value = p.cover_url || ""; $("bVid").value = p.cover_video || ""; $("bImgPrev").src = p.cover_url || ""; $("bImgPrev").classList.toggle("hidden", !p.cover_url);
   $("bPub").checked = p.published; $("bRub").value = p.rubrique_id || ""; $("bWa").checked = p.show_whatsapp === true; openForm("blog"); window.scrollTo(0, 0);
 }
-function resetPost() { $("bPreview").classList.add("hidden"); $("bContent").classList.remove("hidden"); $("bPrevBtn").textContent = "👁 Aperçu"; $("bEdMsg").textContent = ""; $("bTitleH").textContent = "Nouvel article"; for (const id of ["bId", "bTitle", "bExcerpt", "bContent", "bImg", "bVid"]) $(id).value = ""; $("bImgPrev").classList.add("hidden"); $("bPub").checked = false; $("bRub").value = ""; $("bWa").checked = false; $("bImgMsg").textContent = ""; exCount(); }
+function resetPost() { $("bPreview").classList.add("hidden"); $("bContent").classList.remove("hidden"); $("bPrevBtn").textContent = "👁 Aperçu"; $("bEdMsg").textContent = ""; $("bTitleH").textContent = "Nouvel article"; for (const id of ["bId", "bTitle", "bSlug", "bExcerpt", "bContent", "bImg", "bVid"]) $(id).value = ""; slugShow(); $("bImgPrev").classList.add("hidden"); $("bPub").checked = false; $("bRub").value = ""; $("bWa").checked = false; $("bImgMsg").textContent = ""; exCount(); }
 function exCount() { const n = $("bExcerpt").value.trim().length;
   $("bExCount").textContent = n ? n + " / 160 caractères" + (n < 70 ? " · un peu court, visez 120 à 155" : n <= 155 ? " · ✔ bonne longueur" : " · Google coupera la fin") : "Vide : on prendra automatiquement le début de l'article (150 caractères). Idéal : 120 à 155 caractères.";
   $("bExCount").style.color = n && (n < 70 || n > 155) ? "#c2410c" : n ? "#15803d" : ""; }
@@ -2457,20 +2459,51 @@ function edBlock(text) { // bloc sur sa propre ligne (image, vidéo, séparateur
   const post = after.startsWith("\n") ? "\n" : "\n\n";
   t.setRangeText(pre + text + post, a, a, "end"); t.focus();
 }
+// Image dans le texte : convertie dans le navigateur en WebP (léger, lu par tous les navigateurs récents),
+// 1200 px de côté au plus. Ses dimensions sont notées à la fin du lien (#1200x800) pour que la page ne « saute » pas au chargement.
+async function toWebp(file, max) {
+  let bmp;
+  try { bmp = await createImageBitmap(file); }
+  catch { throw new Error("Format d'image non lu par le navigateur : enregistrez-la en JPG ou PNG puis réessayez."); }
+  const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+  const w = Math.round(bmp.width * k), h = Math.round(bmp.height * k);
+  const c = Object.assign(document.createElement("canvas"), { width: w, height: h });
+  const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, w, h);
+  g.imageSmoothingQuality = "high"; g.drawImage(bmp, 0, 0, w, h); bmp.close?.();
+  let blob = await new Promise((ok) => c.toBlob(ok, "image/webp", 0.8));
+  let ext = "webp";
+  if (!blob || blob.type !== "image/webp") { blob = await new Promise((ok) => c.toBlob(ok, "image/jpeg", 0.82)); ext = "jpg"; } // vieux navigateur
+  if (!blob) throw new Error("Conversion de l'image impossible.");
+  const base = (file.name || "image").replace(/\.[^.]+$/, "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\w-]+/g, "-").slice(0, 60) || "image";
+  return { file: new File([blob], base + "." + ext, { type: blob.type }), w, h };
+}
 async function edUpload(files) {
   for (const f of [...files].filter((x) => /^image\//.test(x.type))) {
-    if (f.size > 5 * 1048576) { toast("« " + f.name + " » est trop lourde (max 5 Mo)"); continue; }
+    if (f.size > 25 * 1048576) { toast("« " + f.name + " » est trop lourde (max 25 Mo)"); continue; }
     try {
-      const { url, public_url } = await api({ action: "image_upload_url", filename: f.name || "image.png" });
-      await putFile(url, f, (p) => ($("bEdMsg").textContent = "Envoi de l'image… " + p + " %"));
-      const alt = (await uiPrompt("Légende de l'image (facultatif, aide aussi Google) :", "") || "").replace(/[\[\]]/g, "");
-      edBlock("![" + alt + "](" + public_url + ")");
-      $("bEdMsg").textContent = "Image ajoutée ✔";
-      if (!$("bImg").value) { $("bImg").value = public_url; $("bImgPrev").src = public_url; $("bImgPrev").classList.remove("hidden"); $("bImgMsg").textContent = "Utilisée aussi comme couverture (modifiable)"; }
+      $("bEdMsg").textContent = "Préparation de l'image…";
+      const j = await toWebp(f, 1200);
+      const { url, public_url } = await api({ action: "image_upload_url", filename: j.file.name });
+      await putFile(url, j.file, (p) => ($("bEdMsg").textContent = "Envoi de l'image… " + p + " %"));
+      const clean = (t) => String(t || "").replace(/[\[\]"]/g, "").replace(/\s+/g, " ").trim();
+      const alt = clean(await uiPrompt("Décrivez l'image en une phrase (texte alternatif, lu par Google et les personnes malvoyantes). Ex. : « Clé Office 2024 sur un ordinateur portable à Dakar »", ""));
+      const cap = clean(await uiPrompt("Légende affichée sous l'image (facultatif, laissez vide pour aucune) :", ""));
+      edBlock("![" + alt + "](" + public_url + "#" + j.w + "x" + j.h + (cap ? ' "' + cap + '"' : "") + ")");
+      $("bEdMsg").textContent = "Image ajoutée ✔ " + j.w + " × " + j.h + ", " + Math.round(j.file.size / 1024) + " Ko" + (alt ? "" : " — ⚠️ sans description : ajoutez-la entre les crochets [ ]");
+      if (!$("bImg").value) { // couverture : en JPG (Facebook refuse le WebP)
+        const c = await toJpeg(f, 1600);
+        const up = await api({ action: "image_upload_url", filename: c.file.name });
+        await putFile(up.url, c.file);
+        $("bImg").value = up.public_url; $("bImgPrev").src = up.public_url; $("bImgPrev").classList.remove("hidden"); $("bImgMsg").textContent = "Utilisée aussi comme couverture (modifiable)";
+      }
     } catch (e) { $("bEdMsg").textContent = errMsg(e); }
   }
   if (!$("bPreview").classList.contains("hidden")) renderPreview();
 }
+// adresse de l'article : comme le serveur (minuscules, sans accents, tirets)
+const slugOf = (t) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
+function slugShow() { $("bSlugShow").textContent = slugOf($("bSlug").value || $("bTitle").value) || "…"; }
+$("bSlug").addEventListener("input", slugShow); $("bTitle").addEventListener("input", slugShow);
 $("bTools").addEventListener("click", async (e) => {
   const k = e.target.closest("[data-md]")?.dataset.md; if (!k) return;
   if (k === "h2") edLines("## ", "Titre de la partie");
@@ -2510,8 +2543,8 @@ function renderPreview() {
     const line = raw.trim(); const ul = /^[-*] /.test(line), ol = /^\d+[.)] /.test(line);
     if (ul || ol) { const t = ul ? "ul" : "ol"; if (!list || tag !== t) { list = mk(t); tag = t; box.append(list); } const li = mk("li"); li.append(inline(line.replace(/^([-*]|\d+[.)]) /, ""))); list.append(li); continue; }
     list = null; if (!line) continue;
-    const img = line.match(/^!\[([^\]]*)\]\(([^\s)]+)\)$/);
-    if (img) { const fg = mk("figure"), i = mk("img"); i.src = img[2]; fg.append(i); if (img[1]) fg.append(mk("figcaption", img[1])); box.append(fg); continue; }
+    const img = line.match(/^!\[([^\]]*)\]\(([^\s)"]+)(?:\s+"([^"]*)")?\)$/);
+    if (img) { const fg = mk("figure"), i = mk("img"); i.src = img[2]; i.alt = img[1]; fg.append(i); const cap = img[3] != null ? img[3] : /#\d+x\d+$/.test(img[2]) ? "" : img[1]; /* anciens articles : la description servait de légende */ if (cap) fg.append(mk("figcaption", cap)); if (!img[1]) fg.append(Object.assign(mk("div", "⚠️ Image sans description (texte alternatif) : ajoutez-la entre les crochets [ ]"), { className: "small" })); box.append(fg); continue; }
     if (/^https?:\/\/(www\.)?(youtube\.com|youtu\.be)\//.test(line)) { box.append(Object.assign(mk("div", "▶ Vidéo YouTube (affichée sur le site)"), { className: "video" })); continue; }
     let e;
     if (line === "---") e = mk("hr");
@@ -2533,7 +2566,7 @@ $("bExcerpt").addEventListener("input", exCount); exCount();
 $("bPublish").addEventListener("click", () => { $("bPub").checked = true; $("bSave").click(); });
 $("bSave").addEventListener("click", async () => {
   if (!$("bRub").value && !await uiConfirm("Cet article n'a pas de rubrique : il n'apparaîtra dans aucun onglet du blog (seulement dans « Tous »). Continuer quand même ?")) return;
-  try { const d = await api({ action: "post_save", id: $("bId").value || undefined, title: $("bTitle").value, excerpt: $("bExcerpt").value, content: $("bContent").value, cover_url: $("bImg").value, cover_video: $("bVid").value, rubrique_id: $("bRub").value, show_whatsapp: $("bWa").checked, published: $("bPub").checked, facebook: $("bFb").checked });
+  try { const d = await api({ action: "post_save", id: $("bId").value || undefined, title: $("bTitle").value, slug: slugOf($("bSlug").value || $("bTitle").value), excerpt: $("bExcerpt").value, content: $("bContent").value, cover_url: $("bImg").value, cover_video: $("bVid").value, rubrique_id: $("bRub").value, show_whatsapp: $("bWa").checked, published: $("bPub").checked, facebook: $("bFb").checked });
     toast(($("bPub").checked ? "Article publié ✔" : "Brouillon enregistré ✔") + (d.facebook ? (d.facebook.ok ? " · publié sur Facebook ✔" : " · Facebook : " + (ERR[d.facebook.reason] || d.facebook.reason)) : ""));
     resetPost(); await loadBlog(); }
   catch (e) { toast(errMsg(e)); }

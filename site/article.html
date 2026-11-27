@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Article — licenceoff.com</title>
-<link rel="stylesheet" href="/shop.css?v=33">
+<link rel="stylesheet" href="/shop.css?v=34">
 <link rel="icon" type="image/png" sizes="192x192" href="/img/profil-192.png"><link rel="icon" type="image/png" sizes="48x48" href="/img/profil-48.png"><link rel="icon" href="/favicon.ico" sizes="any"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
 <meta property="og:image" content="https://www.licenceoff.com/img/partage.jpg">
 </head>
@@ -12,7 +12,7 @@
 <main>
   <article class="post" id="view"><div class="skeleton"></div></article>
 </main>
-<script src="/shop.js?v=33"></script>
+<script src="/shop.js?v=34"></script>
 <script>
 LO.page("blog");
 const { el, $ } = LO;
@@ -33,7 +33,7 @@ LO.boutique({ action: "post", slug }).then((d) => {
     el("h1", { text: p.title }),
     el("div", { class: "note" }, new Date(p.published_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }) + " · " + p.minutes + " min de lecture",
       r ? " · " : null, r ? el("a", { href: "/blog/rubrique/" + encodeURIComponent(r.slug), text: r.name }) : null),
-    LO.ytId(p.cover_video) ? el("div", { class: "cv" }, LO.ytEmbed(p.cover_video)) : p.cover_url ? el("div", { class: "cv" }, el("img", { src: p.cover_url, alt: "" })) : null,
+    LO.ytId(p.cover_video) ? el("div", { class: "cv" }, LO.ytEmbed(p.cover_video)) : p.cover_url ? el("div", { class: "cv" }, el("img", { src: p.cover_url, alt: p.title, fetchpriority: "high", decoding: "async" })) : null,
     content,
     LO.shareBar(LO.SITE + LO.url.post(p.slug), p.title),
     el("div", { class: "panel", style: "margin-top:28px;display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap" },
