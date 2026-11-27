@@ -153,7 +153,7 @@ function showMac(p) {
       el("div", { class: "img" }, p.image_url ? el("img", { src: p.image_url, alt: p.name }) : el("span", { class: "ph", style: "font-size:64px;font-weight:800;color:#94a3b8", text: LO.initials(p.name) })),
       el("div", {},
         el("h1", { text: p.name }), from,
-        el("ol", { class: "mac-steps", id: "macSteps" }, el("li", { text: "Votre Mac" }), el("li", { text: "Votre Office" }), el("li", { text: "Commande" })),
+        el("ol", { class: "mac-steps", id: "macSteps", "aria-label": "Étapes de la commande" }, el("li", {}, el("span", { class: "sm-hide", text: "Votre " }), "Mac"), el("li", {}, el("span", { class: "sm-hide", text: "Votre " }), "Office"), el("li", { text: "Commande" })),
         box,
         LO.shareBar(LO.SITE + LO.url.product(p.slug), p.name),
         p.description ? el("div", {}, el("h2", { style: "font-size:18px;margin:26px 0 8px", text: "Description" }), el("div", { class: "desc", text: p.description })) : null)),
@@ -179,9 +179,15 @@ function showMac(p) {
   const macOf = (id) => MAC.macos.find((m) => m.id === id);
   const macTxt = (m) => m.id === "old" ? "macOS 10.15 (Catalina) ou plus ancien" : m.name + " " + m.num;
   const wa = (msg) => "https://wa.me/" + LO.WHATSAPP_NUMBER + "?text=" + encodeURIComponent(msg);
-  function stepOn(n) { [...$("#macSteps").children].forEach((li, i) => { li.classList.toggle("on", i === n - 1); li.classList.toggle("done", i < n - 1); }); }
-  function go(id) { const u = new URL(location.href); if (id) u.searchParams.set("mac", id); else u.searchParams.delete("mac"); history.pushState(null, "", u.pathname + u.search); render(); $("#macSteps").scrollIntoView({ behavior: "smooth", block: "start" }); }
+  function stepOn(n) { [...$("#macSteps").children].forEach((li, i) => { li.classList.toggle("on", i === n - 1); li.classList.toggle("done", i < n - 1); if (i === n - 1) li.setAttribute("aria-current", "step"); else li.removeAttribute("aria-current"); }); }
+  // après un changement d'étape : on remonte au début du parcours (sans animation si le visiteur les a désactivées) et le focus va sur le titre
+  const calm = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function focusTitle() { const h = box.querySelector("h2"); if (h) { h.tabIndex = -1; h.focus({ preventScroll: true }); } }
+  const svgI = (d, size) => { const sv = LO.icon(d, size || 16); sv.setAttribute("aria-hidden", "true"); return sv; };
+  const I_OK = '<path d="M20 6 9 17l-5-5"/>', I_WARN = '<path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>';
+  function go(id) { const u = new URL(location.href); if (id) u.searchParams.set("mac", id); else u.searchParams.delete("mac"); history.pushState(null, "", u.pathname + u.search); render(); $("#macSteps").scrollIntoView({ behavior: calm() ? "auto" : "smooth", block: "start" }); focusTitle(); }
 
+  let lastMac = "";
   function render() {
     const m = macOf(new URLSearchParams(location.search).get("mac") || "");
     if (!m) return step1();
@@ -205,7 +211,7 @@ function showMac(p) {
           el("div", { class: "os", text: "macOS Sequoia" }),
           el("div", { class: "ver", text: "Version 15.1" }))),
       el("p", { class: "note", style: "margin:14px 0 8px", text: "Puis cliquez sur votre version :" }),
-      el("div", { class: "mac-os" }, ...MAC.macos.map((x) => el("button", { type: "button", class: "mac-pick", onclick: () => go(x.id) },
+      el("div", { class: "mac-os", role: "group", "aria-label": "Versions de macOS" }, ...MAC.macos.map((x) => el("button", { type: "button", class: "mac-pick" + (x.id === lastMac ? " was" : ""), onclick: () => { lastMac = x.id; go(x.id); } },
         el("b", { text: x.name }), el("span", { text: x.id === "old" ? x.num : "Version " + x.num + ".x" })))),
       el("p", { class: "note", style: "margin-top:12px" }, "Vous ne trouvez pas ? ",
         el("a", { href: wa("Bonjour, je veux Office pour Mac mais je ne sais pas quelle version de macOS j'ai. Pouvez-vous m'aider ?"), target: "_blank", rel: "noopener", text: "Envoyez-nous une capture sur WhatsApp" }), ", on vous répond."));
@@ -219,24 +225,24 @@ function showMac(p) {
     if (!list.length) {
       box.replaceChildren(...head, el("div", { class: "mac-none" },
         el("p", {}, el("b", { text: "Aucune version d'Office vendue en ligne ne fonctionne bien sur ce Mac." })),
-        el("p", { text: "Microsoft ne suit plus cette version de macOS. Si votre Mac le permet, mettez macOS à jour (menu Pomme > Réglages Système > Général > Mise à jour de logiciels), puis revenez. Sinon, écrivez-nous : nous cherchons la meilleure solution avec vous." }),
-        el("a", { class: "btn wa-ask", href: wa("Bonjour, je veux Office pour Mac. Mon Mac : " + macTxt(m) + ". Quelle version me conseillez-vous ?"), target: "_blank", rel: "noopener", text: "Nous écrire sur WhatsApp" })));
+        el("p", { text: "Microsoft ne suit plus cette version de macOS. Si votre Mac le permet, mettez macOS à jour (menu Pomme > Préférences Système > Mise à jour de logiciels), puis revenez. Sinon, écrivez-nous : nous cherchons la meilleure solution avec vous." }),
+        el("a", { class: "btn wa-go", href: wa("Bonjour, je veux Office pour Mac. Mon Mac : " + macTxt(m) + ". Quelle version me conseillez-vous ?"), target: "_blank", rel: "noopener" }, svgI(LO.ICONS.wa, 18), "Nous écrire sur WhatsApp", el("span", { class: "sr-only", text: " (ouvre WhatsApp)" }))));
       return;
     }
-    box.replaceChildren(...head, el("div", { class: "mac-vers" }, ...list.map(({ p: x, ok }) => {
+    box.replaceChildren(...head, el("div", { class: "mac-vers", role: "list", "aria-label": "Versions compatibles" }, ...list.map(({ p: x, ok }) => {
       const online = payMode !== "whatsapp" && ok && x.in_stock;
       const msg = "Bonjour, je veux commander " + x.name + " à " + fcfa(x.price_fcfa) + ". Mon Mac : " + macTxt(m) + "." + (ok ? "" : " Pouvez-vous confirmer que c'est compatible avec mon Mac ?");
       const off = x.compare_price_fcfa && x.compare_price_fcfa > x.price_fcfa;
-      return el("div", { class: "mac-ver" + (ok ? "" : " risk") },
+      return el("div", { class: "mac-ver" + (ok ? "" : " risk"), role: "listitem" },
         el("div", { class: "mv-img" }, x.image_url ? el("img", { src: x.image_url, alt: "", loading: "lazy" }) : el("span", { class: "ph", text: LO.initials(x.name) })),
         el("div", { class: "mv-body" },
           el("b", { class: "mv-name", text: x.name }),
-          el("span", { class: "mv-tag", text: ok ? "✔ Compatible avec votre Mac" : "⚠ Votre macOS n'est plus suivi par Microsoft : Office s'installe avec une version plus ancienne, sans mises à jour. Nous vérifions avec vous sur WhatsApp." }),
+          el("span", { class: "mv-tag" }, svgI(ok ? I_OK : I_WARN, 15), el("span", { text: ok ? "Compatible avec votre Mac" : "À vérifier : votre macOS n'est plus suivi par Microsoft. Office s'installe avec une version plus ancienne, sans mises à jour. Nous vérifions avec vous sur WhatsApp." })),
           el("div", { class: "price" }, fcfa(x.price_fcfa), off ? el("s", { text: fcfa(x.compare_price_fcfa) }) : null)),
         // ---- étape 3 : paiement en ligne si le site l'accepte, sinon WhatsApp avec le message déjà écrit ----
         online ? el("button", { type: "button", class: "btn orange", text: "Choisir et payer", onclick: () => { LO.addToCart(x, 1); location.href = LO.url.cart; } })
           : el("a", { class: "btn wa-go", href: wa(msg), target: "_blank", rel: "noopener", onclick: () => { stepOn(3); LO.px("Contact", { content_name: x.name, value: x.price_fcfa, currency: "XOF" }, null, true); } },
-              LO.icon(LO.ICONS.wa, 18), "Commander sur WhatsApp"));
+              svgI(LO.ICONS.wa, 18), "Commander sur WhatsApp", el("span", { class: "sr-only", text: " (ouvre WhatsApp)" })));
     })),
       el("p", { class: "note", style: "margin-top:10px", text: payMode === "whatsapp" ? "Vous arrivez sur notre WhatsApp avec votre choix et le prix déjà écrits : il suffit d'envoyer le message, nous vous répondons pour le paiement (Wave ou Orange Money)." : "Paiement sécurisé à l'étape suivante." }));
   }
