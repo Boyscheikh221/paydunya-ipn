@@ -1787,6 +1787,21 @@ Deno.serve(async (req) => {
           if (!by.has(m.customer_email)) by.set(m.customer_email, { email: m.customer_email, name: m.customer_name ?? "", phone: null, ip: null, orders: [], spent: 0, paid_orders: 0, codes: new Set(), first: m.created_at, last: m.created_at });
           const c = by.get(m.customer_email); c.messages = (c.messages ?? 0) + 1;
         }
+        // clients d'avant le site (relevés dans Gmail, SQL 65) : étiquette « Avant le site »
+        const { data: legacy } = await db.from("legacy_customers").select("*").limit(10000);
+        for (const l of legacy ?? []) {
+          const k = String(l.email).toLowerCase();
+          const first = l.first_contact ? l.first_contact + "T12:00:00Z" : l.imported_at;
+          const last = l.last_contact ? l.last_contact + "T12:00:00Z" : first;
+          if (!by.has(k)) by.set(k, { email: k, name: l.name ?? "", phone: l.phone, ip: null, orders: [], spent: 0, paid_orders: 0, codes: new Set(), first, last });
+          const c = by.get(k);
+          if (!c.name && l.name) c.name = l.name;
+          if (!c.phone && l.phone) c.phone = l.phone;
+          if (first < c.first) c.first = first;
+          c.legacy = { category: l.category, label: l.category_label, product: l.product, device: l.device, activation: l.activation,
+            first: l.first_contact, last: l.last_contact, exchanges: l.exchanges, replies: l.client_replies, links: l.links_sent, keys: l.keys_sent,
+            paid: l.paid, email_valid: l.email_valid, notes: l.notes };
+        }
         // consentement aux offres par email
         const { data: mk } = await db.from("marketing_contacts").select("email, optin, optin_at, unsub_at").limit(50000);
         const mkBy = Object.fromEntries((mk ?? []).map((m) => [m.email, m]));
