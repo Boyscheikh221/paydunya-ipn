@@ -1,5 +1,5 @@
 -- ============================================================
--- 66 : « Office pour Mac » — 4 versions vendues séparément + page « Vérifier la compatibilité »
+-- 67 : « Office pour Mac » — 4 versions vendues séparément + page « Vérifier la compatibilité »
 -- À coller dans Supabase > SQL Editor > Run (une seule fois ; relancer ne crée pas de doublon).
 --
 -- • Sous-catégorie « Office pour Mac » (dans Microsoft Office).
