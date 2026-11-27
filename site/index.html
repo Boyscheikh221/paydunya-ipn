@@ -18,7 +18,7 @@
 <meta name="description" content="Achetez vos licences Windows, Microsoft Office et logiciels authentiques. Livraison rapide par email, paiement Wave ou Orange Money.">
 <link rel="canonical" href="https://www.licenceoff.com/">
 <meta property="og:title" content="licenceoff.com — Licences & solutions numériques au Sénégal">
-<link rel="stylesheet" href="/shop.css?v=31">
+<link rel="stylesheet" href="/shop.css?v=33">
 <link rel="stylesheet" href="/hero.css?v=2">
 <link rel="icon" type="image/png" sizes="192x192" href="/img/profil-192.png"><link rel="icon" type="image/png" sizes="48x48" href="/img/profil-48.png"><link rel="icon" href="/favicon.ico" sizes="any"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
 </head>
@@ -76,7 +76,7 @@
   </section>
 </main>
 
-<script src="/shop.js?v=31"></script>
+<script src="/shop.js?v=33"></script>
 <script>
 LO.page("home");
 const { el, $ } = LO;
@@ -91,9 +91,9 @@ function render() {
   $("#chips").replaceChildren(
     el("a", { class: "chip on", href: LO.url.shop, text: "Tout" }),
     ...LO.mainCats(data).map((c) => el("a", { class: "chip", href: LO.url.category(c.slug), text: c.name })));
-  $("#grid").replaceChildren(...data.products.slice().sort((a, b) => (b.in_stock ? 1 : 0) - (a.in_stock ? 1 : 0)).slice(0, 12).map((p) => LO.productCard(p, names[p.category])));
+  $("#grid").replaceChildren(...LO.listed(data.products).slice().sort((a, b) => (b.in_stock ? 1 : 0) - (a.in_stock ? 1 : 0)).slice(0, 12).map((p) => LO.productCard(p, names[p.category])));
   if (!data.products.length) $("#grid").append(el("div", { class: "empty", text: "Aucun produit pour le moment." }));
-  const feat = data.products.filter((p) => p.featured).slice(0, 4);
+  const feat = LO.listed(data.products).filter((p) => p.featured).slice(0, 4);
   $("#featuredBlock").hidden = !feat.length;
   $("#featured").replaceChildren(...feat.map((p) => LO.productCard(p, names[p.category])));
 }

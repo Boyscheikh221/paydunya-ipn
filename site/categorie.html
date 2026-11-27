@@ -6,7 +6,7 @@
 <title>Boutique — licenceoff.com</title>
 <meta name="description" content="Tous nos produits : licences Windows, Microsoft Office, logiciels et services informatiques. Livraison rapide au Sénégal.">
 <meta name="theme-color" content="#1E4FB8">
-<link rel="stylesheet" href="/shop.css?v=31">
+<link rel="stylesheet" href="/shop.css?v=33">
 <link rel="icon" type="image/png" sizes="192x192" href="/img/profil-192.png"><link rel="icon" type="image/png" sizes="48x48" href="/img/profil-48.png"><link rel="icon" href="/favicon.ico" sizes="any"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
 <meta property="og:image" content="https://www.licenceoff.com/img/partage.jpg">
 </head>
@@ -20,7 +20,7 @@
     <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
   </div>
 </main>
-<script src="/shop.js?v=31"></script>
+<script src="/shop.js?v=33"></script>
 <script>
 LO.page("shop");
 const { el, $, url } = LO;
@@ -64,7 +64,7 @@ function render(data) {
       top && !mains.some((c) => c.slug === top.slug) ? el("a", { class: "chip on", href: catUrl(top), text: top.name }) : null),
     subs.length ? el("div", { class: "chips sub" }, el("a", { class: "chip" + (cat && !parent ? " on" : ""), href: catUrl(top), text: "Tout " + top.name }),
       ...subs.map((c) => el("a", { class: "chip" + (current === c.slug ? " on" : ""), href: catUrl(c), text: c.name }))) : "");
-  let list = data.products.filter((p) => !cat || inCat.has(p.category)).slice().sort((a, b) => (b.in_stock ? 1 : 0) - (a.in_stock ? 1 : 0));
+  let list = LO.listed(data.products).filter((p) => !cat || inCat.has(p.category)).slice().sort((a, b) => (b.in_stock ? 1 : 0) - (a.in_stock ? 1 : 0));
   if (query) { const q = query.toLowerCase(); list = list.filter((p) => (p.name + " " + p.description).toLowerCase().includes(q)); }
   $("#count").textContent = list.length + " produit" + (list.length > 1 ? "s" : "");
   const grid = $("#grid");

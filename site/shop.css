@@ -295,3 +295,69 @@ body.no-wa .to-top { bottom: 20px; }
 @media (max-width: 400px) { .line { grid-template-columns: 52px 1fr; } .line .th { width: 52px; height: 52px; } .line > strong { grid-column: 2; } }
 /* en-tête : logo, compte et panier sur une seule ligne jusqu'à 340 px */
 @media (max-width: 400px) { header.site .wrap { gap: 8px; } .logo { font-size: 23px; } .acct-btn { width: 38px; height: 38px; } .cart-btn { padding: 9px 11px; } }
+
+/* ---------- Office pour Mac : parcours en 3 étapes (macOS > version > commande) ---------- */
+.price small.from { font-size: 13px; font-weight: 700; color: var(--gris); margin-right: 4px; }
+.card .body span.btn { width: 100%; margin-top: 8px; }
+@media (max-width: 760px) { .product.mac > .img { max-width: 220px; margin: 0 auto; width: 100%; } }
+.mac-steps { scroll-margin-top: 130px; list-style: none; counter-reset: st; display: flex; gap: 6px; padding: 0; margin: 14px 0 16px; }
+.mac-steps li { counter-increment: st; flex: 1; display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--gris); background: #fff; border: 1px solid var(--ligne); border-radius: 99px; padding: 6px 10px; min-width: 0; }
+.mac-steps li::before { content: counter(st); flex: none; width: 22px; height: 22px; border-radius: 99px; background: #eef2f7; color: var(--gris); display: inline-flex; align-items: center; justify-content: center; font-size: 12px; }
+.mac-steps li.on { border-color: var(--bleu); color: var(--bleu); background: var(--ciel); }
+.mac-steps li.on::before { background: var(--bleu); color: #fff; }
+.mac-steps li.done { color: var(--vert); }
+.mac-steps li.done::before { content: "✓"; background: #dcfce7; color: var(--vert); }
+.mac-flow { background: #fff; border: 1px solid var(--ligne); border-radius: var(--r); padding: 18px; box-shadow: var(--ombre); scroll-margin-top: 90px; }
+.mac-flow h2 { font-size: 18px; margin: 0 0 12px; }
+.mac-help { display: grid; grid-template-columns: 1fr 150px; gap: 14px; align-items: center; background: var(--ciel); border-radius: 12px; padding: 14px; font-size: 14px; }
+.mac-help ol { margin: 6px 0 0; padding-left: 20px; display: grid; gap: 4px; }
+.mac-help svg.apple { display: inline-block; vertical-align: -2px; }
+.mac-win { background: #fff; border-radius: 10px; box-shadow: 0 4px 14px rgba(15, 42, 107, .15); padding: 8px 10px 12px; text-align: center; }
+.mac-win .dots { display: flex; gap: 4px; margin-bottom: 6px; } .mac-win .dots i { width: 8px; height: 8px; border-radius: 99px; background: #f87171; } .mac-win .dots i + i { background: #fbbf24; } .mac-win .dots i + i + i { background: #4ade80; }
+.mac-win .logo-os { color: #64748b; display: flex; justify-content: center; }
+.mac-win .os { font-weight: 800; font-size: 15px; margin-top: 4px; }
+.mac-win .ver { font-size: 12px; color: var(--gris); background: #FEF3C7; border-radius: 6px; display: inline-block; padding: 1px 6px; margin-top: 2px; }
+.mac-os { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.mac-pick { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; background: #fff; border: 2px solid var(--ligne); border-radius: 12px; padding: 10px 12px; cursor: pointer; font-family: inherit; color: var(--nuit); font-size: 15px; min-height: 56px; }
+.mac-pick span { font-size: 13px; color: var(--gris); }
+.mac-pick:hover, .mac-pick:focus-visible { border-color: var(--bleu); background: var(--ciel); outline: none; }
+.mac-chosen { margin: -4px 0 12px; font-size: 14px; }
+.linkbtn { background: none; border: 0; color: var(--bleu); font-weight: 700; cursor: pointer; padding: 10px 6px; min-height: 44px; font-family: inherit; font-size: 14px; text-decoration: underline; }
+.mac-vers { display: grid; gap: 10px; }
+.mac-ver { display: grid; grid-template-columns: 64px 1fr; gap: 12px; align-items: center; border: 2px solid var(--ligne); border-radius: 12px; padding: 10px 12px; }
+.mac-ver.risk { border-color: #FDE68A; background: #FFFBEB; }
+.mac-ver .mv-img { width: 64px; height: 64px; border-radius: 10px; border: 1px solid var(--ligne); background: #fff; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.mac-ver .mv-img img { width: 100%; height: 100%; object-fit: contain; }
+.mac-ver .mv-img .ph { font-weight: 800; color: #94a3b8; }
+.mac-ver .mv-body { display: grid; gap: 2px; min-width: 0; }
+.mac-ver .mv-name { font-size: 15px; line-height: 1.3; }
+.mac-ver .mv-tag { font-size: 13px; font-weight: 700; color: var(--vert); display: flex; gap: 5px; align-items: flex-start; }
+.mac-ver .mv-tag svg { flex: none; margin-top: 2px; }
+.mac-ver.risk .mv-tag { color: #92400E; font-weight: 600; }
+.mac-ver .price { font-size: 19px; font-weight: 800; }
+.mac-ver .price s { font-size: 13px; color: var(--gris); margin-left: 6px; font-weight: 600; }
+.mac-ver .btn { grid-column: 1 / -1; width: 100%; }
+.btn.wa-go { background: #0F7A40; } .btn.wa-go:hover { background: #0B6233; }
+.btn.wa-go svg { stroke: #fff; }
+.mac-none { background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 12px; padding: 14px; font-size: 14px; }
+.mac-none p { margin: 0 0 10px; }
+@media (max-width: 520px) {
+  .mac-flow { padding: 14px; }
+  .mac-help { grid-template-columns: 1fr; } .mac-win { max-width: 170px; }
+  .mac-os { grid-template-columns: 1fr 1fr; }
+  .mac-steps li { font-size: 12px; padding: 5px 7px; gap: 4px; }
+  .mac-ver { grid-template-columns: 52px 1fr; } .mac-ver .mv-img { width: 52px; height: 52px; }
+}
+.mac-pick.was { border-color: var(--bleu); }
+.mac-flow h2:focus { outline: none; }
+.mac-flow .btn:focus-visible, .mac-flow a:focus-visible, .linkbtn:focus-visible, .mac-pick:focus-visible { outline: 3px solid var(--orange); outline-offset: 2px; }
+.mac-pick, .mac-flow .btn { transition: background-color .15s ease, border-color .15s ease; }
+.mac-pick:active, .mac-flow .btn:active { transform: translateY(1px); }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+@media (prefers-reduced-motion: reduce) { .mac-pick, .mac-flow .btn { transition: none; } .mac-pick:active, .mac-flow .btn:active { transform: none; } }
+.mac-steps li { white-space: nowrap; }
+@media (max-width: 400px) { .mac-steps .sm-hide { display: none; } }
+.mac-note { background: var(--ciel); border-radius: 12px; padding: 10px 12px; font-size: 14px; font-weight: 600; margin: 10px 0 0; }
+.mac-miss { display: flex; gap: 8px; align-items: flex-start; background: #FFFBEB; border: 1px solid #FDE68A; color: #78350F; border-radius: 12px; padding: 10px 12px; font-size: 14px; margin: 0 0 12px; }
+.mac-miss svg { flex: none; margin-top: 2px; }
+.mac-ver .mv-was { justify-self: start; font-size: 12px; font-weight: 800; color: var(--bleu); background: var(--ciel); border-radius: 99px; padding: 2px 8px; }

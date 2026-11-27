@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Produit — licenceoff.com</title>
-<link rel="stylesheet" href="/shop.css?v=31">
+<link rel="stylesheet" href="/shop.css?v=33">
 <link rel="icon" type="image/png" sizes="192x192" href="/img/profil-192.png"><link rel="icon" type="image/png" sizes="48x48" href="/img/profil-48.png"><link rel="icon" href="/favicon.ico" sizes="any"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
 <meta property="og:image" content="https://www.licenceoff.com/img/partage.jpg">
 </head>
@@ -12,7 +12,7 @@
 <main class="wrap">
   <div id="view"><div class="product"><div class="skeleton"></div><div class="skeleton"></div></div></div>
 </main>
-<script src="/shop.js?v=31"></script>
+<script src="/shop.js?v=33"></script>
 <script>
 LO.page("shop");
 const { el, $, fcfa } = LO;
@@ -62,11 +62,15 @@ function show(p) {
   const buy = el("button", { class: "btn orange", disabled: !p.in_stock, text: "Acheter maintenant",
     onclick: () => { clampQ(); LO.addToCart(p, Number(qtyIn.value)); location.href = LO.url.cart; } });
   const waAsk = "https://wa.me/221777860777?text=" + encodeURIComponent("Bonjour, je voudrais commander : " + p.name + ". Est-il bientôt disponible ?");
-  const actions = p.in_stock ? [qty, add, buy, favBtn(p)] : [el("a", { class: "btn orange", href: waAsk, target: "_blank", rel: "noopener", text: "Commander sur WhatsApp" }), favBtn(p)];
+  // Office pour Mac : pas de panier ici, le client vérifie d'abord que la version marche sur son Mac
+  const macV = (LO.MAC_OFFICE.versions.find((v) => v.slug === p.slug && v.mac));
+  const checkUrl = LO.url.product(LO.MAC_OFFICE.chooser) + "?v=" + encodeURIComponent(p.slug);
+  const checkBtn = (extra) => el("a", { class: "btn orange", href: checkUrl, ...(extra || {}) }, "Vérifier la compatibilité avec mon Mac");
+  const actions = macV ? [checkBtn(), favBtn(p)] : p.in_stock ? [qty, add, buy, favBtn(p)] : [el("a", { class: "btn orange", href: waAsk, target: "_blank", rel: "noopener", text: "Commander sur WhatsApp" }), favBtn(p)];
   // mobile : barre d'achat fixe en bas, visible quand les boutons principaux sont sortis de l'écran
   const bar = el("div", { class: "buybar", "aria-hidden": "true" },
     el("div", {}, el("b", { text: fcfa(p.price_fcfa) }), el("span", { class: "note", text: p.in_stock ? "En stock" : "Sur commande" })),
-    p.in_stock ? el("button", { class: "btn", type: "button", tabindex: "-1", text: "Ajouter au panier", onclick: () => { clampQ(); LO.addToCart(p, Number(qtyIn.value)); LO.toast("Ajouté au panier ✔"); } })
+    macV ? checkBtn({ tabindex: "-1" }) : p.in_stock ? el("button", { class: "btn", type: "button", tabindex: "-1", text: "Ajouter au panier", onclick: () => { clampQ(); LO.addToCart(p, Number(qtyIn.value)); LO.toast("Ajouté au panier ✔"); } })
       : el("a", { class: "btn orange", href: waAsk, target: "_blank", rel: "noopener", tabindex: "-1", text: "Commander sur WhatsApp" }));
   document.body.append(bar); document.body.classList.add("has-buybar");
 
@@ -78,7 +82,8 @@ function show(p) {
       el("div", { class: "price" }, fcfa(p.price_fcfa), off ? el("s", { text: fcfa(p.compare_price_fcfa) }) : null,
         off ? el("span", { class: "tag t-wait", style: "margin-left:8px;vertical-align:middle", text: "-" + off + " %" }) : null),
       p.promo_ends_at ? el("p", { class: "note", style: "margin:4px 0 0;color:#B45309;font-weight:700", text: (p.promo_name || "Promo") + " : jusqu'au " + new Date(p.promo_ends_at).toLocaleString("fr-FR", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Dakar" }) }) : null,
-      el("p", { class: p.in_stock ? "" : "msg", text: p.in_stock ? "✔ En stock" : "Rupture de stock pour le moment. Écrivez-nous sur WhatsApp pour être prévenu." }),
+      macV ? el("p", { class: "mac-note", text: "Avant de commander, vérifiez en 10 secondes que cette version d'Office fonctionne sur votre Mac : nous vous montrons ensuite les versions compatibles et leur prix." })
+        : el("p", { class: p.in_stock ? "" : "msg", text: p.in_stock ? "✔ En stock" : "Rupture de stock pour le moment. Écrivez-nous sur WhatsApp pour être prévenu." }),
       el("div", { id: "mainActions", style: "display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:16px 0" }, ...actions),
       LO.shareBar(LO.SITE + LO.url.product(p.slug), p.name),
       el("ul", { class: "perks" },
@@ -99,7 +104,7 @@ async function related(p) {
     const parentOf = Object.fromEntries(d.categories.map((c) => [c.slug, c.parent]));
     const fam = (s) => parentOf[s] || s;
     const names = Object.fromEntries(d.categories.map((c) => [c.slug, c.name]));
-    const others = d.products.filter((x) => x.slug !== p.slug);
+    const others = LO.listed(d.products).filter((x) => x.slug !== p.slug);
     const score = (x) => (x.category === p.category ? 4 : fam(x.category) === fam(p.category) ? 2 : 0) + (x.in_stock ? 1 : 0);
     const list = others.map((x) => [score(x), x]).filter(([s]) => s >= 2).sort((a, b) => b[0] - a[0]).map(([, x]) => x);
     const pick = (list.length >= 2 ? list : others.slice().sort((a, b) => (b.in_stock ? 1 : 0) - (a.in_stock ? 1 : 0))).slice(0, 4);
@@ -140,9 +145,126 @@ function reviewsEl(p) {
       v.reply ? el("div", { class: "reply" }, el("b", { text: "Réponse de licenceoff.com : " }), v.reply) : null)));
 }
 
+// ================= Office pour Mac : 1) votre macOS  2) les versions d'Office compatibles  3) paiement ou WhatsApp =================
+const MAC = LO.MAC_OFFICE;
+function showMac(p) {
+  LO.seo({ title: p.seo_title || p.name + " — licenceoff.com", description: (p.seo_description || p.description || p.name).replace(/\s+/g, " ").slice(0, 160), path: LO.url.product(p.slug), image: p.image_url || null });
+  const par = p.category_parent;
+  const catPath = p.category ? LO.url.category(p.category, par ? par.slug : null) : null;
+  const box = el("div", { class: "mac-flow", id: "macFlow" }, el("div", { class: "skeleton", style: "height:220px" }));
+  const from = el("div", { class: "price" });
+  $("#view").replaceChildren(LO.crumbs([["Accueil", LO.url.home], ["Boutique", LO.url.shop], ...(par ? [[par.name, LO.url.category(par.slug)]] : []), ...(catPath ? [[p.category_name || "Catégorie", catPath]] : []), [p.name]]),
+    el("div", { class: "product mac" },
+      el("div", { class: "img" }, p.image_url ? el("img", { src: p.image_url, alt: p.name }) : el("span", { class: "ph", style: "font-size:64px;font-weight:800;color:#94a3b8", text: LO.initials(p.name) })),
+      el("div", {},
+        el("h1", { text: p.name }), from,
+        el("ol", { class: "mac-steps", id: "macSteps", "aria-label": "Étapes de la commande" }, el("li", {}, el("span", { class: "sm-hide", text: "Votre " }), "Mac"), el("li", {}, el("span", { class: "sm-hide", text: "Votre " }), "Office"), el("li", { text: "Commande" })),
+        box,
+        LO.shareBar(LO.SITE + LO.url.product(p.slug), p.name),
+        p.description ? el("div", {}, el("h2", { style: "font-size:18px;margin:26px 0 8px", text: "Description" }), el("div", { class: "desc", text: p.description })) : null)),
+    el("section", { id: "related", class: "block hidden" }));
+  related(p);
+
+  let prods = {}, payMode = "whatsapp";
+  Promise.all([
+    LO.boutique({ action: "catalog" }).then((d) => { prods = Object.fromEntries((d.products || []).map((x) => [x.slug, x])); }),
+    LO.boutique({ action: "cart_info", slugs: [] }).then((d) => { payMode = d.pay_mode || "whatsapp"; }).catch(() => {}),
+  ]).then(() => {
+    const avail = MAC.versions.map((v) => prods[v.slug]).filter(Boolean);
+    const prices = avail.map((x) => x.price_fcfa).filter((n) => n > 0);
+    if (prices.length) { from.replaceChildren(el("small", { class: "from", text: "À partir de " }), fcfa(Math.min(...prices)));
+      LO.jsonLd({ "@context": "https://schema.org", "@type": "Product", name: p.name, description: p.seo_description || p.description || p.name, image: p.image_url ? [p.image_url] : undefined,
+        url: LO.SITE + LO.url.product(p.slug), offers: { "@type": "AggregateOffer", lowPrice: Math.min(...prices), highPrice: Math.max(...prices), offerCount: prices.length, priceCurrency: "XOF" } }); }
+    render();
+  }).catch(() => box.replaceChildren(el("div", { class: "empty", text: "Erreur de chargement. Réessayez dans un instant." })));
+  addEventListener("popstate", render);
+
+  function appleIco(size) { const ns = "http://www.w3.org/2000/svg", sv = document.createElementNS(ns, "svg"); sv.setAttribute("width", size); sv.setAttribute("height", size); sv.setAttribute("viewBox", "0 0 24 24"); sv.setAttribute("fill", "currentColor"); sv.setAttribute("aria-hidden", "true"); sv.setAttribute("class", "apple");
+    const pa = document.createElementNS(ns, "path"); pa.setAttribute("d", "M16.4 12.6c0-2.4 2-3.5 2-3.6-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9s-1.9-.8-3.1-.8C6.8 7.3 5.3 8.3 4.5 9.8c-1.7 2.9-.4 7.2 1.2 9.6.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.1-.8s1.9.8 3.1.8c1.3 0 2.1-1.2 2.9-2.4.9-1.3 1.3-2.6 1.3-2.7 0 0-2.6-1-2.7-4.1zM14.1 5.5c.6-.8 1.1-1.9 1-3-.9 0-2.1.6-2.7 1.4-.6.7-1.1 1.8-1 2.9 1.1.1 2.1-.5 2.7-1.3z"); sv.append(pa); return sv; }
+  const macOf = (id) => MAC.macos.find((m) => m.id === id);
+  const macTxt = (m) => m.id === "old" ? "macOS 10.14 (Mojave) ou plus ancien" : m.name + " " + m.num;
+  const wa = (msg) => "https://wa.me/" + LO.WHATSAPP_NUMBER + "?text=" + encodeURIComponent(msg);
+  function stepOn(n) { [...$("#macSteps").children].forEach((li, i) => { li.classList.toggle("on", i === n - 1); li.classList.toggle("done", i < n - 1); if (i === n - 1) li.setAttribute("aria-current", "step"); else li.removeAttribute("aria-current"); }); }
+  // après un changement d'étape : on remonte au début du parcours (sans animation si le visiteur les a désactivées) et le focus va sur le titre
+  const calm = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function focusTitle() { const h = box.querySelector("h2"); if (h) { h.tabIndex = -1; h.focus({ preventScroll: true }); } }
+  const svgI = (d, size) => { const sv = LO.icon(d, size || 16); sv.setAttribute("aria-hidden", "true"); return sv; };
+  const I_OK = '<path d="M20 6 9 17l-5-5"/>', I_WARN = '<path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>';
+  function go(id) { const u = new URL(location.href); if (id) u.searchParams.set("mac", id); else u.searchParams.delete("mac"); history.pushState(null, "", u.pathname + u.search); render(); $("#macSteps").scrollIntoView({ behavior: calm() ? "auto" : "smooth", block: "start" }); focusTitle(); }
+
+  let lastMac = "";
+  const wanted = new URLSearchParams(location.search).get("v") || "";
+  function render() {
+    const m = macOf(new URLSearchParams(location.search).get("mac") || "");
+    if (!m) return step1();
+    step2(m);
+  }
+  // ---- étape 1 : comment connaître sa version de macOS, puis choix ----
+  function step1() {
+    stepOn(1);
+    box.replaceChildren(
+      el("h2", { text: "1. Quelle version de macOS avez-vous ?" }),
+      el("div", { class: "mac-help" },
+        el("div", {},
+          el("b", { text: "Comment le savoir (10 secondes) :" }),
+          el("ol", {},
+            el("li", {}, "Cliquez sur la petite ", el("b", { text: "pomme" }), " ", appleIco(15), " tout en haut à gauche de l'écran."),
+            el("li", {}, "Choisissez ", el("b", { text: "« À propos de ce Mac »" }), "."),
+            el("li", {}, "Lisez le nom et le numéro écrits en gros, par exemple ", el("b", { text: "macOS Sequoia 15.1" }), "."))),
+        el("div", { class: "mac-win", "aria-hidden": "true" },
+          el("div", { class: "dots" }, el("i"), el("i"), el("i")),
+          el("div", { class: "logo-os" }, appleIco(34)),
+          el("div", { class: "os", text: "macOS Sequoia" }),
+          el("div", { class: "ver", text: "Version 15.1" }))),
+      el("p", { class: "note", style: "margin:14px 0 8px", text: "Puis cliquez sur votre version :" }),
+      el("div", { class: "mac-os", role: "group", "aria-label": "Versions de macOS" }, ...MAC.macos.map((x) => el("button", { type: "button", class: "mac-pick" + (x.id === lastMac ? " was" : ""), onclick: () => { lastMac = x.id; go(x.id); } },
+        el("b", { text: x.name }), el("span", { text: x.id === "old" ? x.num : "Version " + x.num + ".x" })))),
+      el("p", { class: "note", style: "margin-top:12px" }, "Vous ne trouvez pas ? ",
+        el("a", { href: wa("Bonjour, je veux Office pour Mac mais je ne sais pas quelle version de macOS j'ai. Pouvez-vous m'aider ?"), target: "_blank", rel: "noopener", text: "Envoyez-nous une capture sur WhatsApp" }), ", on vous répond."));
+  }
+  // ---- étape 2 : versions d'Office compatibles avec ce macOS, avec leur prix ----
+  function step2(m) {
+    stepOn(2);
+    const list = MAC.versions.map((v) => ({ v, p: prods[v.slug], ok: v.ok.includes(m.id), risk: v.risk.includes(m.id) })).filter((x) => x.p && (x.ok || x.risk))
+      .sort((a, b) => (b.v.slug === wanted) - (a.v.slug === wanted) || b.ok - a.ok); // la version regardée d'abord, puis les compatibles
+    const want = prods[wanted], wantOk = list.some((x) => x.v.slug === wanted);
+    const head = [el("h2", { text: "2. Les versions d'Office pour votre Mac" }),
+      el("p", { class: "mac-chosen" }, "Votre Mac : ", el("b", { text: macTxt(m) }), " ", el("button", { type: "button", class: "linkbtn", text: "Modifier", onclick: () => go("") })),
+      want && !wantOk ? el("p", { class: "mac-miss" }, svgI(I_WARN, 16), el("span", {}, el("b", { text: want.name }), " ne fonctionne pas sur " + macTxt(m) + "." + (list.length ? " Voici les versions qui fonctionnent sur votre Mac\u00a0:" : ""))) : null];
+    if (!list.length) {
+      box.replaceChildren(...head, el("div", { class: "mac-none" },
+        el("p", {}, el("b", { text: "Aucune version d'Office vendue en ligne ne fonctionne bien sur ce Mac." })),
+        el("p", { text: "Microsoft ne suit plus cette version de macOS. Si votre Mac le permet, mettez macOS à jour (menu Pomme > Préférences Système > Mise à jour de logiciels), puis revenez. Sinon, écrivez-nous : nous cherchons la meilleure solution avec vous." }),
+        el("a", { class: "btn wa-go", href: wa("Bonjour, je veux Office pour Mac. Mon Mac : " + macTxt(m) + ". Quelle version me conseillez-vous ?"), target: "_blank", rel: "noopener" }, svgI(LO.ICONS.wa, 18), "Nous écrire sur WhatsApp", el("span", { class: "sr-only", text: " (ouvre WhatsApp)" }))));
+      return;
+    }
+    box.replaceChildren(...head, el("div", { class: "mac-vers", role: "list", "aria-label": "Versions compatibles" }, ...list.map(({ p: x, ok }) => {
+      const online = payMode !== "whatsapp" && ok && x.in_stock;
+      const msg = "Bonjour, je veux commander " + x.name + " à " + fcfa(x.price_fcfa) + ". Mon Mac : " + macTxt(m) + "." + (ok ? "" : " Pouvez-vous confirmer que c'est compatible avec mon Mac ?");
+      const off = x.compare_price_fcfa && x.compare_price_fcfa > x.price_fcfa;
+      return el("div", { class: "mac-ver" + (ok ? "" : " risk"), role: "listitem" },
+        el("div", { class: "mv-img" }, x.image_url ? el("img", { src: x.image_url, alt: "", loading: "lazy" }) : el("span", { class: "ph", text: LO.initials(x.name) })),
+        el("div", { class: "mv-body" },
+          el("b", { class: "mv-name", text: x.name }),
+          x.slug === wanted && list.length > 1 ? el("span", { class: "mv-was", text: "La version que vous regardiez" }) : null,
+          el("span", { class: "mv-tag" }, svgI(ok ? I_OK : I_WARN, 15), el("span", { text: ok ? "Compatible avec votre Mac"
+            : MAC.recent.includes(m.id) ? "À vérifier : cette version d'Office n'est plus mise à jour par Microsoft. Nous vérifions avec vous sur WhatsApp qu'elle s'active bien sur votre Mac."
+            : "À vérifier : votre macOS n'est plus suivi par Microsoft. Office s'installe avec une version plus ancienne, sans mises à jour. Nous vérifions avec vous sur WhatsApp." })),
+          el("div", { class: "price" }, fcfa(x.price_fcfa), off ? el("s", { text: fcfa(x.compare_price_fcfa) }) : null)),
+        // ---- étape 3 : paiement en ligne si le site l'accepte, sinon WhatsApp avec le message déjà écrit ----
+        online ? el("button", { type: "button", class: "btn orange", text: "Choisir et payer", onclick: () => { LO.addToCart(x, 1); location.href = LO.url.cart; } })
+          : el("a", { class: "btn wa-go", href: wa(msg), target: "_blank", rel: "noopener", onclick: () => { stepOn(3); LO.px("Contact", { content_name: x.name, value: x.price_fcfa, currency: "XOF" }, null, true); } },
+              svgI(LO.ICONS.wa, 18), "Commander sur WhatsApp", el("span", { class: "sr-only", text: " (ouvre WhatsApp)" })));
+    })),
+      el("p", { class: "note", style: "margin-top:10px", text: payMode === "whatsapp" ? "Vous arrivez sur notre WhatsApp avec votre choix et le prix déjà écrits : il suffit d'envoyer le message, nous vous répondons pour le paiement (Wave ou Orange Money)." : "Paiement sécurisé à l'étape suivante." }));
+  }
+}
+
 if (!slug) location.replace(LO.url.shop);
 LO.boutique({ action: "product", slug }).then((d) => {
-  if (d.product) { show(d.product); LO.track("view", { slug: d.product.slug });
+  if (d.product && d.product.slug === MAC.chooser) { showMac(d.product); LO.track("view", { slug: d.product.slug });
+    LO.px("ViewContent", { content_ids: [d.product.slug], content_type: "product", content_name: d.product.name, currency: "XOF" }); }
+  else if (d.product) { show(d.product); LO.track("view", { slug: d.product.slug });
     LO.px("ViewContent", { content_ids: [d.product.slug], content_type: "product", content_name: d.product.name, value: d.product.price_fcfa, currency: "XOF" }); }
   else $("#view").replaceChildren(el("div", { class: "empty" }, el("h1", { text: "Produit introuvable" }), el("p", { text: "Ce produit n'existe plus ou a changé d'adresse." }), el("a", { class: "btn", href: LO.url.shop, text: "Retour à la boutique" })));
 }).catch(() => $("#view").replaceChildren(el("div", { class: "empty", text: "Erreur de chargement. Réessayez dans un instant." })));

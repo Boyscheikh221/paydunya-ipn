@@ -86,7 +86,46 @@ const LO = (() => {
     const r = await fetch(SUPABASE + "/" + fn, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     return r.json();
   }
-  const boutique = (payload) => api("boutique", payload);
+  const boutique = (payload) => api("boutique", payload).then((d) => { if (payload && payload.action === "catalog") rememberMac(d); return d; });
+
+  // ---------- Office pour Mac : le client choisit son macOS, puis une version d'Office compatible ----------
+  // Compatibilité vérifiée le 27/11/2026 sur les pages Microsoft (« Office pour Mac est pris en charge sur les
+  // trois versions les plus récentes de macOS » : aujourd'hui macOS 26, 15 et 14).
+  // ok = compatible et suivi par Microsoft (paiement en ligne possible quand il sera actif).
+  // risk = proposé, mais le client passe toujours par WhatsApp pour que la boutique vérifie avec lui :
+  //   "mac" : son macOS n'est plus suivi (ancienne version d'Office, sans mises à jour) ;
+  //   "office" : cette version d'Office n'est plus suivie par Microsoft (2021 : fin le 13/10/2026 ; 2019 : fin en 10/2023 ; 2016 : fin en 10/2020).
+  // Les versions 2021, 2019 et 2016 sur chaque macOS ne sont PAS vérifiées officiellement : elles restent toujours en « risk ».
+  const MAC_OFFICE = {
+    chooser: "office-pour-mac",
+    recent: ["26", "15", "14"],
+    macos: [
+      { id: "26", name: "macOS Tahoe", num: "26" },
+      { id: "15", name: "macOS Sequoia", num: "15" },
+      { id: "14", name: "macOS Sonoma", num: "14" },
+      { id: "13", name: "macOS Ventura", num: "13" },
+      { id: "12", name: "macOS Monterey", num: "12" },
+      { id: "11", name: "macOS Big Sur", num: "11" },
+      { id: "10.15", name: "macOS Catalina", num: "10.15" },
+      { id: "old", name: "Plus ancien", num: "10.14 ou avant" },
+    ],
+    versions: [ // mac = vendu avec vérification du Mac : la fiche montre « Vérifier la compatibilité » au lieu du panier
+      { slug: "office-standard-2024-mac", mac: true, ok: ["26", "15", "14"], risk: ["13", "12"] },
+      { slug: "office-2021-mac", mac: true, ok: [], risk: ["26", "15", "14", "13", "12", "11", "10.15"] },
+      { slug: "office-2019-mac", mac: true, ok: [], risk: ["26", "15", "14", "13", "12", "11", "10.15", "old"] },
+      { slug: "office-2016-mac", mac: true, ok: [], risk: ["11", "10.15", "old"] },
+      { slug: "microsoft-365-abonnement-1-an-5-appareils-pc-et-mac", ok: ["26", "15", "14"], risk: [] },
+    ],
+  };
+  const macHidden = new Set([MAC_OFFICE.chooser]); // la page de vérification n'est pas un produit à part dans les listes
+  const macChecked = new Set(MAC_OFFICE.versions.filter((v) => v.mac).map((v) => v.slug));
+  let macFrom = 0; // prix le plus bas des versions Mac (affiché sur la carte « Office pour Mac »)
+  function rememberMac(d) {
+    const prices = (d && d.products || []).filter((p) => MAC_OFFICE.versions.some((v) => v.slug === p.slug)).map((p) => p.price_fcfa).filter((n) => n > 0);
+    if (prices.length) macFrom = Math.min(...prices);
+  }
+  // produits à montrer dans les listes (accueil, catégories, « Vous aimerez aussi ») : sans les versions Mac cachées
+  const listed = (list) => (list || []).filter((p) => !macHidden.has(p.slug));
 
   // ---------- panier (gardé dans ce navigateur) ----------
   const CART_KEY = "lo_cart";
@@ -190,10 +229,12 @@ const LO = (() => {
   // ---------- carte produit ----------
   function initials(name) { return String(name || "?").split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase(); }
   function productCard(p, catName) {
+    if (macHidden.has(p.slug)) return null;
     const off = p.compare_price_fcfa && p.compare_price_fcfa > p.price_fcfa ? Math.round(100 - p.price_fcfa * 100 / p.compare_price_fcfa) : 0;
     const link = url.product(p.slug);
-    const btn = el("button", { class: "btn" + (p.in_stock ? "" : " wa-ask"), text: p.in_stock ? "Ajouter au panier" : "Commander sur WhatsApp" });
-    btn.addEventListener("click", (e) => { e.preventDefault();
+    // Office pour Mac : on ouvre la fiche (le client vérifie son Mac avant de commander)
+    const btn = macChecked.has(p.slug) ? el("span", { class: "btn", text: "Voir le produit" }) : el("button", { class: "btn" + (p.in_stock ? "" : " wa-ask"), text: p.in_stock ? "Ajouter au panier" : "Commander sur WhatsApp" });
+    if (!macChecked.has(p.slug)) btn.addEventListener("click", (e) => { e.preventDefault();
       if (!p.in_stock) { window.open("https://wa.me/" + WHATSAPP_NUMBER + "?text=" + encodeURIComponent("Bonjour, je voudrais commander : " + p.name + ". Est-il bientôt disponible ?"), "_blank", "noopener"); return; }
       addToCart(p, 1); toast("Ajouté au panier ✔"); });
     return el("a", { class: "card", href: link },
@@ -433,5 +474,5 @@ const LO = (() => {
     physical: "Produit physique : nous vous contactons sur WhatsApp pour la livraison",
   };
 
-  return { waFloat, source, classifySource, px, acct, setAcct, visitorId, track, icon, ICONS, refCode, setRef, cookieBar, url, slugFromPath, seo, jsonLd, crumbs, mainCats, SITE, $, el, fcfa, api, boutique, cart, saveCart, addToCart, cartCount, page, toast, productCard, initials, shareBar, FACEBOOK_PAGE, richText, ytId, ytThumb, ytEmbed, DELIVERY_TEXT };
+  return { waFloat, source, classifySource, px, acct, setAcct, visitorId, track, icon, ICONS, refCode, setRef, cookieBar, url, slugFromPath, seo, jsonLd, crumbs, mainCats, SITE, $, el, fcfa, api, boutique, cart, saveCart, addToCart, cartCount, page, toast, productCard, initials, shareBar, FACEBOOK_PAGE, richText, ytId, ytThumb, ytEmbed, DELIVERY_TEXT, MAC_OFFICE, listed, WHATSAPP_NUMBER };
 })();
