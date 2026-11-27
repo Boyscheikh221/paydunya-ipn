@@ -86,7 +86,38 @@ const LO = (() => {
     const r = await fetch(SUPABASE + "/" + fn, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     return r.json();
   }
-  const boutique = (payload) => api("boutique", payload);
+  const boutique = (payload) => api("boutique", payload).then((d) => { if (payload && payload.action === "catalog") rememberMac(d); return d; });
+
+  // ---------- Office pour Mac : le client choisit son macOS, puis une version d'Office compatible ----------
+  // Compatibilité vérifiée le 27/11/2026 sur les pages Microsoft (« Office pour Mac est pris en charge sur les
+  // trois versions les plus récentes de macOS » : aujourd'hui macOS 26, 15 et 14).
+  // ok = compatible et suivi par Microsoft ; risk = s'installe avec une ancienne version d'Office, sans mises à jour
+  // (non garanti par Microsoft) : le client passe alors toujours par WhatsApp pour vérifier avec nous.
+  // Office 2021 pour Mac n'est pas proposé : fin de support Microsoft le 13/10/2026 (licences refusées signalées).
+  const MAC_OFFICE = {
+    chooser: "office-pour-mac",
+    macos: [
+      { id: "26", name: "macOS Tahoe", num: "26" },
+      { id: "15", name: "macOS Sequoia", num: "15" },
+      { id: "14", name: "macOS Sonoma", num: "14" },
+      { id: "13", name: "macOS Ventura", num: "13" },
+      { id: "12", name: "macOS Monterey", num: "12" },
+      { id: "11", name: "macOS Big Sur", num: "11" },
+      { id: "old", name: "Plus ancien", num: "10.15 ou avant" },
+    ],
+    versions: [ // hide = vendu seulement par ce parcours (caché des listes de produits)
+      { slug: "office-standard-2024-mac", hide: true, ok: ["26", "15", "14"], risk: ["13", "12"] },
+      { slug: "microsoft-365-abonnement-1-an-5-appareils-pc-et-mac", ok: ["26", "15", "14"], risk: [] },
+    ],
+  };
+  const macHidden = new Set(MAC_OFFICE.versions.filter((v) => v.hide).map((v) => v.slug));
+  let macFrom = 0; // prix le plus bas des versions Mac (affiché sur la carte « Office pour Mac »)
+  function rememberMac(d) {
+    const prices = (d && d.products || []).filter((p) => MAC_OFFICE.versions.some((v) => v.slug === p.slug)).map((p) => p.price_fcfa).filter((n) => n > 0);
+    if (prices.length) macFrom = Math.min(...prices);
+  }
+  // produits à montrer dans les listes (accueil, catégories, « Vous aimerez aussi ») : sans les versions Mac cachées
+  const listed = (list) => (list || []).filter((p) => !macHidden.has(p.slug));
 
   // ---------- panier (gardé dans ce navigateur) ----------
   const CART_KEY = "lo_cart";
@@ -190,6 +221,14 @@ const LO = (() => {
   // ---------- carte produit ----------
   function initials(name) { return String(name || "?").split(/\s+/).slice(0, 2).map((w) => w[0]).join("").toUpperCase(); }
   function productCard(p, catName) {
+    if (macHidden.has(p.slug)) return null;
+    if (p.slug === MAC_OFFICE.chooser) return el("a", { class: "card", href: url.product(p.slug) },
+      el("div", { class: "img" }, p.image_url ? el("img", { src: p.image_url, alt: p.name, loading: "lazy" }) : el("span", { class: "ph", text: initials(p.name) })),
+      el("div", { class: "body" },
+        catName ? el("div", { class: "cat", text: catName }) : null,
+        el("div", { class: "name", text: p.name }),
+        el("div", { class: "price" }, macFrom || p.price_fcfa ? el("small", { class: "from", text: "À partir de " }) : null, macFrom || p.price_fcfa ? fcfa(macFrom || p.price_fcfa) : "Prix selon votre Mac"),
+        el("span", { class: "btn", text: "Choisir ma version" })));
     const off = p.compare_price_fcfa && p.compare_price_fcfa > p.price_fcfa ? Math.round(100 - p.price_fcfa * 100 / p.compare_price_fcfa) : 0;
     const link = url.product(p.slug);
     const btn = el("button", { class: "btn" + (p.in_stock ? "" : " wa-ask"), text: p.in_stock ? "Ajouter au panier" : "Commander sur WhatsApp" });
@@ -433,5 +472,5 @@ const LO = (() => {
     physical: "Produit physique : nous vous contactons sur WhatsApp pour la livraison",
   };
 
-  return { waFloat, source, classifySource, px, acct, setAcct, visitorId, track, icon, ICONS, refCode, setRef, cookieBar, url, slugFromPath, seo, jsonLd, crumbs, mainCats, SITE, $, el, fcfa, api, boutique, cart, saveCart, addToCart, cartCount, page, toast, productCard, initials, shareBar, FACEBOOK_PAGE, richText, ytId, ytThumb, ytEmbed, DELIVERY_TEXT };
+  return { waFloat, source, classifySource, px, acct, setAcct, visitorId, track, icon, ICONS, refCode, setRef, cookieBar, url, slugFromPath, seo, jsonLd, crumbs, mainCats, SITE, $, el, fcfa, api, boutique, cart, saveCart, addToCart, cartCount, page, toast, productCard, initials, shareBar, FACEBOOK_PAGE, richText, ytId, ytThumb, ytEmbed, DELIVERY_TEXT, MAC_OFFICE, listed, WHATSAPP_NUMBER };
 })();
