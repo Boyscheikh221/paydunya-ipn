@@ -2,7 +2,7 @@
 -- 66 : AVG Ultimate 2025 — Licence 1 appareil, 1 an (27/11/2026)
 -- Crée la sous-catégorie « Antivirus et sécurité » (dans Logiciels),
 -- le produit en BROUILLON (non visible) et son email « clé d'activation ».
--- Prix PROVISOIRE 10 000 FCFA : à remplacer par le vrai prix dans l'admin.
+-- Prix : 5 000 FCFA (donné par Cheikh le 27/11/2026).
 -- Livraison : clé seule (le logiciel se télécharge sur le site officiel AVG, lien dans l'email).
 -- À coller dans Supabase > SQL Editor > Run. Peut être relancé sans risque.
 -- ============================================================
@@ -14,7 +14,7 @@ on conflict (slug) do nothing;
 
 insert into public.products (slug, name, category_id, delivery_type, two_step, active, price_fcfa, description, seo_description, sort, stock_qty)
 select 'avg-ultimate-2025-1-appareil-1-an', $q$AVG Ultimate 2025 — Licence 1 appareil, 1 an$q$,
-  (select id from public.categories where slug = 'antivirus-securite'), 'key', false, false, 10000,
+  (select id from public.categories where slug = 'antivirus-securite'), 'key', false, false, 5000,
 $q$Protégez et accélérez votre ordinateur ou votre téléphone avec AVG Ultimate 2025 : antivirus, nettoyage, VPN et anti-pistage réunis dans un seul abonnement, pour 1 appareil pendant 1 an.
 
 Ce qui est inclus :
