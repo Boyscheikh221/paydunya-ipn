@@ -769,6 +769,62 @@ async function deliverWaiting(productId: string) {
 
 // ================= Notifications : ce qui attend une action de l'admin =================
 type Notif = { kind: string; level: "urgent" | "info"; text: string; count: number; tab: string };
+// ================= Boîte de réception : type de l'expéditeur =================
+// Client (adresse dans la base clients) · Ancien client (« Avant le site ») · Partenaire (parrain ou domaine partenaire) · Visiteur (le reste).
+// Un type choisi à la main dans l'admin (table inbox_contacts, SQL 69) passe toujours avant le type automatique.
+const CONTACT_KINDS = ["client", "ancien", "partenaire", "visiteur"];
+const DEFAULT_PARTNER_DOMAINS = ["facebookmail.com", "facebook.com", "meta.com", "instagram.com", "google.com", "cloudflare.com", "supabase.com", "resend.com"];
+async function partnerDomains(): Promise<string[]> {
+  const { data } = await db.from("settings").select("value").eq("key", "inbox_partner_domains").maybeSingle();
+  return Array.isArray(data?.value) ? (data!.value as unknown[]).map((d) => String(d).toLowerCase()).filter(Boolean) : DEFAULT_PARTNER_DOMAINS;
+}
+function cleanDomains(v: unknown): string[] {
+  const raw = Array.isArray(v) ? v.map(String) : String(v ?? "").split(/[\s,;]+/);
+  const out = raw.map((d) => d.trim().toLowerCase().replace(/^.*@/, "").replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, ""))
+    .filter((d) => /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(d));
+  return [...new Set(out)].slice(0, 200);
+}
+function domainIsPartner(email: string, domains: string[]) {
+  const d = email.split("@")[1] ?? "";
+  return domains.find((p) => d === p || d.endsWith("." + p)) ?? null;
+}
+// deno-lint-ignore no-explicit-any
+async function inChunks(table: string, cols: string, col: string, values: string[]): Promise<any[]> {
+  // deno-lint-ignore no-explicit-any
+  const out: any[] = [];
+  for (let i = 0; i < values.length; i += 80) {
+    const { data } = await db.from(table).select(cols).in(col, values.slice(i, i + 80)).limit(20000);
+    out.push(...(data ?? []));
+  }
+  return out;
+}
+type ContactInfo = { type: string; auto: string; manual: string | null; purchases: number; orders: number; account: boolean; legacy: string | null; parrain: string | null; domain: string | null };
+async function classifyContacts(emailsIn: string[]): Promise<{ info: Record<string, ContactInfo>; domains: string[] }> {
+  const emails = [...new Set(emailsIn.map((e) => String(e).toLowerCase()).filter(Boolean))];
+  const domains = await partnerDomains();
+  if (!emails.length) return { info: {}, domains };
+  const [orders, accs, legacy, prs, manual] = await Promise.all([
+    inChunks("orders", "email, status, paid_at", "email", emails),
+    inChunks("customers", "email", "email", emails),
+    inChunks("legacy_customers", "email, category, category_label", "email", emails),
+    inChunks("parrains", "email, name", "email", emails),
+    inChunks("inbox_contacts", "email, kind", "email", emails), // table absente avant le SQL 69 : liste vide, rien ne casse
+  ]);
+  const info: Record<string, ContactInfo> = {};
+  for (const e of emails) info[e] = { type: "visiteur", auto: "visiteur", manual: null, purchases: 0, orders: 0, account: false, legacy: null, parrain: null, domain: null };
+  for (const o of orders) { const c = info[String(o.email).toLowerCase()]; if (!c) continue; c.orders++; if (o.paid_at && o.status !== "cancelled") c.purchases++; }
+  for (const a of accs) { const c = info[String(a.email).toLowerCase()]; if (c) c.account = true; }
+  for (const l of legacy) { const c = info[String(l.email).toLowerCase()]; if (c) c.legacy = (l.category + " " + (l.category_label ?? "")).trim(); }
+  for (const p of prs) { const c = info[String(p.email).toLowerCase()]; if (c) c.parrain = p.name || "parrain"; }
+  for (const m of manual) { const c = info[String(m.email).toLowerCase()]; if (c && CONTACT_KINDS.includes(m.kind)) c.manual = m.kind; }
+  for (const [e, c] of Object.entries(info)) {
+    c.domain = domainIsPartner(e, domains);
+    c.auto = c.orders || c.account ? "client" : c.legacy ? "ancien" : (c.parrain || c.domain) ? "partenaire" : "visiteur";
+    c.type = c.manual ?? c.auto;
+  }
+  return { info, domains };
+}
+
 async function buildNotifications(): Promise<Notif[]> {
   const n: Notif[] = [];
   const [{ data: items }, { data: prods }, { data: pays }, { count: revs }, { count: errs }, { data: st }, { data: manualPaid }] = await Promise.all([
@@ -811,8 +867,15 @@ async function buildNotifications(): Promise<Notif[]> {
   if (pays?.length) n.push({ kind: "payouts", level: "urgent", count: pays.length, tab: "parrains",
     text: pays.length + " versement(s) parrain à faire : " + fcfaTxt(pays.reduce((s, p) => s + (p.amount_fcfa || 0), 0)) });
   const { data: unread } = await db.from("inbox_messages").select("customer_email").eq("direction", "in").eq("status", "new").limit(1000);
-  const who = new Set((unread ?? []).map((m) => m.customer_email));
-  if (who.size) n.push({ kind: "messages", level: "urgent", count: who.size, tab: "messages", text: who.size + " client(s) vous ont écrit : message(s) non lu(s)" });
+  const who = [...new Set((unread ?? []).map((m) => m.customer_email))];
+  if (who.length) {
+    const { info } = await classifyContacts(who);
+    const cnt: Record<string, number> = {};
+    for (const e of who) { const t = info[e]?.type ?? "visiteur"; cnt[t] = (cnt[t] ?? 0) + 1; }
+    const LBL: Record<string, string> = { client: "client", ancien: "ancien client", partenaire: "partenaire", visiteur: "visiteur" };
+    const parts = CONTACT_KINDS.filter((k) => cnt[k]).map((k) => cnt[k] + " " + LBL[k] + (cnt[k] > 1 ? "s" : ""));
+    n.push({ kind: "messages", level: cnt.client || cnt.ancien ? "urgent" : "info", count: who.length, tab: "messages", text: "Message(s) non lu(s) : " + parts.join(", ") });
+  }
   if (revs) n.push({ kind: "reviews", level: "info", count: revs, tab: "reviews", text: revs + " avis client(s) à valider" });
   if (errs) n.push({ kind: "errors", level: "urgent", count: errs, tab: "logs", text: errs + " erreur(s) non lue(s) dans le journal" });
   if (!(Deno.env.get("PAYDUNYA_MASTER_KEY") ?? "").trim()) n.push({ kind: "paydunya", level: "info", count: 1, tab: "settings",
@@ -980,7 +1043,12 @@ Deno.serve(async (req) => {
         else if (box === "archived") rows = rows.filter((c) => c.archived);
         else rows = rows.filter((c) => !c.archived);
         if (s) rows = rows.filter((c) => (c.email + " " + (c.name ?? "") + " " + (c.order_ref ?? "") + " " + (c.last.subject ?? "")).toLowerCase().includes(s));
-        return json({ rows: rows.slice(0, 300) });
+        const { info, domains } = await classifyContacts(rows.map((c) => c.email));
+        rows = rows.map((c) => ({ ...c, contact: info[c.email] }));
+        const counts: Record<string, number> = { client: 0, ancien: 0, partenaire: 0, visiteur: 0 };
+        for (const c of rows) counts[c.contact?.type ?? "visiteur"]++;
+        if (CONTACT_KINDS.includes(body.type)) rows = rows.filter((c) => (c.contact?.type ?? "visiteur") === body.type);
+        return json({ rows: rows.slice(0, 300), counts, partner_domains: domains });
       }
       case "inbox_thread": {
         const email = str(body.email, 200).toLowerCase();
@@ -990,7 +1058,31 @@ Deno.serve(async (req) => {
           db.from("customers").select("name, phone, created_at, last_login_at").eq("email", email).maybeSingle(),
         ]);
         await db.from("inbox_messages").update({ status: "read" }).eq("customer_email", email).eq("direction", "in").eq("status", "new");
-        return json({ messages: msgs ?? [], orders: orders ?? [], customer: cust ?? null });
+        const { info } = await classifyContacts([email]);
+        return json({ messages: msgs ?? [], orders: orders ?? [], customer: cust ?? null, contact: info[email] ?? null });
+      }
+      case "inbox_contact_set": { // marquer un contact à la main (Client / Ancien client / Partenaire / Visiteur), ou revenir au type automatique
+        const email = str(body.email, 200).toLowerCase();
+        if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(email)) return json({ error: "email_invalide" }, 400);
+        const kind = str(body.kind, 20);
+        if (!kind) {
+          const { error } = await db.from("inbox_contacts").delete().eq("email", email);
+          if (error) return json({ error: error.message }, 500);
+        } else {
+          if (!CONTACT_KINDS.includes(kind)) return json({ error: "type_inconnu" }, 400);
+          const { error } = await db.from("inbox_contacts").upsert({ email, kind, name: str(body.name, 120) || null, updated_at: new Date().toISOString() });
+          if (error) return json({ error: /inbox_contacts/.test(error.message) ? "sql_69_manquant" : error.message }, 500);
+        }
+        await logEvent("info", "messages", "Type du contact " + email + " : " + (kind || "automatique"));
+        const { info } = await classifyContacts([email]);
+        return json({ ok: true, contact: info[email] });
+      }
+      case "inbox_partners_set": { // liste des domaines partenaires (Facebook, Google, fournisseurs…)
+        const domains = cleanDomains(body.domains);
+        const { error } = await db.from("settings").upsert({ key: "inbox_partner_domains", value: domains, updated_at: new Date().toISOString() });
+        if (error) return json({ error: error.message }, 500);
+        await logEvent("info", "messages", "Domaines partenaires mis à jour (" + domains.length + ")");
+        return json({ ok: true, domains });
       }
       case "inbox_status": { // archiver / remettre en non lu une conversation
         const email = str(body.email, 200).toLowerCase();
@@ -1782,9 +1874,18 @@ Deno.serve(async (req) => {
             searches: [...new Set(ev.filter((e) => e.kind === "search").map((e) => e.query))].slice(0, 10) };
         }
         // messages échangés (onglet Messages)
-        const { data: msgs } = await db.from("inbox_messages").select("customer_email, customer_name, created_at").limit(20000);
+        //   un expéditeur qui n'a ni commande ni compte n'apparaît ici que si vous l'avez ajouté à vos clients (Messages > « Ajouter à mes clients »)
+        const [{ data: msgs }, { data: marks }] = await Promise.all([
+          db.from("inbox_messages").select("customer_email, customer_name, created_at").limit(20000),
+          db.from("inbox_contacts").select("email, kind, name, updated_at").limit(20000),
+        ]);
+        const markBy = Object.fromEntries((marks ?? []).map((m) => [String(m.email).toLowerCase(), m]));
+        const msgOnly: Record<string, number> = {}; // messages d'expéditeurs pas (encore) clients : comptés plus bas s'ils sont « Avant le site »
         for (const m of msgs ?? []) {
-          if (!by.has(m.customer_email)) by.set(m.customer_email, { email: m.customer_email, name: m.customer_name ?? "", phone: null, ip: null, orders: [], spent: 0, paid_orders: 0, codes: new Set(), first: m.created_at, last: m.created_at });
+          if (!by.has(m.customer_email)) {
+            if (markBy[m.customer_email]?.kind !== "client") { msgOnly[m.customer_email] = (msgOnly[m.customer_email] ?? 0) + 1; continue; }
+            by.set(m.customer_email, { email: m.customer_email, name: markBy[m.customer_email].name || m.customer_name || "", phone: null, ip: null, orders: [], spent: 0, paid_orders: 0, codes: new Set(), first: m.created_at, last: m.created_at, from_inbox: true });
+          }
           const c = by.get(m.customer_email); c.messages = (c.messages ?? 0) + 1;
         }
         // clients d'avant le site (relevés dans Gmail, SQL 65) : étiquette « Avant le site »
@@ -1801,6 +1902,7 @@ Deno.serve(async (req) => {
           c.legacy = { category: l.category, label: l.category_label, product: l.product, device: l.device, activation: l.activation,
             first: l.first_contact, last: l.last_contact, exchanges: l.exchanges, replies: l.client_replies, links: l.links_sent, keys: l.keys_sent,
             paid: l.paid, email_valid: l.email_valid, notes: l.notes };
+          if (msgOnly[k]) { c.messages = (c.messages ?? 0) + msgOnly[k]; delete msgOnly[k]; }
         }
         // consentement aux offres par email
         const { data: mk } = await db.from("marketing_contacts").select("email, optin, optin_at, unsub_at").limit(50000);
