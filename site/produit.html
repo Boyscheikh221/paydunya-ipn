@@ -62,11 +62,15 @@ function show(p) {
   const buy = el("button", { class: "btn orange", disabled: !p.in_stock, text: "Acheter maintenant",
     onclick: () => { clampQ(); LO.addToCart(p, Number(qtyIn.value)); location.href = LO.url.cart; } });
   const waAsk = "https://wa.me/221777860777?text=" + encodeURIComponent("Bonjour, je voudrais commander : " + p.name + ". Est-il bientôt disponible ?");
-  const actions = p.in_stock ? [qty, add, buy, favBtn(p)] : [el("a", { class: "btn orange", href: waAsk, target: "_blank", rel: "noopener", text: "Commander sur WhatsApp" }), favBtn(p)];
+  // Office pour Mac : pas de panier ici, le client vérifie d'abord que la version marche sur son Mac
+  const macV = (LO.MAC_OFFICE.versions.find((v) => v.slug === p.slug && v.mac));
+  const checkUrl = LO.url.product(LO.MAC_OFFICE.chooser) + "?v=" + encodeURIComponent(p.slug);
+  const checkBtn = (extra) => el("a", { class: "btn orange", href: checkUrl, ...(extra || {}) }, "Vérifier la compatibilité avec mon Mac");
+  const actions = macV ? [checkBtn(), favBtn(p)] : p.in_stock ? [qty, add, buy, favBtn(p)] : [el("a", { class: "btn orange", href: waAsk, target: "_blank", rel: "noopener", text: "Commander sur WhatsApp" }), favBtn(p)];
   // mobile : barre d'achat fixe en bas, visible quand les boutons principaux sont sortis de l'écran
   const bar = el("div", { class: "buybar", "aria-hidden": "true" },
     el("div", {}, el("b", { text: fcfa(p.price_fcfa) }), el("span", { class: "note", text: p.in_stock ? "En stock" : "Sur commande" })),
-    p.in_stock ? el("button", { class: "btn", type: "button", tabindex: "-1", text: "Ajouter au panier", onclick: () => { clampQ(); LO.addToCart(p, Number(qtyIn.value)); LO.toast("Ajouté au panier ✔"); } })
+    macV ? checkBtn({ tabindex: "-1" }) : p.in_stock ? el("button", { class: "btn", type: "button", tabindex: "-1", text: "Ajouter au panier", onclick: () => { clampQ(); LO.addToCart(p, Number(qtyIn.value)); LO.toast("Ajouté au panier ✔"); } })
       : el("a", { class: "btn orange", href: waAsk, target: "_blank", rel: "noopener", tabindex: "-1", text: "Commander sur WhatsApp" }));
   document.body.append(bar); document.body.classList.add("has-buybar");
 
@@ -78,7 +82,8 @@ function show(p) {
       el("div", { class: "price" }, fcfa(p.price_fcfa), off ? el("s", { text: fcfa(p.compare_price_fcfa) }) : null,
         off ? el("span", { class: "tag t-wait", style: "margin-left:8px;vertical-align:middle", text: "-" + off + " %" }) : null),
       p.promo_ends_at ? el("p", { class: "note", style: "margin:4px 0 0;color:#B45309;font-weight:700", text: (p.promo_name || "Promo") + " : jusqu'au " + new Date(p.promo_ends_at).toLocaleString("fr-FR", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Dakar" }) }) : null,
-      el("p", { class: p.in_stock ? "" : "msg", text: p.in_stock ? "✔ En stock" : "Rupture de stock pour le moment. Écrivez-nous sur WhatsApp pour être prévenu." }),
+      macV ? el("p", { class: "mac-note", text: "Avant de commander, vérifiez en 10 secondes que cette version d'Office fonctionne sur votre Mac : nous vous montrons ensuite les versions compatibles et leur prix." })
+        : el("p", { class: p.in_stock ? "" : "msg", text: p.in_stock ? "✔ En stock" : "Rupture de stock pour le moment. Écrivez-nous sur WhatsApp pour être prévenu." }),
       el("div", { id: "mainActions", style: "display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:16px 0" }, ...actions),
       LO.shareBar(LO.SITE + LO.url.product(p.slug), p.name),
       el("ul", { class: "perks" },
@@ -177,7 +182,7 @@ function showMac(p) {
   function appleIco(size) { const ns = "http://www.w3.org/2000/svg", sv = document.createElementNS(ns, "svg"); sv.setAttribute("width", size); sv.setAttribute("height", size); sv.setAttribute("viewBox", "0 0 24 24"); sv.setAttribute("fill", "currentColor"); sv.setAttribute("aria-hidden", "true"); sv.setAttribute("class", "apple");
     const pa = document.createElementNS(ns, "path"); pa.setAttribute("d", "M16.4 12.6c0-2.4 2-3.5 2-3.6-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9s-1.9-.8-3.1-.8C6.8 7.3 5.3 8.3 4.5 9.8c-1.7 2.9-.4 7.2 1.2 9.6.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.1-.8s1.9.8 3.1.8c1.3 0 2.1-1.2 2.9-2.4.9-1.3 1.3-2.6 1.3-2.7 0 0-2.6-1-2.7-4.1zM14.1 5.5c.6-.8 1.1-1.9 1-3-.9 0-2.1.6-2.7 1.4-.6.7-1.1 1.8-1 2.9 1.1.1 2.1-.5 2.7-1.3z"); sv.append(pa); return sv; }
   const macOf = (id) => MAC.macos.find((m) => m.id === id);
-  const macTxt = (m) => m.id === "old" ? "macOS 10.15 (Catalina) ou plus ancien" : m.name + " " + m.num;
+  const macTxt = (m) => m.id === "old" ? "macOS 10.14 (Mojave) ou plus ancien" : m.name + " " + m.num;
   const wa = (msg) => "https://wa.me/" + LO.WHATSAPP_NUMBER + "?text=" + encodeURIComponent(msg);
   function stepOn(n) { [...$("#macSteps").children].forEach((li, i) => { li.classList.toggle("on", i === n - 1); li.classList.toggle("done", i < n - 1); if (i === n - 1) li.setAttribute("aria-current", "step"); else li.removeAttribute("aria-current"); }); }
   // après un changement d'étape : on remonte au début du parcours (sans animation si le visiteur les a désactivées) et le focus va sur le titre
@@ -188,6 +193,7 @@ function showMac(p) {
   function go(id) { const u = new URL(location.href); if (id) u.searchParams.set("mac", id); else u.searchParams.delete("mac"); history.pushState(null, "", u.pathname + u.search); render(); $("#macSteps").scrollIntoView({ behavior: calm() ? "auto" : "smooth", block: "start" }); focusTitle(); }
 
   let lastMac = "";
+  const wanted = new URLSearchParams(location.search).get("v") || "";
   function render() {
     const m = macOf(new URLSearchParams(location.search).get("mac") || "");
     if (!m) return step1();
@@ -219,9 +225,12 @@ function showMac(p) {
   // ---- étape 2 : versions d'Office compatibles avec ce macOS, avec leur prix ----
   function step2(m) {
     stepOn(2);
-    const list = MAC.versions.map((v) => ({ v, p: prods[v.slug], ok: v.ok.includes(m.id), risk: v.risk.includes(m.id) })).filter((x) => x.p && (x.ok || x.risk));
+    const list = MAC.versions.map((v) => ({ v, p: prods[v.slug], ok: v.ok.includes(m.id), risk: v.risk.includes(m.id) })).filter((x) => x.p && (x.ok || x.risk))
+      .sort((a, b) => (b.v.slug === wanted) - (a.v.slug === wanted) || b.ok - a.ok); // la version regardée d'abord, puis les compatibles
+    const want = prods[wanted], wantOk = list.some((x) => x.v.slug === wanted);
     const head = [el("h2", { text: "2. Les versions d'Office pour votre Mac" }),
-      el("p", { class: "mac-chosen" }, "Votre Mac : ", el("b", { text: macTxt(m) }), " ", el("button", { type: "button", class: "linkbtn", text: "Modifier", onclick: () => go("") }))];
+      el("p", { class: "mac-chosen" }, "Votre Mac : ", el("b", { text: macTxt(m) }), " ", el("button", { type: "button", class: "linkbtn", text: "Modifier", onclick: () => go("") })),
+      want && !wantOk ? el("p", { class: "mac-miss" }, svgI(I_WARN, 16), el("span", {}, el("b", { text: want.name }), " ne fonctionne pas sur " + macTxt(m) + "." + (list.length ? " Voici les versions qui fonctionnent sur votre Mac\u00a0:" : ""))) : null];
     if (!list.length) {
       box.replaceChildren(...head, el("div", { class: "mac-none" },
         el("p", {}, el("b", { text: "Aucune version d'Office vendue en ligne ne fonctionne bien sur ce Mac." })),
@@ -237,7 +246,10 @@ function showMac(p) {
         el("div", { class: "mv-img" }, x.image_url ? el("img", { src: x.image_url, alt: "", loading: "lazy" }) : el("span", { class: "ph", text: LO.initials(x.name) })),
         el("div", { class: "mv-body" },
           el("b", { class: "mv-name", text: x.name }),
-          el("span", { class: "mv-tag" }, svgI(ok ? I_OK : I_WARN, 15), el("span", { text: ok ? "Compatible avec votre Mac" : "À vérifier : votre macOS n'est plus suivi par Microsoft. Office s'installe avec une version plus ancienne, sans mises à jour. Nous vérifions avec vous sur WhatsApp." })),
+          x.slug === wanted && list.length > 1 ? el("span", { class: "mv-was", text: "La version que vous regardiez" }) : null,
+          el("span", { class: "mv-tag" }, svgI(ok ? I_OK : I_WARN, 15), el("span", { text: ok ? "Compatible avec votre Mac"
+            : MAC.recent.includes(m.id) ? "À vérifier : cette version d'Office n'est plus mise à jour par Microsoft. Nous vérifions avec vous sur WhatsApp qu'elle s'active bien sur votre Mac."
+            : "À vérifier : votre macOS n'est plus suivi par Microsoft. Office s'installe avec une version plus ancienne, sans mises à jour. Nous vérifions avec vous sur WhatsApp." })),
           el("div", { class: "price" }, fcfa(x.price_fcfa), off ? el("s", { text: fcfa(x.compare_price_fcfa) }) : null)),
         // ---- étape 3 : paiement en ligne si le site l'accepte, sinon WhatsApp avec le message déjà écrit ----
         online ? el("button", { type: "button", class: "btn orange", text: "Choisir et payer", onclick: () => { LO.addToCart(x, 1); location.href = LO.url.cart; } })
@@ -249,7 +261,6 @@ function showMac(p) {
 }
 
 if (!slug) location.replace(LO.url.shop);
-else if (MAC.versions.some((v) => v.hide && v.slug === slug)) location.replace(LO.url.product(MAC.chooser)); // une version Mac se choisit dans le parcours
 LO.boutique({ action: "product", slug }).then((d) => {
   if (d.product && d.product.slug === MAC.chooser) { showMac(d.product); LO.track("view", { slug: d.product.slug });
     LO.px("ViewContent", { content_ids: [d.product.slug], content_type: "product", content_name: d.product.name, currency: "XOF" }); }

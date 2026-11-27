@@ -357,3 +357,7 @@ body.no-wa .to-top { bottom: 20px; }
 @media (prefers-reduced-motion: reduce) { .mac-pick, .mac-flow .btn { transition: none; } .mac-pick:active, .mac-flow .btn:active { transform: none; } }
 .mac-steps li { white-space: nowrap; }
 @media (max-width: 400px) { .mac-steps .sm-hide { display: none; } }
+.mac-note { background: var(--ciel); border-radius: 12px; padding: 10px 12px; font-size: 14px; font-weight: 600; margin: 10px 0 0; }
+.mac-miss { display: flex; gap: 8px; align-items: flex-start; background: #FFFBEB; border: 1px solid #FDE68A; color: #78350F; border-radius: 12px; padding: 10px 12px; font-size: 14px; margin: 0 0 12px; }
+.mac-miss svg { flex: none; margin-top: 2px; }
+.mac-ver .mv-was { justify-self: start; font-size: 12px; font-weight: 800; color: var(--bleu); background: var(--ciel); border-radius: 99px; padding: 2px 8px; }
