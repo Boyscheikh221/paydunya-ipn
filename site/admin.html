@@ -245,8 +245,33 @@
     details.more > summary { min-height:44px; }
     .fclose { position:static; float:right; margin:0 0 8px 8px; }
   }
+  /* liste des produits : recherche, filtres, tri */
+  .pfilt { margin-bottom:6px; }
+  .pfilt select { min-width:150px; }
+  .pcount { margin:0 0 10px; }
+  .pempty { text-align:center; padding:24px 10px; color:var(--gris); }
+  /* catégories : aide et choix principale / sous-catégorie */
+  .cathelp { background:#f4f8ff; border:1px solid #dbe6fb; border-radius:12px; padding:12px 14px; margin:6px 0 14px; font-size:14px; line-height:1.5; }
+  .cathelp p { margin:0 0 6px; }
+  .cathelp ul { margin:0 0 8px; padding-left:20px; }
+  .cathelp .ex { display:inline-block; background:#fff; border:1px solid #dbe6fb; border-radius:8px; padding:4px 10px; margin:2px 4px 2px 0; font-size:13px; }
+  .ckind { display:grid; gap:8px; margin:4px 0 6px; }
+  .ckind .opt { display:flex; align-items:center; gap:10px; flex-wrap:wrap; border:2px solid var(--ligne,#d6dce8); border-radius:12px; padding:10px 12px; margin:0; cursor:pointer; font-size:14px; font-weight:600; }
+  .ckind .opt:has(input:checked) { border-color:#1d4ed8; background:#f4f8ff; }
+  .ckind .opt.off { opacity:.5; cursor:not-allowed; }
+  .ckind .opt input[type=radio] { width:18px; height:18px; margin:0; }
+  .ckind .opt .small { font-weight:400; width:100%; padding-left:28px; margin-top:-4px; }
+  .ckind select { min-width:220px; }
+  .cprev { margin:6px 0 10px; font-size:14px; }
+  .csub td:first-child { padding-left:26px; }
   /* mobile : tableaux en cartes */
   @media (max-width:640px) {
+    .pfilt { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .pfilt > *, .ckind select { width:100%; min-width:0; }
+    .pfilt #pQ, .pfilt #pFCat, .pfilt #pFClear { grid-column:1 / -1; }
+    .pfilt select { font-size:13px; padding:9px 6px; }
+    .csub td:first-child { padding-left:0; }
+    .csub { margin-left:16px; }
     main table { min-width:0; }
     main thead { display:none; }
     main table, main tbody, main tr, main td { display:block; width:100%; }
@@ -469,13 +494,43 @@
         </details>
         <div class="bar" style="margin-top:12px;flex-wrap:wrap"><button id="pSave" class="grey">💾 Enregistrer</button><button id="pSavePub" class="green">✅ Enregistrer et publier</button><button id="pReset" class="grey">Nouveau</button></div>
       </div>
-      <div class="box"><div class="tablewrap"><table><thead><tr><th></th><th>Produit</th><th>Catégorie</th><th>Prix</th><th>Livraison</th><th>Statut</th><th></th></tr></thead><tbody id="pRows"></tbody></table></div></div>
+      <div class="box">
+        <div class="bar pfilt"><input id="pQ" type="search" class="grow" placeholder="🔎 Rechercher un produit" autocomplete="off" aria-label="Rechercher un produit par son nom">
+          <select id="pFCat" aria-label="Filtrer par catégorie"></select>
+          <select id="pFStat" aria-label="Filtrer par statut"><option value="">Tous les statuts</option><option value="pub">✅ Publiés</option><option value="draft">📝 Brouillons</option></select>
+          <select id="pFSort" aria-label="Trier les produits"><option value="site">Trier : ordre du site</option><option value="name">Trier : nom A → Z</option><option value="cat">Trier : par catégorie</option><option value="price_asc">Trier : prix croissant</option><option value="price_desc">Trier : prix décroissant</option><option value="new">Trier : derniers ajoutés</option></select>
+          <button id="pFClear" class="grey hidden">✖ Effacer</button></div>
+        <div id="pCount" class="small pcount"></div>
+        <div class="tablewrap"><table><thead><tr><th></th><th>Produit</th><th>Catégorie</th><th>Prix</th><th>Livraison</th><th>Statut</th><th></th></tr></thead><tbody id="pRows"></tbody></table></div><div id="pEmpty" class="pempty hidden"></div></div>
 
       <div class="box">
-        <h2>Catégories et sous-catégories</h2>
-        <p class="small">Une sous-catégorie (ex : Windows 11) se range dans une catégorie principale (ex : Windows). Mettez les produits dans la catégorie la plus précise.</p>
-        <div class="bar"><input type="hidden" id="cId"><input id="cName" class="grow" placeholder="Nom (ex : Windows 11)"><select id="cParent" style="min-width:200px"></select><input id="cSort" type="number" min="0" placeholder="Ordre" style="width:90px"><label class="check" style="margin:0"><input type="checkbox" id="cActive" checked> Visible</label><button id="cSave" class="green">Enregistrer</button><button id="cReset" class="grey">Nouvelle</button></div>
-        <input id="cDesc" placeholder="Phrase de présentation affichée sur la page de la catégorie (facultatif)" style="margin-top:8px">
+        <h2>📂 Catégories (les rayons de votre boutique)</h2>
+        <div class="cathelp">
+          <p>Il y a <b>2 sortes</b> de catégories :</p>
+          <ul>
+            <li><b>Catégorie principale</b> = un grand rayon, affiché dans le menu du site.<br><span class="ex">Office</span><span class="ex">Windows</span><span class="ex">Antivirus</span></li>
+            <li><b>Sous-catégorie</b> = un petit rayon rangé <b>dans</b> une catégorie principale.<br><span class="ex">Windows › Windows 10</span><span class="ex">Windows › Windows 11</span><span class="ex">Office › Office 2024</span></li>
+          </ul>
+          <p class="small" style="margin:0">Astuce : rangez chaque produit dans le rayon le plus précis (ex : « Windows 11 Pro » dans <b>Windows 11</b>). Il apparaîtra aussi dans <b>Windows</b>.</p>
+        </div>
+        <h3 id="cFormTitle" style="margin:0 0 4px">➕ Ajouter une catégorie</h3>
+        <input type="hidden" id="cId">
+        <label for="cName">1. Nom de la catégorie</label><input id="cName" class="full" maxlength="80" placeholder="ex : Antivirus  ou  Windows 11">
+        <label>2. Où la ranger ?</label>
+        <div class="ckind">
+          <label class="opt" id="cKindTopLbl"><input type="radio" name="cKind" id="cKindTop" value="top" checked> 🗂️ C'est une catégorie principale
+            <span class="small">Un nouveau grand rayon, comme « Antivirus ».</span></label>
+          <label class="opt" id="cKindSubLbl"><input type="radio" name="cKind" id="cKindSub" value="sub"> ↳ C'est une sous-catégorie de : <select id="cParent" aria-label="Catégorie principale"></select>
+            <span class="small" id="cSubHint">Un petit rayon à l'intérieur, comme « Windows 11 » dans « Windows ».</span></label>
+        </div>
+        <div id="cPrev" class="cprev small"></div>
+        <label class="check" style="margin:6px 0"><input type="checkbox" id="cActive" checked> Visible sur le site</label>
+        <details style="margin:0 0 10px"><summary style="cursor:pointer" class="small">Plus d'options (facultatif)</summary>
+          <label for="cDesc">Phrase de présentation (affichée en haut de la page de la catégorie)</label><input id="cDesc" class="full" maxlength="300" placeholder="ex : Antivirus officiels, livrés en quelques minutes.">
+          <label for="cSort">Ordre d'affichage (0 = en premier)</label><input id="cSort" type="number" min="0" placeholder="0" style="width:120px">
+        </details>
+        <div class="bar"><button id="cSave" class="green">➕ Ajouter la catégorie</button><button id="cReset" class="grey hidden">Annuler</button></div>
+        <h3 style="margin:16px 0 6px">Vos catégories</h3>
         <table class="small"><tbody id="cRows"></tbody></table>
       </div>
     </section>
@@ -1225,7 +1280,8 @@ async function loadRefs() {
   const stockProds = products.filter((x) => STOCK_TYPES.includes(x.delivery_type) && !isPack(x)); // un pack n'a pas de stock propre
   const fill = (id, list, first) => { const s = $(id), keep = s.value; s.replaceChildren(); if (first) s.append(new Option(first, "")); for (const x of list) s.append(new Option(x.name, x.id)); if (keep) s.value = keep; };
   fill("kProd", stockProds); fill("kFilterProd", stockProds, "Tous les produits"); kAcctUi(); fill("pCat", catTree().map((c) => ({ id: c.id, name: (c.parent_id ? "↳ " : "") + c.name })), "— Sans catégorie —");
-  fill("cParent", categories.filter((c) => !c.parent_id), "— Catégorie principale —");
+  fill("cParent", categories.filter((c) => !c.parent_id), "Choisir…");
+  fillCatFilter();
   fill("pTpl", templates.filter((x) => !x.is_default && x.kind !== "install"), "Modèle par défaut");
   fill("pInstTpl", templates.filter((x) => !x.is_default && x.kind === "install"), "Modèle d'installation par défaut");
 }
@@ -2016,11 +2072,47 @@ $("pUploadBtn").addEventListener("click", async () => {
 async function loadProducts() {
   await loadRefs();
   await loadFiles().catch(() => {});
+  renderProducts();
+  renderCategories();
+}
+// recherche sans tenir compte des accents ni des majuscules (« defender » trouve « Défender »)
+const plain = (t) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+function fillCatFilter() {
+  const s = $("pFCat"), keep = s.value; s.replaceChildren(new Option("Toutes les catégories", ""));
+  const count = (id) => products.filter((p) => p.category_id === id || categories.some((k) => k.parent_id === id && k.id === p.category_id)).length;
+  for (const c of catTree()) s.append(new Option((c.parent_id ? "\u00a0\u00a0\u00a0↳ " : "") + c.name + " (" + count(c.id) + ")", c.id));
+  const none = products.filter((p) => !p.category_id || !categories.some((c) => c.id === p.category_id)).length;
+  if (none) s.append(new Option("⚠️ Sans catégorie (" + none + ")", "none"));
+  if (keep && [...s.options].some((o) => o.value === keep)) s.value = keep;
+}
+function renderProducts() {
   const catName = Object.fromEntries(categories.map((c) => [c.id, c.name]));
-  $("pRows").replaceChildren(...products.map((p) => tr(
+  const catPath = (id) => { const c = categories.find((k) => k.id === id); if (!c) return ""; const par = categories.find((k) => k.id === c.parent_id); return par ? par.name + " › " + c.name : c.name; };
+  const q = plain($("pQ").value.trim()), cat = $("pFCat").value, st = $("pFStat").value, sort = $("pFSort").value;
+  const words = q.split(/\s+/).filter(Boolean);
+  // une catégorie principale inclut ses sous-catégories
+  const inCat = (p) => !cat ? true : cat === "none" ? !p.category_id || !catName[p.category_id]
+    : p.category_id === cat || categories.some((k) => k.id === p.category_id && k.parent_id === cat);
+  let list = products.filter((p) => inCat(p) && (!st || (st === "pub") === !!p.active)
+    && words.every((w) => plain(p.name + " " + (p.sku || "") + " " + (p.slug || "")).includes(w)));
+  const byName = (a, b) => a.name.localeCompare(b.name, "fr", { sensitivity: "base", numeric: true });
+  const tree = catTree().map((c) => c.id);
+  const cmp = { name: byName,
+    cat: (a, b) => { const i = (p) => { const k = tree.indexOf(p.category_id); return k < 0 ? 1e6 : k; }; return i(a) - i(b) || byName(a, b); },
+    price_asc: (a, b) => (a.price_fcfa || 0) - (b.price_fcfa || 0) || byName(a, b),
+    price_desc: (a, b) => (b.price_fcfa || 0) - (a.price_fcfa || 0) || byName(a, b),
+    new: (a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")) || byName(a, b) }[sort];
+  if (cmp) list = [...list].sort(cmp); // « ordre du site » = ordre renvoyé par le serveur (ordre d'affichage, puis nom)
+  const filtered = !!(q || cat || st);
+  $("pFClear").classList.toggle("hidden", !filtered && sort === "site");
+  $("pCount").textContent = filtered ? list.length + " produit(s) trouvé(s) sur " + products.length : products.length + " produit(s)";
+  $("pEmpty").classList.toggle("hidden", list.length > 0);
+  $("pEmpty").textContent = products.length ? "Aucun produit ne correspond. Essayez un autre mot ou cliquez sur « ✖ Effacer »." : "Aucun produit pour le moment.";
+  $("pRows").closest("table").classList.toggle("hidden", !list.length);
+  $("pRows").replaceChildren(...list.map((p) => tr(
     td(p.image_url ? Object.assign(el("img", null, "thumb"), { src: p.image_url, alt: "" }) : el("span", null, "thumb")),
     td(el("strong", p.name), p.featured ? el("span", " ★", "small") : null, p.image_url ? null : el("div", "⚠️ sans photo : invisible dans les résultats enrichis Google", "small")),
-    td(catName[p.category_id] || "—"),
+    td(catPath(p.category_id) || "—"),
     td(fcfa(p.price_fcfa)),
     td(isPack(p) ? "📦 Pack (" + p.bundle.length + " produits)" : TYPES[p.delivery_type] || p.delivery_type, el("br"), el("span", p.delivery_type === "physical" ? (p.stock_qty == null ? "quantité illimitée" : p.stock_qty + " en stock") : p.auto_deliver ? "automatique" : "manuelle", "small")),
     td(tag(p.active ? "pub" : "draft"), p.sku ? el("div", p.sku, "small mono") : null),
@@ -2033,8 +2125,14 @@ async function loadProducts() {
         try { const d = await api({ action: "product_delete", id: p.id }); toast("Produit supprimé ✔" + (d.keys ? " (" + d.keys + " clé(s) du stock supprimée(s))" : "")); if ($("pId").value === p.id) resetProduct(); await loadProducts(); }
         catch (e) { toast(errMsg(e)); }
       })))));
-  renderCategories();
 }
+// filtres de la liste : mémorisés dans l'onglet du navigateur (gardés après une actualisation)
+for (const [id, ev] of [["pQ", "input"], ["pFCat", "change"], ["pFStat", "change"], ["pFSort", "change"]]) {
+  try { const v = sessionStorage.getItem("lo_pf_" + id); if (v != null && id !== "pFCat") $(id).value = v; } catch (_) {}
+  $(id).addEventListener(ev, () => { try { sessionStorage.setItem("lo_pf_" + id, $(id).value); } catch (_) {} renderProducts(); });
+}
+try { const v = sessionStorage.getItem("lo_pf_pFCat"); if (v) $("pFCat").append(new Option("…", v)), $("pFCat").value = v; } catch (_) {}
+$("pFClear").addEventListener("click", () => { $("pQ").value = ""; $("pFCat").value = ""; $("pFStat").value = ""; $("pFSort").value = "site"; for (const id of ["pQ", "pFCat", "pFStat", "pFSort"]) { try { sessionStorage.removeItem("lo_pf_" + id); } catch (_) {} } renderProducts(); $("pQ").focus(); });
 function editProduct(p) {
   remember("product", p.id);
   $("pFormTitle").textContent = "Modifier : " + p.name + (p.active ? "" : " (📝 brouillon, caché du site)");
@@ -2094,17 +2192,51 @@ function catTree() {
   return tops.flatMap((t) => [t, ...categories.filter((c) => c.parent_id === t.id)]);
 }
 function renderCategories() {
-  $("cRows").replaceChildren(...catTree().map((c) => tr(td(c.parent_id ? el("span", "↳ " + c.name) : el("strong", c.name)), td(el("span", c.slug, "small mono")), td(tag(c.active ? "visible" : "hidden")),
-    td(el("span", products.filter((p) => p.category_id === c.id).length + " produit(s)", "small")),
-    td(btn("Modifier", "grey", () => { $("cId").value = c.id; $("cName").value = c.name; $("cSort").value = c.sort; $("cActive").checked = c.active; $("cParent").value = c.parent_id || ""; $("cDesc").value = c.description || ""; $("cName").focus(); }),
-      " ", btn("Supprimer", "red", async () => { if (await uiConfirm("Supprimer la catégorie « " + c.name + " » ? Ses produits resteront, sans catégorie, et ses sous-catégories deviendront des catégories principales.")) { await api({ action: "category_delete", id: c.id }); await loadProducts(); } })))));
+  const n = (id) => products.filter((p) => p.category_id === id).length;
+  $("cRows").replaceChildren(...catTree().map((c) => {
+    const par = categories.find((k) => k.id === c.parent_id), kids = categories.filter((k) => k.parent_id === c.id).length;
+    const row = tr(td(par ? el("span", "↳ " + c.name) : el("strong", "🗂️ " + c.name),
+        el("div", par ? "Sous-catégorie de " + par.name : "Catégorie principale" + (kids ? " · " + kids + " sous-catégorie(s)" : ""), "small")),
+      td(tag(c.active ? "visible" : "hidden")),
+      td(el("span", n(c.id) + " produit(s)", "small")),
+      td(btn("Modifier", "grey", () => editCat(c)),
+        par ? null : " ", par ? null : btn("➕ Sous-catégorie", "grey", () => { resetCat(); $("cKindSub").checked = true; $("cParent").value = c.id; syncCatKind(); $("cName").placeholder = "ex : nom du petit rayon dans « " + c.name + " »"; $("cName").focus(); $("cFormTitle").scrollIntoView({ behavior: "smooth", block: "center" }); }),
+        " ", btn("Supprimer", "red", async () => { if (await uiConfirm("Supprimer la catégorie « " + c.name + " » ? Ses produits resteront, sans catégorie, et ses sous-catégories deviendront des catégories principales.")) { await api({ action: "category_delete", id: c.id }); await loadProducts(); } })));
+    if (par) row.className = "csub";
+    return row;
+  }));
 }
-const resetCat = () => { $("cId").value = ""; $("cName").value = ""; $("cSort").value = ""; $("cActive").checked = true; $("cParent").value = ""; $("cDesc").value = ""; };
+// choix « catégorie principale » / « sous-catégorie de… » et aperçu de l'emplacement sur le site
+function syncCatKind() {
+  const id = $("cId").value, hasKids = !!id && categories.some((k) => k.parent_id === id);
+  for (const o of $("cParent").options) o.disabled = !!o.value && o.value === id;
+  $("cKindSub").disabled = hasKids; $("cParent").disabled = hasKids; $("cKindSubLbl").classList.toggle("off", hasKids);
+  if (hasKids) $("cKindTop").checked = true;
+  $("cSubHint").textContent = hasKids ? "Impossible : cette catégorie contient déjà des sous-catégories, elle reste principale." : "Un petit rayon à l'intérieur, comme « Windows 11 » dans « Windows ».";
+  const name = $("cName").value.trim() || "…", sub = $("cKindSub").checked, par = categories.find((k) => k.id === $("cParent").value);
+  $("cPrev").replaceChildren("Sur le site : ", el("b", sub ? (par ? par.name : "(choisissez la catégorie principale)") + " › " + name : name));
+}
+function editCat(c) {
+  $("cId").value = c.id; $("cName").value = c.name; $("cSort").value = c.sort; $("cActive").checked = c.active; $("cDesc").value = c.description || "";
+  $("cParent").value = c.parent_id || ""; (c.parent_id ? $("cKindSub") : $("cKindTop")).checked = true;
+  $("cFormTitle").textContent = "✏️ Modifier : " + c.name; $("cSave").textContent = "💾 Enregistrer les modifications"; $("cReset").classList.remove("hidden");
+  syncCatKind(); $("cFormTitle").scrollIntoView({ behavior: "smooth", block: "center" }); $("cName").focus();
+}
+const resetCat = () => { $("cId").value = ""; $("cName").value = ""; $("cName").placeholder = "ex : Antivirus  ou  Windows 11"; $("cSort").value = ""; $("cActive").checked = true; $("cParent").value = ""; $("cDesc").value = ""; $("cKindTop").checked = true;
+  $("cFormTitle").textContent = "➕ Ajouter une catégorie"; $("cSave").textContent = "➕ Ajouter la catégorie"; $("cReset").classList.add("hidden"); syncCatKind(); };
 $("cReset").addEventListener("click", resetCat);
+$("cName").addEventListener("input", syncCatKind);
+for (const id of ["cKindTop", "cKindSub"]) $(id).addEventListener("change", syncCatKind);
+$("cParent").addEventListener("change", () => { if ($("cParent").value) $("cKindSub").checked = true; syncCatKind(); });
 $("cSave").addEventListener("click", async () => {
-  try { await api({ action: "category_save", id: $("cId").value || undefined, name: $("cName").value, sort: $("cSort").value, active: $("cActive").checked, parent_id: $("cParent").value, description: $("cDesc").value }); toast("Catégorie enregistrée ✔"); resetCat(); await loadProducts(); }
+  const sub = $("cKindSub").checked, parent = sub ? $("cParent").value : "";
+  if (!$("cName").value.trim()) { toast("Écrivez d'abord le nom de la catégorie (ex : Antivirus)."); return $("cName").focus(); }
+  if (sub && !parent) { toast("Choisissez dans quelle catégorie principale ranger cette sous-catégorie."); return $("cParent").focus(); }
+  try { await api({ action: "category_save", id: $("cId").value || undefined, name: $("cName").value, sort: $("cSort").value, active: $("cActive").checked, parent_id: parent, description: $("cDesc").value });
+    toast(($("cId").value ? "Catégorie modifiée ✔" : sub ? "Sous-catégorie ajoutée ✔" : "Catégorie principale ajoutée ✔")); resetCat(); await loadProducts(); }
   catch (e) { toast(errMsg(e)); }
 });
+syncCatKind();
 
 // ---------- stock ----------
 // type de clé : usage unique / multi-postes (N appareils) / réutilisable sans limite
