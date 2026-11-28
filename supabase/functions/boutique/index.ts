@@ -55,7 +55,7 @@ function newRef(): string {
 }
 const str = (v: unknown, max: number) => String(v ?? "").trim().slice(0, max);
 const STOCK_TYPES = ["key", "key_file", "stock"];
-const PRODUCT_FIELDS = "id, slug, name, description, image_url, gallery, price_fcfa, compare_price_fcfa, delivery_type, featured, sort, category_id, stock_qty, sku, seo_title, seo_description";
+const PRODUCT_FIELDS = "id, slug, name, description, image_url, gallery, image_alts, price_fcfa, compare_price_fcfa, delivery_type, featured, sort, category_id, stock_qty, sku, seo_title, seo_description";
 
 // ================= Origine de la commande (pub Facebook, Google Ads, WhatsApp…) =================
 const SITE_CHANNELS = ["google_ads", "facebook_ads", "facebook", "google", "whatsapp", "direct", "autre"];
@@ -559,6 +559,8 @@ function publicProduct(p: any, counts: Record<string, number>, cats: Record<stri
   return {
     slug: p.slug, name: p.name, description: p.description ?? "", image_url: p.image_url ?? "",
     gallery: Array.isArray(p.gallery) ? p.gallery.filter((u: string) => /^https:\/\//.test(String(u))).slice(0, 3) : [],
+    // description de chaque photo (texte alternatif), même ordre que [image_url, ...gallery] ; vide = nom du produit
+    image_alts: Array.isArray(p.image_alts) ? p.image_alts.slice(0, 4).map((t: unknown) => String(t ?? "").slice(0, 200)) : [],
     price_fcfa: p.price_fcfa, compare_price_fcfa: p.compare_price_fcfa ?? null,
     promo_name: p.promo_name ?? null, promo_ends_at: p.promo_ends_at ?? null,
     sku: p.sku ?? null, seo_title: p.seo_title ?? null, seo_description: p.seo_description ?? null,

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Produit — licenceoff.com</title>
-<link rel="stylesheet" href="/shop.css?v=33">
+<link rel="stylesheet" href="/shop.css?v=35">
 <link rel="icon" type="image/png" sizes="192x192" href="/img/profil-192.png"><link rel="icon" type="image/png" sizes="48x48" href="/img/profil-48.png"><link rel="icon" href="/favicon.ico" sizes="any"><link rel="apple-touch-icon" href="/img/apple-touch-icon.png">
 <meta property="og:image" content="https://www.licenceoff.com/img/partage.jpg">
 </head>
@@ -12,7 +12,7 @@
 <main class="wrap">
   <div id="view"><div class="product"><div class="skeleton"></div><div class="skeleton"></div></div></div>
 </main>
-<script src="/shop.js?v=33"></script>
+<script src="/shop.js?v=35"></script>
 <script>
 LO.page("shop");
 const { el, $, fcfa } = LO;
@@ -24,13 +24,16 @@ function show(p) {
   // titre et description Google : ceux de l'admin s'ils existent, sinon le nom et le début de la description
   // galerie : photo principale + jusqu'à 3 photos (miniatures cliquables, glisser sur mobile)
   function gallery(p) {
-    const pics = [p.image_url, ...(p.gallery || [])].filter(Boolean);
+    // texte alternatif de chaque photo (saisi dans l'admin ; sinon le nom du produit)
+    const all = [p.image_url, ...(p.gallery || [])], alts = p.image_alts || [];
+    const altOf = all.map((u, i) => (alts[i] || "").trim() || (i ? p.name + " — photo " + (i + 1) : p.name)).filter((_, i) => all[i]);
+    const pics = all.filter(Boolean);
     if (!pics.length) return el("div", { class: "img" }, el("span", { class: "ph", style: "font-size:64px;font-weight:800;color:#94a3b8", text: LO.initials(p.name) }));
-    const main = el("img", { src: pics[0], alt: p.name });
+    const main = el("img", { src: pics[0], alt: altOf[0] });
     if (pics.length === 1) return el("div", { class: "img" }, main);
     let cur = 0;
     const thumbs = pics.map((u, i) => el("button", { type: "button", class: "thumb" + (i ? "" : " on"), "aria-label": "Photo " + (i + 1), onclick: () => show(i) }, el("img", { src: u, alt: "", loading: "lazy" })));
-    const show = (i) => { cur = (i + pics.length) % pics.length; main.src = pics[cur]; main.alt = p.name + " — photo " + (cur + 1); thumbs.forEach((t, k) => t.classList.toggle("on", k === cur)); };
+    const show = (i) => { cur = (i + pics.length) % pics.length; main.src = pics[cur]; main.alt = altOf[cur]; thumbs.forEach((t, k) => t.classList.toggle("on", k === cur)); };
     const box = el("div", { class: "img" }, main,
       el("button", { type: "button", class: "gnav prev", "aria-label": "Photo précédente", text: "‹", onclick: () => show(cur - 1) }),
       el("button", { type: "button", class: "gnav next", "aria-label": "Photo suivante", text: "›", onclick: () => show(cur + 1) }));

@@ -239,7 +239,7 @@ const LO = (() => {
       addToCart(p, 1); toast("Ajouté au panier ✔"); });
     return el("a", { class: "card", href: link },
       el("div", { class: "img" },
-        p.image_url ? el("img", { src: p.image_url, alt: p.name, loading: "lazy" }) : el("span", { class: "ph", text: initials(p.name) }),
+        p.image_url ? el("img", { src: p.image_url, alt: ((p.image_alts || [])[0] || "").trim() || p.name, loading: "lazy" }) : el("span", { class: "ph", text: initials(p.name) }),
         !p.in_stock ? el("span", { class: "badge out", text: "Sur commande" }) : off ? el("span", { class: "badge", text: "-" + off + " %" }) : null),
       el("div", { class: "body" },
         catName ? el("div", { class: "cat", text: catName }) : null,

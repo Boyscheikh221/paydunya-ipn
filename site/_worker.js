@@ -147,12 +147,14 @@ async function renderFor(path) {
     const catPath = p.category ? U.category(p.category, par ? par.slug : null) : null;
     const cr = crumbs([["Accueil", "/"], ["Boutique", "/boutique"], ...(par ? [[par.name, U.category(par.slug)]] : []),
       ...(p.category_name && catPath ? [[p.category_name, catPath]] : []), [p.name]]);
-    const pics = [p.image_url, ...(p.gallery || [])].filter(Boolean);
+    const all = [p.image_url, ...(p.gallery || [])], alts = p.image_alts || [];
+    const altOf = all.map((u, i) => String(alts[i] || "").trim() || (i ? p.name + " — photo " + (i + 1) : p.name)).filter((_, i) => all[i]);
+    const pics = all.filter(Boolean);
     const url = SITE + U.product(p.slug);
     const off = p.compare_price_fcfa && p.compare_price_fcfa > p.price_fcfa;
     const rt = p.rating;
     const html = cr.html + '<div class="product">'
-      + (pics[0] ? `<div class="img"><img src="${esc(pics[0])}" alt="${esc(p.name)}"></div>` : "")
+      + (pics.length ? '<div class="img">' + pics.map((u, i) => `<img src="${esc(u)}" alt="${esc(altOf[i])}"${i ? ' loading="lazy"' : ""}>`).join("") + "</div>" : "")
       + `<div><h1>${esc(p.name)}</h1>`
       + `<p class="price"><strong>${p.price_fcfa > 0 ? fcfa(p.price_fcfa) : "Prix sur demande"}</strong>${off ? ` <s>${fcfa(p.compare_price_fcfa)}</s>` : ""}</p>`
       + `<p>${p.in_stock ? "En stock" : "Bientôt disponible"}${p.category_name ? " · " + esc(p.category_name) : ""}${rt ? ` · ${rt.avg}/5 (${rt.count} avis)` : ""}</p>`
