@@ -85,6 +85,7 @@
   .ph .main{position:absolute;left:4px;top:4px;background:#1d4ed8;color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:6px}
   .ph .num{position:absolute;left:4px;top:4px;background:rgba(0,0,0,.55);color:#fff;font-size:10px;padding:2px 6px;border-radius:6px}
   .ph .x{position:absolute;right:4px;top:4px;width:26px;height:26px;border-radius:50%;border:0;background:rgba(0,0,0,.6);color:#fff;font-size:14px;line-height:26px;padding:0;cursor:pointer}
+  .alts{display:grid;gap:6px;margin-top:8px}.alts .alt{display:flex;gap:8px;align-items:center}.alts .alt span{flex:0 0 74px;font-size:12px;color:#555}.alts .alt input{flex:1;min-width:0;margin:0}
   .ph .st{position:absolute;left:0;right:0;bottom:0;background:rgba(255,255,255,.92);font-size:11px;padding:3px 4px;text-align:center}
   .ph.err{border-color:#dc2626}
   .ph.drag{opacity:.85;box-shadow:0 8px 24px rgba(0,0,0,.25);z-index:5;cursor:grabbing;transition:none}
@@ -418,6 +419,7 @@
           <div>
             <label>Photos du produit <span class="small">(jusqu'à 4 · la 1<sup>re</sup> est la photo principale · glissez une photo pour changer l'ordre · carrées 1500 × 1500, fond blanc, sans prix ni logo Microsoft ; converties en JPG)</span></label>
             <div id="pPhotos" class="photos"></div>
+            <div id="pAlts" class="alts"></div>
             <input id="pPhotoFile" type="file" accept="image/*" multiple class="hidden">
             <input type="hidden" id="pImg"><div id="pImgMsg" class="small"></div>
           </div>
@@ -1974,10 +1976,12 @@ function keysInfo(p) {
 $("pType").addEventListener("change", syncType);
 // photos du produit façon Marketplace : on en ajoute plusieurs d'un coup, la 1re est la principale, on glisse pour changer l'ordre
 const MAX_PHOTOS = 4;
-let photos = []; // { url, local, msg, err, busy }
+let photos = []; // { url, local, msg, err, busy, alt }
 const photoUrls = () => photos.filter((x) => x.url && !x.busy).map((x) => x.url);
 const photosBusy = () => photos.some((x) => x.busy);
-function setPhotos(list) { photos = (list || []).filter(Boolean).slice(0, MAX_PHOTOS).map((url) => ({ url })); $("pImgMsg").textContent = ""; renderPhotos(); }
+// alts : description de chaque photo (lue par les lecteurs d'écran des malvoyants, Google Images et les IA), dans le même ordre
+function setPhotos(list, alts) { const a = Array.isArray(alts) ? alts : []; photos = (list || []).map((url, i) => ({ url, alt: String(a[i] || "") })).filter((x) => x.url).slice(0, MAX_PHOTOS); $("pImgMsg").textContent = ""; renderPhotos(); }
+const photoAlts = () => photos.filter((x) => x.url && !x.busy).map((x) => (x.alt || "").trim());
 function syncPhotoField() { $("pImg").value = photoUrls()[0] || ""; }
 function renderPhotos() {
   syncPhotoField();
@@ -2000,6 +2004,16 @@ function renderPhotos() {
     tiles.push(add);
   }
   box.replaceChildren(...tiles);
+  // une description par photo : vide = le nom du produit est utilisé
+  const name = ($("pName").value || "").trim();
+  const rows = photos.map((ph, i) => {
+    const inp = el("input"); inp.type = "text"; inp.maxLength = 200; inp.value = ph.alt || "";
+    inp.placeholder = i === 0 ? (name || "ex : Boîte Office 2024 sur un bureau") : (name ? name + " — photo " + (i + 1) : "ex : écran d'activation de Windows 11");
+    inp.setAttribute("aria-label", "Description de la photo " + (i + 1));
+    inp.addEventListener("input", () => { ph.alt = inp.value; });
+    const r = el("div", null, "alt"); r.append(el("span", i === 0 ? "Principale" : "Photo " + (i + 1)), inp); return r;
+  });
+  $("pAlts").replaceChildren(...(rows.length ? [el("div", "Description de chaque photo (lue à voix haute aux malvoyants, utilisée par Google et les IA ; vide = nom du produit). Ex : « Écran Windows 11 montrant où saisir la clé »", "small"), ...rows] : []));
 }
 // glisser-déposer à la souris et au doigt (pointer events)
 function dragPhoto(t, from) {
@@ -2140,7 +2154,7 @@ function editProduct(p) {
   $("pFormTitle").textContent = "Modifier : " + p.name + (p.active ? "" : " (📝 brouillon, caché du site)");
   $("pId").value = p.id; $("pName").value = p.name; $("pCat").value = p.category_id || ""; $("pPrice").value = p.price_fcfa;
   $("pCompare").value = p.compare_price_fcfa || ""; $("pWholesale").value = p.wholesale_price_fcfa ?? ""; $("pDesc").value = p.description || ""; $("pImg").value = p.image_url || "";
-  setPhotos([p.image_url, ...(p.gallery || [])]);
+  setPhotos([p.image_url, ...(p.gallery || [])], p.image_alts);
   const ext = /^https:\/\//i.test(p.installer_path || "");
   $("pPhysical").checked = p.delivery_type === "physical"; $("pQty").value = p.stock_qty ?? ""; $("pWeight").value = p.weight_g ?? ""; $("pSku").value = p.sku || "";
   $("pSeoT").value = p.seo_title || ""; $("pSeoD").value = p.seo_description || ""; seoPrev();
@@ -2170,7 +2184,7 @@ async function saveProduct(publish) {
     const bundle = pack ? packPayload() : [];
     if (pack && bundle.length < 2) return toast("Un pack doit contenir au moins 2 produits.");
     const saved = await api({ action: "product_save", id: $("pId").value || undefined, name: $("pName").value, category_id: $("pCat").value, stock_qty: $("pQty").value,
-      price_fcfa: $("pPrice").value, compare_price_fcfa: $("pCompare").value, wholesale_price_fcfa: $("pWholesale").value, description: $("pDesc").value, image_url: photoUrls()[0] || "", gallery: photoUrls().slice(1),
+      price_fcfa: $("pPrice").value, compare_price_fcfa: $("pCompare").value, wholesale_price_fcfa: $("pWholesale").value, description: $("pDesc").value, image_url: photoUrls()[0] || "", gallery: photoUrls().slice(1), image_alts: photoAlts(),
       delivery_type: phys ? "physical" : pack ? "key" : $("pType").value, installer_path: pack ? "" : link || $("pFile").value, bundle, auto_deliver: $("pAuto").checked, active: $("pActive").value === "1", sku: $("pSku").value, weight_g: $("pWeight").value, seo_title: $("pSeoT").value, seo_description: $("pSeoD").value,
       featured: $("pFeatured").checked, low_stock_threshold: $("pLow").value, sort: $("pSort").value, email_template_id: $("pTpl").value, two_step: $("pTwo").checked, manual_key: !phys && $("pManKey").checked, manual_link: !phys && $("pManLink").checked && ["key_file", "file", "pack"].includes($("pType").value), install_template_id: $("pInstTpl").value, key_source_id: pack || phys ? "" : $("pSrc").value });
     let msg = "Produit enregistré ✔";

@@ -1631,13 +1631,19 @@ Deno.serve(async (req) => {
           body.delivery_type = "key"; body.installer_path = null;
         }
         const dtype = DELIVERY_TYPES.includes(body.delivery_type) ? body.delivery_type : "key";
+        // galerie : jusqu'à 3 photos en plus de la photo principale, seulement nos photos envoyées par l'admin ; chaque photo garde sa description
+        const altsIn: unknown[] = Array.isArray(body.image_alts) ? body.image_alts : [];
+        const galleryIn = (Array.isArray(body.gallery) ? body.gallery : []).map((u: unknown, i: number) => ({ u: str(u, 500), alt: str(altsIn[i + 1], 200) }))
+          .filter((g: { u: string }) => g.u.startsWith(SUPABASE_URL + "/storage/v1/object/public/product-images/") && !/\s/.test(g.u)).slice(0, 3);
         const row = {
           slug: slugify(str(body.slug, 80) || str(body.name, 120)),
           name: str(body.name, 120),
           description: str(body.description, 5000) || null,
           image_url: str(body.image_url, 500) || null,
           // galerie : jusqu'à 3 photos en plus de la photo principale (liens https uniquement)
-          gallery: (Array.isArray(body.gallery) ? body.gallery : []).map((u: unknown) => str(u, 500)).filter((u: string) => u.startsWith(SUPABASE_URL + "/storage/v1/object/public/product-images/") && !/\s/.test(u)).slice(0, 3), // seulement nos photos envoyées par l'admin
+          gallery: galleryIn.map((g) => g.u),
+          // description de chaque photo (texte alternatif : malvoyants, Google Images, IA), même ordre que [image_url, ...gallery]
+          image_alts: [str(altsIn[0], 200), ...galleryIn.map((g) => g.alt)],
           category_id: str(body.category_id, 40) || null,
           price_fcfa: clamp(Number(body.price_fcfa) || 0, 0, 100_000_000),
           compare_price_fcfa: Number(body.compare_price_fcfa) > 0 ? clamp(Number(body.compare_price_fcfa), 0, 100_000_000) : null,
