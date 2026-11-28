@@ -1,0 +1,18 @@
+# licenceoff.com
+
+> Boutique en ligne au Sénégal (Dakar) : licences Microsoft Windows et Office, antivirus, logiciels et solutions PC. Paiement Wave ou Orange Money, commande en ligne ou sur WhatsApp, livraison rapide par email (clé de licence + lien de téléchargement). Prix en francs CFA (FCFA / XOF).
+
+- Site : https://www.licenceoff.com
+- Contact : WhatsApp +221 77 786 07 77 (https://wa.me/221777860777), contact@licenceoff.com
+- Langue : français
+
+## Pages principales
+
+- [Boutique (tous les produits et prix)](https://www.licenceoff.com/boutique)
+- [Microsoft Office](https://www.licenceoff.com/categorie/microsoft-office)
+- [Windows](https://www.licenceoff.com/categorie/windows)
+- [Solutions PC](https://www.licenceoff.com/categorie/solutions-pc)
+- [Antivirus](https://www.licenceoff.com/categorie/antivirus)
+- [Questions fréquentes](https://www.licenceoff.com/faq)
+- [Blog : guides d'installation et astuces](https://www.licenceoff.com/blog)
+- [Confidentialité](https://www.licenceoff.com/confidentialite)
