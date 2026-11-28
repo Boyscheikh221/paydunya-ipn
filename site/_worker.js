@@ -6,6 +6,7 @@
 //    BlogPosting, BreadcrumbList). Ces robots ne lancent pas toujours le JavaScript du site : sans ça ils ne voient
 //    qu'une page vide. Le contenu écrit est exactement celui que le JavaScript affiche ensuite (il le remplace).
 // 3) /llms.txt : résumé du site pour les IA (produits, prix, FAQ, articles), toujours à jour.
+// 4) /sitemap.xml : plan du site pour Google, toujours à jour (produits, catégories, articles publiés, pages).
 // Toute erreur => la page normale est servie, le site ne peut pas tomber à cause de ce fichier.
 const API = "https://vnzpxfoeiixiqxkhdnik.supabase.co/functions/v1/boutique";
 const SITE = "https://www.licenceoff.com";
@@ -326,6 +327,18 @@ async function llmsTxt() {
   return out.join("\n");
 }
 
+// /sitemap.xml : repris de la fonction boutique (…?sitemap=1), + page Confidentialité.
+// Erreur ou réponse vide => le fichier sitemap.xml fixe du site.
+async function sitemapXml() {
+  const r = await fetch(API + "?sitemap=1", { cf: { cacheTtl: 600 } });
+  if (!r.ok) return null;
+  let xml = await r.text();
+  if (!/<urlset[\s\S]*<\/urlset>/.test(xml) || !xml.includes("<loc>")) return null;
+  const extra = ["/confidentialite"].filter((u) => !xml.includes(`<loc>${SITE}${u}</loc>`));
+  if (extra.length) xml = xml.replace("</urlset>", extra.map((u) => `<url><loc>${SITE}${u}</loc></url>`).join("\n") + "\n</urlset>");
+  return xml;
+}
+
 export default {
   async fetch(request, env) {
     try {
@@ -343,6 +356,11 @@ export default {
         const txt = await llmsTxt().catch(() => null);
         if (!txt) return env.ASSETS.fetch(request); // secours : le fichier llms.txt fixe
         return new Response(txt, { headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=3600" } });
+      }
+      if (path === "/sitemap.xml" && (request.method === "GET" || request.method === "HEAD")) {
+        const xml = await sitemapXml().catch(() => null);
+        if (!xml) return env.ASSETS.fetch(request); // secours : le fichier sitemap.xml fixe
+        return new Response(request.method === "HEAD" ? null : xml, { headers: { "content-type": "application/xml; charset=utf-8", "cache-control": "public, max-age=600" } });
       }
       const target = rewriteTarget(path);
       if (!target && !FILLED.test(path)) return env.ASSETS.fetch(request);
